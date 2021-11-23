@@ -1,29 +1,35 @@
 use std::{collections::HashSet, iter::FromIterator, sync::Arc};
 
 use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SubpassContents,
+    },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceExtensions, Features, Queue,
     },
     format::Format,
-    image::{ImageUsage, SwapchainImage},
+    image::{view::ImageView, ImageUsage, SwapchainImage},
     instance::{
         debug::{DebugCallback, MessageSeverity, MessageType},
         layers_list, ApplicationInfo, Instance, InstanceExtensions,
     },
     pipeline::{viewport::Viewport, GraphicsPipeline},
-    render_pass::{RenderPass, Subpass},
+    render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass},
     single_pass_renderpass,
     swapchain::{
-        ColorSpace, CompositeAlpha, PresentMode, SupportedPresentModes, Surface, Swapchain,
+        acquire_next_image, AcquireError, ColorSpace, CompositeAlpha, PresentMode,
+        SupportedPresentModes, Surface, Swapchain,
     },
-    sync::SharingMode,
+    sync::{self, GpuFuture, SharingMode},
     Version,
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
+    platform::run_return::EventLoopExtRunReturn,
     window::{Window, WindowBuilder},
 };
 
@@ -52,7 +58,14 @@ vulkano::impl_vertex!(Vertex, position);
 struct HelloTriangleApplication {
     instance: Arc<Instance>,
     debug_callback: Option<DebugCallback>,
-    event_loop: EventLoop<()>,
+    /**
+     * This is why we need to wrap event_loop into Option
+     *
+     * https://stackoverflow.com/questions/67349506/ownership-issues-when-attempting-to-work-with-member-variables-passed-to-closure
+     *
+     * I don't really understand how it works and why exactly it's needed.
+     */
+    event_loop: Option<EventLoop<()>>,
     surface: Arc<Surface<Window>>,
 
     physical_device_index: usize, // can't store PhysicalDevice directly (lifetime issues)
@@ -64,6 +77,13 @@ struct HelloTriangleApplication {
     render_pass: Arc<RenderPass>,
 
     graphics_pipeline: Arc<GraphicsPipeline>,
+
+    swap_chain_framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
+
+    command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
+
+    previous_frame_end: Option<Box<dyn GpuFuture>>,
+    recreate_swap_chain: bool,
 }
 
 impl HelloTriangleApplication {
@@ -95,10 +115,15 @@ impl HelloTriangleApplication {
         let graphics_pipeline =
             Self::create_graphics_pipeline(&device, swap_chain.dimensions(), &render_pass);
 
-        Self {
+        let swap_chain_framebuffers =
+            Self::create_swap_chain_framebuffers(&swap_chain_images, &render_pass);
+
+        let previous_frame_end = Some(Self::create_sync_objects(&device));
+
+        let mut app = Self {
             instance,
             debug_callback,
-            event_loop,
+            event_loop: Some(event_loop),
             physical_device_index,
             device,
             graphics_queue,
@@ -108,7 +133,16 @@ impl HelloTriangleApplication {
             swap_chain_images,
             render_pass,
             graphics_pipeline,
-        }
+            swap_chain_framebuffers,
+
+            command_buffers: vec![],
+            previous_frame_end,
+            recreate_swap_chain: false,
+        };
+
+        app.create_command_buffers();
+
+        app
     }
 
     fn init_window(instance: &Arc<Instance>) -> (EventLoop<()>, Arc<Surface<Window>>) {
@@ -378,11 +412,11 @@ impl HelloTriangleApplication {
         };
 
         let sharing: SharingMode =
-            if graphics_queue.id_within_family() != present_queue.id_within_family() {
-                vec![graphics_queue, present_queue].as_slice().into()
-            } else {
-                graphics_queue.into()
-            };
+            // if graphics_queue.id_within_family() != present_queue.id_within_family() {
+            //     vec![graphics_queue, present_queue].as_slice().into()
+            // } else {
+                graphics_queue.into();
+        // };
 
         let dimensions: [u32; 2] = surface.window().inner_size().into();
 
@@ -402,6 +436,30 @@ impl HelloTriangleApplication {
             .unwrap();
 
         (swap_chain, images)
+    }
+
+    fn recreate_swap_chain(&mut self) {
+        let dimensions: [u32; 2] = self.surface.window().inner_size().into();
+
+        let (swap_chain, images) = Swapchain::recreate(&self.swap_chain)
+            .dimensions(dimensions)
+            .build()
+            .unwrap();
+
+        self.swap_chain = swap_chain;
+        self.swap_chain_images = images;
+
+        self.render_pass = Self::create_render_pass(&self.device, self.swap_chain.format());
+        self.graphics_pipeline = Self::create_graphics_pipeline(
+            &self.device,
+            self.swap_chain.dimensions(),
+            &self.render_pass,
+        );
+
+        self.swap_chain_framebuffers =
+            Self::create_swap_chain_framebuffers(&self.swap_chain_images, &self.render_pass);
+
+        self.create_command_buffers();
     }
 
     fn create_graphics_pipeline(
@@ -431,10 +489,13 @@ impl HelloTriangleApplication {
                 // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
                 .polygon_mode_fill() // = default
                 .line_width(1.0) // = default
-                .cull_mode_back()
+                // TODO: this makes basic triangle example to not work because it's rendered backwards
+                // which makes it hidden as normals are in the wrong direction
+                // .cull_mode_back()
                 .front_face_clockwise()
                 // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
                 .blend_pass_through()
+                .viewports_dynamic_scissors_irrelevant(1)
                 .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
                 .build(device.clone())
                 .unwrap(), // = default
@@ -443,17 +504,178 @@ impl HelloTriangleApplication {
         pipeline
     }
 
-    fn main_loop(self) {
-        self.event_loop
-            .run(move |event, _, control_flow| match event {
-                Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    ..
-                } => {
-                    *control_flow = ControlFlow::Exit;
-                }
+    fn create_swap_chain_framebuffers(
+        swap_chain_images: &Vec<Arc<SwapchainImage<Window>>>,
+        render_pass: &Arc<RenderPass>,
+    ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
+        swap_chain_images
+            .iter()
+            .map(|image| {
+                let attachment = ImageView::new(image.clone()).unwrap();
 
-                _ => (),
+                let framebuffer: Arc<dyn FramebufferAbstract + Send + Sync> = Arc::new(
+                    Framebuffer::start(render_pass.clone())
+                        .add(attachment)
+                        .unwrap()
+                        .build()
+                        .unwrap(),
+                );
+
+                framebuffer
+            })
+            .collect::<Vec<_>>()
+    }
+
+    fn create_command_buffers(&mut self) {
+        let vertex_buffer = CpuAccessibleBuffer::from_iter(
+            self.device.clone(),
+            BufferUsage::all(),
+            false,
+            [
+                Vertex {
+                    position: [-0.5, 0.5, 0.0],
+                },
+                Vertex {
+                    position: [0.5, 0.5, 0.0],
+                },
+                Vertex {
+                    position: [0.0, -0.5, 0.0],
+                },
+            ]
+            .iter()
+            .cloned(),
+        )
+        .unwrap();
+
+        let vertex_buffer_len = vertex_buffer.len() as u32;
+
+        let queue_family = self.graphics_queue.family();
+
+        let dimensions = self.swap_chain_images[0].dimensions();
+
+        let viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+            depth_range: 0.0..1.0,
+        };
+
+        self.command_buffers = self
+            .swap_chain_framebuffers
+            .iter()
+            .map(|framebuffer| {
+                let mut builder = AutoCommandBufferBuilder::primary(
+                    self.device.clone(),
+                    queue_family,
+                    CommandBufferUsage::SimultaneousUse,
+                )
+                .unwrap();
+
+                builder
+                    .begin_render_pass(
+                        framebuffer.clone(),
+                        SubpassContents::Inline,
+                        vec![[0.0, 0.0, 0.0, 1.0].into()],
+                    )
+                    .unwrap()
+                    .set_viewport(0, [viewport.clone()])
+                    .bind_pipeline_graphics(self.graphics_pipeline.clone())
+                    .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .draw(vertex_buffer_len, 1, 0, 0)
+                    .unwrap()
+                    .end_render_pass()
+                    .unwrap();
+
+                let command_buffer = builder.build().unwrap();
+
+                Arc::new(command_buffer)
+            })
+            .collect();
+    }
+
+    fn draw_frame(&mut self) {
+        self.previous_frame_end.as_mut().unwrap().cleanup_finished();
+
+        if self.recreate_swap_chain {
+            self.recreate_swap_chain();
+            self.recreate_swap_chain = false;
+        }
+
+        let (image_index, suboptimal, acquire_future) =
+            match acquire_next_image(self.swap_chain.clone(), None) {
+                Ok(r) => r,
+                Err(AcquireError::OutOfDate) => {
+                    self.recreate_swap_chain = true;
+                    return;
+                }
+                Err(err) => panic!("{:?}", err),
+            };
+
+        if suboptimal {
+            self.recreate_swap_chain = true;
+        }
+
+        let command_buffer = self.command_buffers[image_index].clone();
+
+        let future = acquire_future
+            .then_execute(self.graphics_queue.clone(), command_buffer)
+            .unwrap()
+            .then_swapchain_present(
+                // TODO: swap to present queue???
+                self.graphics_queue.clone(),
+                self.swap_chain.clone(),
+                image_index,
+            )
+            .then_signal_fence_and_flush();
+
+        match future {
+            Ok(future) => {
+                self.previous_frame_end = Some(Box::new(future) as Box<_>);
+            }
+            Err(vulkano::sync::FlushError::OutOfDate) => {
+                self.recreate_swap_chain = true;
+                self.previous_frame_end =
+                    Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<_>);
+            }
+            Err(e) => {
+                println!("{:?}", e);
+                self.previous_frame_end =
+                    Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<_>);
+            }
+        }
+    }
+
+    fn create_sync_objects(device: &Arc<Device>) -> Box<dyn GpuFuture> {
+        Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>
+    }
+
+    fn main_loop(mut self) {
+        self.event_loop
+            .take()
+            .unwrap()
+            .run(move |event, _, control_flow| {
+                *control_flow = ControlFlow::Poll;
+
+                match event {
+                    Event::WindowEvent {
+                        event: WindowEvent::CloseRequested,
+                        ..
+                    } => {
+                        *control_flow = ControlFlow::Exit;
+                    }
+
+                    Event::WindowEvent {
+                        event: WindowEvent::Resized(_),
+                        ..
+                    } => {
+                        self.recreate_swap_chain = true;
+                    }
+
+                    Event::RedrawEventsCleared { .. } => {
+                        self.draw_frame();
+                    }
+
+                    _ => (),
+                }
             })
     }
 }
@@ -465,30 +687,30 @@ fn main() {
 
 mod vertex_shader {
     vulkano_shaders::shader! {
-            ty: "vertex",
-            src: "
-	#version 450
+        ty: "vertex",
+        src: "
+            #version 450
 
-	layout(location = 0) in vec3 position;
+            layout(location = 0) in vec3 position;
 
-	void main() {
-		gl_Position = vec4(position, 1.0);
-	}
-"
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        "
     }
 }
 
 mod fragment_shader {
     vulkano_shaders::shader! {
-            ty: "fragment",
-            src: "
-	#version 450
+        ty: "fragment",
+        src: "
+            #version 450
 
-	layout(location = 0) out vec4 f_color;
+            layout(location = 0) out vec4 f_color;
 
-	void main() {
-		f_color = vec4(1.0, 0.0, 0.0, 1.0);
-	}
-"
+            void main() {
+                f_color = vec4(1.0, 0.0, 0.0, 1.0);
+            }
+        "
     }
 }
