@@ -489,9 +489,7 @@ impl HelloTriangleApplication {
                 // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
                 .polygon_mode_fill() // = default
                 .line_width(1.0) // = default
-                // TODO: this makes basic triangle example to not work because it's rendered backwards
-                // which makes it hidden as normals are in the wrong direction
-                // .cull_mode_back()
+                .cull_mode_back()
                 .front_face_clockwise()
                 // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
                 .blend_pass_through()
@@ -529,17 +527,17 @@ impl HelloTriangleApplication {
     fn create_command_buffers(&mut self) {
         let vertex_buffer = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
-            BufferUsage::all(),
+            BufferUsage::vertex_buffer(),
             false,
             [
                 Vertex {
-                    position: [-0.5, 0.5, 0.0],
+                    position: [0.0, -0.5, 0.0],
                 },
                 Vertex {
                     position: [0.5, 0.5, 0.0],
                 },
                 Vertex {
-                    position: [0.0, -0.5, 0.0],
+                    position: [-0.5, 0.5, 0.0],
                 },
             ]
             .iter()
