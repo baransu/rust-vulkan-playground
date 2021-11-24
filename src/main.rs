@@ -51,9 +51,10 @@ const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
 #[derive(Default, Debug, Clone)]
 struct Vertex {
     position: [f32; 3],
+    color: [f32; 3],
 }
 
-vulkano::impl_vertex!(Vertex, position);
+vulkano::impl_vertex!(Vertex, position, color);
 
 struct HelloTriangleApplication {
     instance: Arc<Instance>,
@@ -532,12 +533,15 @@ impl HelloTriangleApplication {
             [
                 Vertex {
                     position: [0.0, -0.5, 0.0],
+                    color: [1.0, 0.0, 0.0],
                 },
                 Vertex {
                     position: [0.5, 0.5, 0.0],
+                    color: [0.0, 1.0, 0.0],
                 },
                 Vertex {
                     position: [-0.5, 0.5, 0.0],
+                    color: [0.0, 0.0, 1.0],
                 },
             ]
             .iter()
@@ -690,9 +694,13 @@ mod vertex_shader {
             #version 450
 
             layout(location = 0) in vec3 position;
+            layout(location = 1) in vec3 color;
+
+            layout(location = 0) out vec3 f_color;
 
             void main() {
                 gl_Position = vec4(position, 1.0);
+                f_color = color;
             }
         "
     }
@@ -704,10 +712,12 @@ mod fragment_shader {
         src: "
             #version 450
 
-            layout(location = 0) out vec4 f_color;
+            layout(location = 0) in vec3 f_color;
+
+            layout(location = 0) out vec4 out_color;
 
             void main() {
-                f_color = vec4(1.0, 0.0, 0.0, 1.0);
+                out_color = vec4(f_color, 1.0);
             }
         "
     }
