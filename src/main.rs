@@ -571,6 +571,9 @@ impl HelloTriangleApplication {
         let vertex_buffer = create_vertex_buffer(&self.graphics_queue);
         let index_buffer = create_index_buffer(&self.graphics_queue);
 
+        // TODO: should we have uniform buffer per swap chain image?
+        // vulkan-tutorial says so but I'm not 100% understanding it how it plays with
+        // descriptor sets.
         let uniform_buffer = Self::create_uniform_buffer(
             &self.device,
             self.start_time,
