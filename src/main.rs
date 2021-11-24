@@ -1,9 +1,19 @@
-use std::{collections::HashSet, iter::FromIterator, sync::Arc};
+use core::num;
+use std::{
+    collections::HashSet,
+    iter::FromIterator,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
+use cgmath::{Deg, Matrix4, Point3, Rad, Vector3};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer, TypedBufferAccess},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SubpassContents,
+    },
+    descriptor_set::{
+        persistent::PersistentDescriptorSetBuilder, DescriptorSet, PersistentDescriptorSet,
     },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
@@ -15,7 +25,8 @@ use vulkano::{
         debug::{DebugCallback, MessageSeverity, MessageType},
         layers_list, ApplicationInfo, Instance, InstanceExtensions,
     },
-    pipeline::{viewport::Viewport, GraphicsPipeline},
+    memory::pool::{PotentialDedicatedAllocation, StdMemoryPoolAlloc},
+    pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
     render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass},
     single_pass_renderpass,
     swapchain::{
@@ -29,7 +40,6 @@ use vulkano_win::VkSurfaceBuild;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    platform::run_return::EventLoopExtRunReturn,
     window::{Window, WindowBuilder},
 };
 
@@ -50,11 +60,38 @@ const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
 
 #[derive(Default, Debug, Clone)]
 struct Vertex {
-    position: [f32; 3],
+    position: [f32; 2],
     color: [f32; 3],
 }
 
+impl Vertex {
+    fn new(position: [f32; 2], color: [f32; 3]) -> Vertex {
+        Vertex { position, color }
+    }
+}
+
 vulkano::impl_vertex!(Vertex, position, color);
+
+fn vertices() -> [Vertex; 4] {
+    [
+        Vertex::new([-0.5, -0.5], [1.0, 0.0, 0.0]),
+        Vertex::new([0.5, -0.5], [0.0, 1.0, 0.0]),
+        Vertex::new([0.5, 0.5], [0.0, 0.0, 1.0]),
+        Vertex::new([-0.5, 0.5], [1.0, 1.0, 1.0]),
+    ]
+}
+
+fn indices() -> [u16; 6] {
+    [0, 1, 2, 2, 3, 0]
+}
+
+#[allow(dead_code)]
+#[derive(Copy, Clone)]
+struct UniformBufferObject {
+    model: Matrix4<f32>,
+    view: Matrix4<f32>,
+    proj: Matrix4<f32>,
+}
 
 struct HelloTriangleApplication {
     instance: Arc<Instance>,
@@ -85,6 +122,10 @@ struct HelloTriangleApplication {
 
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     recreate_swap_chain: bool,
+
+    uniform_buffers: Vec<Arc<CpuAccessibleBuffer<UniformBufferObject>>>,
+
+    start_time: Instant,
 }
 
 impl HelloTriangleApplication {
@@ -108,7 +149,6 @@ impl HelloTriangleApplication {
             physical_device_index,
             &device,
             &graphics_queue,
-            &present_queue,
         );
 
         let render_pass = Self::create_render_pass(&device, swap_chain.format());
@@ -137,8 +177,11 @@ impl HelloTriangleApplication {
             swap_chain_framebuffers,
 
             command_buffers: vec![],
+            uniform_buffers: vec![],
             previous_frame_end,
             recreate_swap_chain: false,
+
+            start_time: Instant::now(),
         };
 
         app.create_command_buffers();
@@ -389,7 +432,6 @@ impl HelloTriangleApplication {
         physical_device_index: usize,
         device: &Arc<Device>,
         graphics_queue: &Arc<Queue>,
-        present_queue: &Arc<Queue>,
     ) -> (Arc<Swapchain<Window>>, Vec<Arc<SwapchainImage<Window>>>) {
         let physical_device = PhysicalDevice::from_index(&instance, physical_device_index).unwrap();
         let capabilities = surface
@@ -491,7 +533,7 @@ impl HelloTriangleApplication {
                 .polygon_mode_fill() // = default
                 .line_width(1.0) // = default
                 .cull_mode_back()
-                .front_face_clockwise()
+                .front_face_counter_clockwise()
                 // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
                 .blend_pass_through()
                 .viewports_dynamic_scissors_irrelevant(1)
@@ -526,38 +568,28 @@ impl HelloTriangleApplication {
     }
 
     fn create_command_buffers(&mut self) {
-        let vertex_buffer = CpuAccessibleBuffer::from_iter(
-            self.device.clone(),
-            BufferUsage::vertex_buffer(),
-            false,
-            [
-                Vertex {
-                    position: [0.0, -0.5, 0.0],
-                    color: [1.0, 0.0, 0.0],
-                },
-                Vertex {
-                    position: [0.5, 0.5, 0.0],
-                    color: [0.0, 1.0, 0.0],
-                },
-                Vertex {
-                    position: [-0.5, 0.5, 0.0],
-                    color: [0.0, 0.0, 1.0],
-                },
-            ]
-            .iter()
-            .cloned(),
-        )
-        .unwrap();
+        let vertex_buffer = create_vertex_buffer(&self.graphics_queue);
+        let index_buffer = create_index_buffer(&self.graphics_queue);
 
-        let vertex_buffer_len = vertex_buffer.len() as u32;
+        let uniform_buffer = Self::create_uniform_buffer(
+            &self.device,
+            self.start_time,
+            self.swap_chain.dimensions(),
+        );
+
+        let descriptor_sets =
+            Self::create_descriptor_sets(&self.graphics_pipeline, &uniform_buffer);
+
+        let index_count = indices().len() as u32;
 
         let queue_family = self.graphics_queue.family();
 
-        let dimensions = self.swap_chain_images[0].dimensions();
+        let dimensions_u32 = self.swap_chain_images[0].dimensions();
+        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         let viewport = Viewport {
             origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+            dimensions,
             depth_range: 0.0..1.0,
         };
 
@@ -581,8 +613,15 @@ impl HelloTriangleApplication {
                     .unwrap()
                     .set_viewport(0, [viewport.clone()])
                     .bind_pipeline_graphics(self.graphics_pipeline.clone())
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::Graphics,
+                        self.graphics_pipeline.layout().clone(),
+                        0,
+                        descriptor_sets.clone(),
+                    )
                     .bind_vertex_buffers(0, vertex_buffer.clone())
-                    .draw(vertex_buffer_len, 1, 0, 0)
+                    .bind_index_buffer(index_buffer.clone())
+                    .draw_indexed(index_count, 1, 0, 0, 0)
                     .unwrap()
                     .end_render_pass()
                     .unwrap();
@@ -592,6 +631,67 @@ impl HelloTriangleApplication {
                 Arc::new(command_buffer)
             })
             .collect();
+    }
+
+    fn create_uniform_buffer(
+        device: &Arc<Device>,
+        start_time: Instant,
+        dimensions_u32: [u32; 2],
+    ) -> Arc<CpuAccessibleBuffer<UniformBufferObject>> {
+        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
+
+        let uniform_buffer = Self::update_uniform_buffer(start_time, dimensions);
+
+        let buffer = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage::uniform_buffer_transfer_destination(),
+            false,
+            uniform_buffer,
+        )
+        .unwrap();
+
+        buffer
+    }
+
+    fn update_uniform_buffer(start_time: Instant, dimensions: [f32; 2]) -> UniformBufferObject {
+        let duration = Instant::now().duration_since(start_time);
+        let elapsed = (duration.as_secs() * 1000) + u64::from(duration.subsec_millis());
+
+        let model = Matrix4::from_angle_z(Rad::from(Deg(elapsed as f32 * 0.180)));
+
+        let view = Matrix4::look_at(
+            Point3::new(2.0, 2.0, 2.0),
+            Point3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.0, 0.0, 1.0),
+        );
+
+        let mut proj = cgmath::perspective(
+            Rad::from(Deg(45.0)),
+            dimensions[0] as f32 / dimensions[1] as f32,
+            0.1,
+            10.0,
+        );
+
+        proj.y.y *= -1.0;
+
+        UniformBufferObject { model, view, proj }
+    }
+
+    fn create_descriptor_sets(
+        graphics_pipeline: &Arc<GraphicsPipeline>,
+        uniform_buffer: &Arc<CpuAccessibleBuffer<UniformBufferObject>>,
+    ) -> Arc<PersistentDescriptorSet> {
+        let layout = graphics_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(0)
+            .unwrap();
+
+        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        set_builder.add_buffer(uniform_buffer.clone()).unwrap();
+
+        Arc::new(set_builder.build().unwrap())
     }
 
     fn draw_frame(&mut self) {
@@ -673,6 +773,8 @@ impl HelloTriangleApplication {
                     }
 
                     Event::RedrawEventsCleared { .. } => {
+                        // TODO: it's probably not the most efficient to recreate whole command buffer every frame?
+                        self.create_command_buffers();
                         self.draw_frame();
                     }
 
@@ -687,19 +789,56 @@ fn main() {
     app.main_loop();
 }
 
+fn create_vertex_buffer(graphics_queue: &Arc<Queue>) -> Arc<ImmutableBuffer<[Vertex]>> {
+    let (buffer, future) = ImmutableBuffer::from_iter(
+        vertices().iter().cloned(),
+        BufferUsage::vertex_buffer(),
+        // TODO: idealy it should be transfer queue?
+        graphics_queue.clone(),
+    )
+    .unwrap();
+
+    future.flush().unwrap();
+
+    buffer
+}
+
+fn create_index_buffer(graphics_queue: &Arc<Queue>) -> Arc<ImmutableBuffer<[u16]>> {
+    let (buffer, future) = ImmutableBuffer::from_iter(
+        indices().iter().cloned(),
+        BufferUsage::index_buffer(),
+        graphics_queue.clone(),
+    )
+    .unwrap();
+
+    future.flush().unwrap();
+
+    buffer
+}
+
 mod vertex_shader {
     vulkano_shaders::shader! {
         ty: "vertex",
         src: "
             #version 450
 
-            layout(location = 0) in vec3 position;
+            layout(binding = 0) uniform UniformBufferObject {
+                mat4 model;
+                mat4 view;
+                mat4 proj;
+            } ubo;
+
+            layout(location = 0) in vec2 position;
             layout(location = 1) in vec3 color;
 
             layout(location = 0) out vec3 f_color;
 
+            out gl_PerVertex {
+                vec4 gl_Position;
+            };
+
             void main() {
-                gl_Position = vec4(position, 1.0);
+                gl_Position = ubo.proj * ubo.view * ubo.model * vec4(position, 0.0, 1.0);
                 f_color = color;
             }
         "
