@@ -7,6 +7,7 @@ use std::{
 };
 
 use cgmath::{Deg, Matrix4, Point3, Rad, Vector3};
+use image::GenericImageView;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer, TypedBufferAccess},
     command_buffer::{
@@ -20,7 +21,9 @@ use vulkano::{
         Device, DeviceExtensions, Features, Queue,
     },
     format::Format,
-    image::{view::ImageView, ImageUsage, SwapchainImage},
+    image::{
+        view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
+    },
     instance::{
         debug::{DebugCallback, MessageSeverity, MessageType},
         layers_list, ApplicationInfo, Instance, InstanceExtensions,
@@ -28,6 +31,7 @@ use vulkano::{
     memory::pool::{PotentialDedicatedAllocation, StdMemoryPoolAlloc},
     pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
     render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass},
+    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     single_pass_renderpass,
     swapchain::{
         acquire_next_image, AcquireError, ColorSpace, CompositeAlpha, PresentMode,
@@ -58,26 +62,33 @@ const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
     ..DeviceExtensions::none()
 };
 
+const TEXTURE_PATH: &str = "src/statue.jpeg";
+
 #[derive(Default, Debug, Clone)]
 struct Vertex {
     position: [f32; 2],
     color: [f32; 3],
+    tex: [f32; 2],
 }
 
 impl Vertex {
-    fn new(position: [f32; 2], color: [f32; 3]) -> Vertex {
-        Vertex { position, color }
+    fn new(position: [f32; 2], color: [f32; 3], tex: [f32; 2]) -> Vertex {
+        Vertex {
+            position,
+            color,
+            tex,
+        }
     }
 }
 
-vulkano::impl_vertex!(Vertex, position, color);
+vulkano::impl_vertex!(Vertex, position, color, tex);
 
 fn vertices() -> [Vertex; 4] {
     [
-        Vertex::new([-0.5, -0.5], [1.0, 0.0, 0.0]),
-        Vertex::new([0.5, -0.5], [0.0, 1.0, 0.0]),
-        Vertex::new([0.5, 0.5], [0.0, 0.0, 1.0]),
-        Vertex::new([-0.5, 0.5], [1.0, 1.0, 1.0]),
+        Vertex::new([-0.5, -0.5], [1.0, 0.0, 0.0], [1.0, 0.0]),
+        Vertex::new([0.5, -0.5], [0.0, 1.0, 0.0], [0.0, 0.0]),
+        Vertex::new([0.5, 0.5], [0.0, 0.0, 1.0], [0.0, 1.0]),
+        Vertex::new([-0.5, 0.5], [1.0, 1.0, 1.0], [1.0, 1.0]),
     ]
 }
 
@@ -85,7 +96,6 @@ fn indices() -> [u16; 6] {
     [0, 1, 2, 2, 3, 0]
 }
 
-#[allow(dead_code)]
 #[derive(Copy, Clone)]
 struct UniformBufferObject {
     model: Matrix4<f32>,
@@ -454,6 +464,7 @@ impl HelloTriangleApplication {
             ..ImageUsage::none()
         };
 
+        // TODO: make present and graphics queue work
         let sharing: SharingMode =
             // if graphics_queue.id_within_family() != present_queue.id_within_family() {
             //     vec![graphics_queue, present_queue].as_slice().into()
@@ -539,7 +550,7 @@ impl HelloTriangleApplication {
                 .viewports_dynamic_scissors_irrelevant(1)
                 .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
                 .build(device.clone())
-                .unwrap(), // = default
+                .unwrap(),
         );
 
         pipeline
@@ -568,8 +579,8 @@ impl HelloTriangleApplication {
     }
 
     fn create_command_buffers(&mut self) {
-        let vertex_buffer = create_vertex_buffer(&self.graphics_queue);
-        let index_buffer = create_index_buffer(&self.graphics_queue);
+        let vertex_buffer = Self::create_vertex_buffer(&self.graphics_queue);
+        let index_buffer = Self::create_index_buffer(&self.graphics_queue);
 
         // TODO: should we have uniform buffer per swap chain image?
         // vulkan-tutorial says so but I'm not 100% understanding it how it plays with
@@ -580,8 +591,15 @@ impl HelloTriangleApplication {
             self.swap_chain.dimensions(),
         );
 
-        let descriptor_sets =
-            Self::create_descriptor_sets(&self.graphics_pipeline, &uniform_buffer);
+        let image_sampler = Self::create_image_sampler(&self.device);
+        let texture_image = Self::create_texture_image(&self.graphics_queue);
+
+        let descriptor_sets = Self::create_descriptor_sets(
+            &self.graphics_pipeline,
+            &uniform_buffer,
+            &texture_image,
+            &image_sampler,
+        );
 
         let index_count = indices().len() as u32;
 
@@ -683,6 +701,8 @@ impl HelloTriangleApplication {
     fn create_descriptor_sets(
         graphics_pipeline: &Arc<GraphicsPipeline>,
         uniform_buffer: &Arc<CpuAccessibleBuffer<UniformBufferObject>>,
+        texture_image: &Arc<ImageView<Arc<ImmutableImage>>>,
+        image_sampler: &Arc<Sampler>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -692,9 +712,84 @@ impl HelloTriangleApplication {
 
         let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-        set_builder.add_buffer(uniform_buffer.clone()).unwrap();
+        set_builder
+            .add_buffer(uniform_buffer.clone())
+            .unwrap()
+            .add_sampled_image(texture_image.clone(), image_sampler.clone())
+            .unwrap();
 
         Arc::new(set_builder.build().unwrap())
+    }
+
+    fn create_vertex_buffer(graphics_queue: &Arc<Queue>) -> Arc<ImmutableBuffer<[Vertex]>> {
+        let (buffer, future) = ImmutableBuffer::from_iter(
+            vertices().iter().cloned(),
+            BufferUsage::vertex_buffer(),
+            // TODO: idealy it should be transfer queue?
+            graphics_queue.clone(),
+        )
+        .unwrap();
+
+        future.flush().unwrap();
+
+        buffer
+    }
+
+    fn create_index_buffer(graphics_queue: &Arc<Queue>) -> Arc<ImmutableBuffer<[u16]>> {
+        let (buffer, future) = ImmutableBuffer::from_iter(
+            indices().iter().cloned(),
+            BufferUsage::index_buffer(),
+            graphics_queue.clone(),
+        )
+        .unwrap();
+
+        future.flush().unwrap();
+
+        buffer
+    }
+
+    fn create_texture_image(graphics_queue: &Arc<Queue>) -> Arc<ImageView<Arc<ImmutableImage>>> {
+        let image = image::open(TEXTURE_PATH).unwrap();
+
+        let width = image.width();
+        let height = image.height();
+
+        let image_rgba = image.to_rgba8();
+
+        let (image, future) = ImmutableImage::from_iter(
+            image_rgba.into_raw().iter().cloned(),
+            ImageDimensions::Dim2d {
+                width,
+                height,
+                // TODO: what are array_layers?
+                array_layers: 1,
+            },
+            MipmapsCount::One,
+            Format::R8G8B8A8_SRGB,
+            graphics_queue.clone(),
+        )
+        .unwrap();
+
+        future.flush().unwrap();
+
+        ImageView::new(image).unwrap()
+    }
+
+    fn create_image_sampler(device: &Arc<Device>) -> Arc<Sampler> {
+        Sampler::new(
+            device.clone(),
+            Filter::Linear,
+            Filter::Linear,
+            MipmapMode::Nearest,
+            SamplerAddressMode::Repeat,
+            SamplerAddressMode::Repeat,
+            SamplerAddressMode::Repeat,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+        )
+        .unwrap()
     }
 
     fn draw_frame(&mut self) {
@@ -792,33 +887,6 @@ fn main() {
     app.main_loop();
 }
 
-fn create_vertex_buffer(graphics_queue: &Arc<Queue>) -> Arc<ImmutableBuffer<[Vertex]>> {
-    let (buffer, future) = ImmutableBuffer::from_iter(
-        vertices().iter().cloned(),
-        BufferUsage::vertex_buffer(),
-        // TODO: idealy it should be transfer queue?
-        graphics_queue.clone(),
-    )
-    .unwrap();
-
-    future.flush().unwrap();
-
-    buffer
-}
-
-fn create_index_buffer(graphics_queue: &Arc<Queue>) -> Arc<ImmutableBuffer<[u16]>> {
-    let (buffer, future) = ImmutableBuffer::from_iter(
-        indices().iter().cloned(),
-        BufferUsage::index_buffer(),
-        graphics_queue.clone(),
-    )
-    .unwrap();
-
-    future.flush().unwrap();
-
-    buffer
-}
-
 mod vertex_shader {
     vulkano_shaders::shader! {
         ty: "vertex",
@@ -833,8 +901,10 @@ mod vertex_shader {
 
             layout(location = 0) in vec2 position;
             layout(location = 1) in vec3 color;
+            layout(location = 2) in vec2 tex;
 
             layout(location = 0) out vec3 f_color;
+            layout(location = 1) out vec2 f_tex_coord;
 
             out gl_PerVertex {
                 vec4 gl_Position;
@@ -842,6 +912,7 @@ mod vertex_shader {
 
             void main() {
                 gl_Position = ubo.proj * ubo.view * ubo.model * vec4(position, 0.0, 1.0);
+                f_tex_coord = tex;
                 f_color = color;
             }
         "
@@ -854,12 +925,16 @@ mod fragment_shader {
         src: "
             #version 450
 
+            layout(binding = 1) uniform sampler2D tex_sampler;
+
             layout(location = 0) in vec3 f_color;
+            layout(location = 1) in vec2 f_tex_coord;
 
             layout(location = 0) out vec4 out_color;
 
             void main() {
-                out_color = vec4(f_color, 1.0);
+                // out_color = vec4(f_color * texture(tex_sampler, f_tex_coord).rgb, 1.0);
+                out_color = texture(tex_sampler, f_tex_coord);
             }
         "
     }
