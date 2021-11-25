@@ -3,7 +3,7 @@ use std::{
     collections::HashSet,
     iter::FromIterator,
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use cgmath::{Deg, Matrix4, Point3, Rad, Vector3};
@@ -20,16 +20,19 @@ use vulkano::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceExtensions, Features, Queue,
     },
-    format::Format,
+    format::{ClearValue, Format},
     image::{
-        view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
+        view::ImageView, AttachmentImage, ImageDimensions, ImageUsage, ImmutableImage,
+        MipmapsCount, SwapchainImage,
     },
     instance::{
         debug::{DebugCallback, MessageSeverity, MessageType},
         layers_list, ApplicationInfo, Instance, InstanceExtensions,
     },
     memory::pool::{PotentialDedicatedAllocation, StdMemoryPoolAlloc},
-    pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
+    pipeline::{
+        depth_stencil::DepthStencil, viewport::Viewport, GraphicsPipeline, PipelineBindPoint,
+    },
     render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass},
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     single_pass_renderpass,
@@ -66,13 +69,13 @@ const TEXTURE_PATH: &str = "src/statue.jpeg";
 
 #[derive(Default, Debug, Clone)]
 struct Vertex {
-    position: [f32; 2],
+    position: [f32; 3],
     color: [f32; 3],
     tex: [f32; 2],
 }
 
 impl Vertex {
-    fn new(position: [f32; 2], color: [f32; 3], tex: [f32; 2]) -> Vertex {
+    fn new(position: [f32; 3], color: [f32; 3], tex: [f32; 2]) -> Vertex {
         Vertex {
             position,
             color,
@@ -83,17 +86,27 @@ impl Vertex {
 
 vulkano::impl_vertex!(Vertex, position, color, tex);
 
-fn vertices() -> [Vertex; 4] {
+fn vertices() -> [Vertex; 8] {
     [
-        Vertex::new([-0.5, -0.5], [1.0, 0.0, 0.0], [1.0, 0.0]),
-        Vertex::new([0.5, -0.5], [0.0, 1.0, 0.0], [0.0, 0.0]),
-        Vertex::new([0.5, 0.5], [0.0, 0.0, 1.0], [0.0, 1.0]),
-        Vertex::new([-0.5, 0.5], [1.0, 1.0, 1.0], [1.0, 1.0]),
+        // first plane
+        Vertex::new([-0.5, -0.5, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0]),
+        Vertex::new([0.5, -0.5, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0]),
+        Vertex::new([0.5, 0.5, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0]),
+        Vertex::new([-0.5, 0.5, 0.0], [1.0, 1.0, 1.0], [1.0, 1.0]),
+        // second plane
+        Vertex::new([-0.5, -0.5, -0.5], [1.0, 0.0, 0.0], [1.0, 0.0]),
+        Vertex::new([0.5, -0.5, -0.5], [0.0, 1.0, 0.0], [0.0, 0.0]),
+        Vertex::new([0.5, 0.5, -0.5], [0.0, 0.0, 1.0], [0.0, 1.0]),
+        Vertex::new([-0.5, 0.5, -0.5], [1.0, 1.0, 1.0], [1.0, 1.0]),
     ]
 }
 
-fn indices() -> [u16; 6] {
-    [0, 1, 2, 2, 3, 0]
+fn indices() -> [u16; 12] {
+    [
+        // first plane
+        0, 1, 2, 2, 3, 0, // second plane
+        4, 5, 6, 6, 7, 4,
+    ]
 }
 
 #[derive(Copy, Clone)]
@@ -136,6 +149,8 @@ struct HelloTriangleApplication {
     uniform_buffers: Vec<Arc<CpuAccessibleBuffer<UniformBufferObject>>>,
 
     start_time: Instant,
+    last_time: Instant,
+    rotation: f32,
 }
 
 impl HelloTriangleApplication {
@@ -161,13 +176,16 @@ impl HelloTriangleApplication {
             &graphics_queue,
         );
 
-        let render_pass = Self::create_render_pass(&device, swap_chain.format());
+        let depth_format = Self::find_depth_format();
+        let depth_image = Self::create_depth_image(&device, swap_chain.dimensions(), depth_format);
+
+        let render_pass = Self::create_render_pass(&device, swap_chain.format(), depth_format);
 
         let graphics_pipeline =
             Self::create_graphics_pipeline(&device, swap_chain.dimensions(), &render_pass);
 
         let swap_chain_framebuffers =
-            Self::create_swap_chain_framebuffers(&swap_chain_images, &render_pass);
+            Self::create_swap_chain_framebuffers(&swap_chain_images, &render_pass, &depth_image);
 
         let previous_frame_end = Some(Self::create_sync_objects(&device));
 
@@ -192,6 +210,8 @@ impl HelloTriangleApplication {
             recreate_swap_chain: false,
 
             start_time: Instant::now(),
+            last_time: Instant::now(),
+            rotation: 0.0,
         };
 
         app.create_command_buffers();
@@ -390,7 +410,35 @@ impl HelloTriangleApplication {
         (device, graphics_queue, present_queue)
     }
 
-    fn create_render_pass(device: &Arc<Device>, surface_format: Format) -> Arc<RenderPass> {
+    fn find_depth_format() -> Format {
+        // https://github.com/matthew-russo/vulkan-tutorial-rs/blob/26_depth_buffering/src/bin/26_depth_buffering.rs.diff#L115
+        Format::D16_UNORM
+    }
+
+    fn create_depth_image(
+        device: &Arc<Device>,
+        dimensions: [u32; 2],
+        format: Format,
+    ) -> Arc<ImageView<Arc<AttachmentImage>>> {
+        let image = AttachmentImage::with_usage(
+            device.clone(),
+            dimensions,
+            format,
+            ImageUsage {
+                depth_stencil_attachment: true,
+                ..ImageUsage::none()
+            },
+        )
+        .unwrap();
+
+        ImageView::new(image).unwrap()
+    }
+
+    fn create_render_pass(
+        device: &Arc<Device>,
+        surface_format: Format,
+        depth_format: Format,
+    ) -> Arc<RenderPass> {
         Arc::new(
             single_pass_renderpass!(device.clone(),
                     attachments: {
@@ -399,11 +447,19 @@ impl HelloTriangleApplication {
                             store: Store,
                             format: surface_format,
                             samples: 1,
+                        },
+                        depth: {
+                            load: Clear,
+                            store: DontCare,
+                            format: depth_format,
+                            samples: 1,
+                            initial_layout: ImageLayout::Undefined,
+                            final_layout: ImageLayout::DepthStencilAttachmentOptimal,
                         }
                     },
                     pass: {
                         color: [color],
-                        depth_stencil: {}
+                        depth_stencil: {depth}
                     }
             )
             .unwrap(),
@@ -503,15 +559,23 @@ impl HelloTriangleApplication {
         self.swap_chain = swap_chain;
         self.swap_chain_images = images;
 
-        self.render_pass = Self::create_render_pass(&self.device, self.swap_chain.format());
+        let depth_format = Self::find_depth_format();
+        let depth_image = Self::create_depth_image(&self.device, dimensions, depth_format);
+
+        self.render_pass =
+            Self::create_render_pass(&self.device, self.swap_chain.format(), depth_format);
+
         self.graphics_pipeline = Self::create_graphics_pipeline(
             &self.device,
             self.swap_chain.dimensions(),
             &self.render_pass,
         );
 
-        self.swap_chain_framebuffers =
-            Self::create_swap_chain_framebuffers(&self.swap_chain_images, &self.render_pass);
+        self.swap_chain_framebuffers = Self::create_swap_chain_framebuffers(
+            &self.swap_chain_images,
+            &self.render_pass,
+            &depth_image,
+        );
 
         self.create_command_buffers();
     }
@@ -547,6 +611,7 @@ impl HelloTriangleApplication {
                 .front_face_counter_clockwise()
                 // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
                 .blend_pass_through()
+                .depth_stencil(DepthStencil::simple_depth_test())
                 .viewports_dynamic_scissors_irrelevant(1)
                 .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
                 .build(device.clone())
@@ -559,6 +624,7 @@ impl HelloTriangleApplication {
     fn create_swap_chain_framebuffers(
         swap_chain_images: &Vec<Arc<SwapchainImage<Window>>>,
         render_pass: &Arc<RenderPass>,
+        depth_image: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
         swap_chain_images
             .iter()
@@ -568,6 +634,8 @@ impl HelloTriangleApplication {
                 let framebuffer: Arc<dyn FramebufferAbstract + Send + Sync> = Arc::new(
                     Framebuffer::start(render_pass.clone())
                         .add(attachment)
+                        .unwrap()
+                        .add(depth_image.clone())
                         .unwrap()
                         .build()
                         .unwrap(),
@@ -585,8 +653,8 @@ impl HelloTriangleApplication {
         // TODO: should we have uniform buffer per swap chain image?
         // vulkan-tutorial says so but I'm not 100% understanding it how it plays with
         // descriptor sets.
-        let uniform_buffer = Self::create_uniform_buffer(
-            &self.device,
+        let uniform_buffer = self.create_uniform_buffer(
+            self.device.clone(),
             self.start_time,
             self.swap_chain.dimensions(),
         );
@@ -629,7 +697,7 @@ impl HelloTriangleApplication {
                     .begin_render_pass(
                         framebuffer.clone(),
                         SubpassContents::Inline,
-                        vec![[0.0, 0.0, 0.0, 1.0].into()],
+                        vec![[0.0, 0.0, 0.0, 1.0].into(), ClearValue::Depth(1.0)],
                     )
                     .unwrap()
                     .set_viewport(0, [viewport.clone()])
@@ -655,16 +723,17 @@ impl HelloTriangleApplication {
     }
 
     fn create_uniform_buffer(
-        device: &Arc<Device>,
+        &mut self,
+        device: Arc<Device>,
         start_time: Instant,
         dimensions_u32: [u32; 2],
     ) -> Arc<CpuAccessibleBuffer<UniformBufferObject>> {
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
-        let uniform_buffer = Self::update_uniform_buffer(start_time, dimensions);
+        let uniform_buffer = self.update_uniform_buffer(start_time, dimensions);
 
         let buffer = CpuAccessibleBuffer::from_data(
-            device.clone(),
+            device,
             BufferUsage::uniform_buffer_transfer_destination(),
             false,
             uniform_buffer,
@@ -674,11 +743,22 @@ impl HelloTriangleApplication {
         buffer
     }
 
-    fn update_uniform_buffer(start_time: Instant, dimensions: [f32; 2]) -> UniformBufferObject {
-        let duration = Instant::now().duration_since(start_time);
-        let elapsed = (duration.as_secs() * 1000) + u64::from(duration.subsec_millis());
+    fn update_uniform_buffer(
+        &mut self,
+        start_time: Instant,
+        dimensions: [f32; 2],
+    ) -> UniformBufferObject {
+        // let duration = Instant::now().duration_since(start_time);
+        // let elapsed = (duration.as_secs() * 1000) + u64::from(duration.subsec_millis());
 
-        let model = Matrix4::from_angle_z(Rad::from(Deg(elapsed as f32 * 0.180)));
+        let delta_time = Instant::now().duration_since(self.last_time).as_secs_f32();
+
+        println!("delta time: {}", delta_time);
+
+        self.last_time = Instant::now();
+        self.rotation += 20.0 * delta_time;
+
+        let model = Matrix4::from_angle_z(Rad::from(Deg(self.rotation)));
 
         let view = Matrix4::look_at(
             Point3::new(2.0, 2.0, 2.0),
@@ -870,7 +950,7 @@ impl HelloTriangleApplication {
                         self.recreate_swap_chain = true;
                     }
 
-                    Event::RedrawEventsCleared { .. } => {
+                    Event::MainEventsCleared { .. } => {
                         // TODO: it's probably not the most efficient to recreate whole command buffer every frame?
                         self.create_command_buffers();
                         self.draw_frame();
@@ -899,7 +979,7 @@ mod vertex_shader {
                 mat4 proj;
             } ubo;
 
-            layout(location = 0) in vec2 position;
+            layout(location = 0) in vec3 position;
             layout(location = 1) in vec3 color;
             layout(location = 2) in vec2 tex;
 
@@ -911,7 +991,7 @@ mod vertex_shader {
             };
 
             void main() {
-                gl_Position = ubo.proj * ubo.view * ubo.model * vec4(position, 0.0, 1.0);
+                gl_Position = ubo.proj * ubo.view * ubo.model * vec4(position, 1.0);
                 f_tex_coord = tex;
                 f_color = color;
             }
