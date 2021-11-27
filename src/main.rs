@@ -1,21 +1,13 @@
-use core::num;
-use std::{
-    collections::HashSet,
-    iter::FromIterator,
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
-};
+use std::{collections::HashSet, iter::FromIterator, sync::Arc, time::Instant};
 
 use cgmath::{Deg, Matrix4, Point3, Rad, Vector3};
 use image::GenericImageView;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer, TypedBufferAccess},
+    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SubpassContents,
     },
-    descriptor_set::{
-        persistent::PersistentDescriptorSetBuilder, DescriptorSet, PersistentDescriptorSet,
-    },
+    descriptor_set::PersistentDescriptorSet,
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceExtensions, Features, Queue,
@@ -29,7 +21,6 @@ use vulkano::{
         debug::{DebugCallback, MessageSeverity, MessageType},
         layers_list, ApplicationInfo, Instance, InstanceExtensions,
     },
-    memory::pool::{PotentialDedicatedAllocation, StdMemoryPoolAlloc},
     pipeline::{
         depth_stencil::DepthStencil, viewport::Viewport, GraphicsPipeline, PipelineBindPoint,
     },
@@ -57,15 +48,16 @@ const ENABLE_VALIDATION_LAYERS: bool = true;
 #[cfg(not(debug_assertions))]
 const ENABLE_VALIDATION_LAYERS: bool = false;
 
-const WIDTH: u32 = 800;
-const HEIGHT: u32 = 600;
+// const WIDTH: u32 = 800;
+// const HEIGHT: u32 = 600;
 
 const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
     khr_swapchain: true,
     ..DeviceExtensions::none()
 };
 
-const TEXTURE_PATH: &str = "src/statue.jpeg";
+const TEXTURE_PATH: &str = "res/viking_room.png";
+const MODEL_PATH: &str = "res/viking_room.obj";
 
 #[derive(Default, Debug, Clone)]
 struct Vertex {
@@ -86,28 +78,28 @@ impl Vertex {
 
 vulkano::impl_vertex!(Vertex, position, color, tex);
 
-fn vertices() -> [Vertex; 8] {
-    [
-        // first plane
-        Vertex::new([-0.5, -0.5, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0]),
-        Vertex::new([0.5, -0.5, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0]),
-        Vertex::new([0.5, 0.5, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0]),
-        Vertex::new([-0.5, 0.5, 0.0], [1.0, 1.0, 1.0], [1.0, 1.0]),
-        // second plane
-        Vertex::new([-0.5, -0.5, -0.5], [1.0, 0.0, 0.0], [1.0, 0.0]),
-        Vertex::new([0.5, -0.5, -0.5], [0.0, 1.0, 0.0], [0.0, 0.0]),
-        Vertex::new([0.5, 0.5, -0.5], [0.0, 0.0, 1.0], [0.0, 1.0]),
-        Vertex::new([-0.5, 0.5, -0.5], [1.0, 1.0, 1.0], [1.0, 1.0]),
-    ]
-}
+// fn vertices() -> [Vertex; 8] {
+//     [
+//         // first plane
+//         Vertex::new([-0.5, -0.5, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0]),
+//         Vertex::new([0.5, -0.5, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0]),
+//         Vertex::new([0.5, 0.5, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0]),
+//         Vertex::new([-0.5, 0.5, 0.0], [1.0, 1.0, 1.0], [1.0, 1.0]),
+//         // second plane
+//         Vertex::new([-0.5, -0.5, -0.5], [1.0, 0.0, 0.0], [1.0, 0.0]),
+//         Vertex::new([0.5, -0.5, -0.5], [0.0, 1.0, 0.0], [0.0, 0.0]),
+//         Vertex::new([0.5, 0.5, -0.5], [0.0, 0.0, 1.0], [0.0, 1.0]),
+//         Vertex::new([-0.5, 0.5, -0.5], [1.0, 1.0, 1.0], [1.0, 1.0]),
+//     ]
+// }
 
-fn indices() -> [u16; 12] {
-    [
-        // first plane
-        0, 1, 2, 2, 3, 0, // second plane
-        4, 5, 6, 6, 7, 4,
-    ]
-}
+// fn indices() -> [u16; 12] {
+//     [
+//         // first plane
+//         0, 1, 2, 2, 3, 0, // second plane
+//         4, 5, 6, 6, 7, 4,
+//     ]
+// }
 
 #[derive(Copy, Clone)]
 struct UniformBufferObject {
@@ -151,6 +143,9 @@ struct HelloTriangleApplication {
     start_time: Instant,
     last_time: Instant,
     rotation: f32,
+
+    vertices: Vec<Vertex>,
+    indices: Vec<u32>,
 }
 
 impl HelloTriangleApplication {
@@ -175,6 +170,8 @@ impl HelloTriangleApplication {
             &device,
             &graphics_queue,
         );
+
+        let (vertices, indices) = Self::load_model();
 
         let depth_format = Self::find_depth_format();
         let depth_image = Self::create_depth_image(&device, swap_chain.dimensions(), depth_format);
@@ -212,6 +209,9 @@ impl HelloTriangleApplication {
             start_time: Instant::now(),
             last_time: Instant::now(),
             rotation: 0.0,
+
+            vertices,
+            indices,
         };
 
         app.create_command_buffers();
@@ -647,8 +647,8 @@ impl HelloTriangleApplication {
     }
 
     fn create_command_buffers(&mut self) {
-        let vertex_buffer = Self::create_vertex_buffer(&self.graphics_queue);
-        let index_buffer = Self::create_index_buffer(&self.graphics_queue);
+        let vertex_buffer = Self::create_vertex_buffer(&self.graphics_queue, &self.vertices);
+        let index_buffer = Self::create_index_buffer(&self.graphics_queue, &self.indices);
 
         // TODO: should we have uniform buffer per swap chain image?
         // vulkan-tutorial says so but I'm not 100% understanding it how it plays with
@@ -669,7 +669,7 @@ impl HelloTriangleApplication {
             &image_sampler,
         );
 
-        let index_count = indices().len() as u32;
+        let index_count = self.indices.len() as u32;
 
         let queue_family = self.graphics_queue.family();
 
@@ -801,9 +801,12 @@ impl HelloTriangleApplication {
         Arc::new(set_builder.build().unwrap())
     }
 
-    fn create_vertex_buffer(graphics_queue: &Arc<Queue>) -> Arc<ImmutableBuffer<[Vertex]>> {
+    fn create_vertex_buffer(
+        graphics_queue: &Arc<Queue>,
+        vertices: &Vec<Vertex>,
+    ) -> Arc<ImmutableBuffer<[Vertex]>> {
         let (buffer, future) = ImmutableBuffer::from_iter(
-            vertices().iter().cloned(),
+            vertices.iter().cloned(),
             BufferUsage::vertex_buffer(),
             // TODO: idealy it should be transfer queue?
             graphics_queue.clone(),
@@ -815,9 +818,12 @@ impl HelloTriangleApplication {
         buffer
     }
 
-    fn create_index_buffer(graphics_queue: &Arc<Queue>) -> Arc<ImmutableBuffer<[u16]>> {
+    fn create_index_buffer(
+        graphics_queue: &Arc<Queue>,
+        indices: &Vec<u32>,
+    ) -> Arc<ImmutableBuffer<[u32]>> {
         let (buffer, future) = ImmutableBuffer::from_iter(
-            indices().iter().cloned(),
+            indices.iter().cloned(),
             BufferUsage::index_buffer(),
             graphics_queue.clone(),
         )
@@ -870,6 +876,43 @@ impl HelloTriangleApplication {
             0.0,
         )
         .unwrap()
+    }
+
+    fn load_model() -> (Vec<Vertex>, Vec<u32>) {
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        let (models, _materials) = tobj::load_obj(MODEL_PATH, &tobj::LoadOptions::default())
+            .unwrap_or_else(|e| panic!("Failed to load model: {}", e));
+
+        for model in models.iter() {
+            let mesh = &model.mesh;
+
+            for index in &mesh.indices {
+                let ind_usize = *index as usize;
+
+                let pos = [
+                    mesh.positions[ind_usize * 3],
+                    mesh.positions[ind_usize * 3 + 1],
+                    mesh.positions[ind_usize * 3 + 2],
+                ];
+
+                let color = [1.0, 1.0, 1.0];
+
+                let tex_coord = [
+                    mesh.texcoords[ind_usize * 2],
+                    // TODO: is it because vulkan has flipped y?
+                    1.0 - mesh.texcoords[ind_usize * 2 + 1],
+                ];
+
+                let vertex = Vertex::new(pos, color, tex_coord);
+                vertices.push(vertex);
+                let index = indices.len() as u32;
+                indices.push(index);
+            }
+        }
+
+        (vertices, indices)
     }
 
     fn draw_frame(&mut self) {
