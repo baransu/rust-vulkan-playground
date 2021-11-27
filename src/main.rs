@@ -17,7 +17,7 @@ use vulkano::{
     format::{ClearValue, Format},
     image::{
         view::ImageView, AttachmentImage, ImageDimensions, ImageUsage, ImmutableImage,
-        MipmapsCount, SwapchainImage,
+        MipmapsCount, SampleCount, SwapchainImage,
     },
     instance::{
         debug::{DebugCallback, MessageSeverity, MessageType},
@@ -146,15 +146,23 @@ impl HelloTriangleApplication {
         let (vertices, indices) = Self::load_model();
 
         let depth_format = Self::find_depth_format();
-        let depth_image = Self::create_depth_image(&device, swap_chain.dimensions(), depth_format);
+        let sample_count = Self::find_sample_count();
+        let depth_image =
+            Self::create_depth_image(&device, swap_chain.dimensions(), depth_format, sample_count);
 
-        let render_pass = Self::create_render_pass(&device, swap_chain.format(), depth_format);
+        let render_pass =
+            Self::create_render_pass(&device, swap_chain.format(), depth_format, sample_count);
 
         let graphics_pipeline =
             Self::create_graphics_pipeline(&device, swap_chain.dimensions(), &render_pass);
 
-        let swap_chain_framebuffers =
-            Self::create_swap_chain_framebuffers(&swap_chain_images, &render_pass, &depth_image);
+        let swap_chain_framebuffers = Self::create_swap_chain_framebuffers(
+            &device,
+            &swap_chain_images,
+            &render_pass,
+            &depth_image,
+            sample_count,
+        );
 
         let previous_frame_end = Some(Self::create_sync_objects(&device));
 
@@ -406,14 +414,23 @@ impl HelloTriangleApplication {
         Format::D16_UNORM
     }
 
+    fn find_sample_count() -> SampleCount {
+        // https://github.com/matthew-russo/vulkan-tutorial-rs/blob/29_multisampling/src/bin/29_multisampling.rs.diff#L52-L59
+
+        // macOS doesn't support MSAA8, so we'll use MSAA4 instead.
+        SampleCount::Sample4
+    }
+
     fn create_depth_image(
         device: &Arc<Device>,
         dimensions: [u32; 2],
         format: Format,
+        sample_count: SampleCount,
     ) -> Arc<ImageView<Arc<AttachmentImage>>> {
-        let image = AttachmentImage::with_usage(
+        let image = AttachmentImage::multisampled_with_usage(
             device.clone(),
             dimensions,
+            sample_count,
             format,
             ImageUsage {
                 depth_stencil_attachment: true,
@@ -427,30 +444,38 @@ impl HelloTriangleApplication {
 
     fn create_render_pass(
         device: &Arc<Device>,
-        surface_format: Format,
+        color_format: Format,
         depth_format: Format,
+        sample_count: SampleCount,
     ) -> Arc<RenderPass> {
         Arc::new(
             single_pass_renderpass!(device.clone(),
                     attachments: {
-                        color: {
+                        multisample_color: {
                             load: Clear,
                             store: Store,
-                            format: surface_format,
-                            samples: 1,
+                            format: color_format,
+                            samples: sample_count,
                         },
-                        depth: {
+                        multisample_depth: {
                             load: Clear,
                             store: DontCare,
                             format: depth_format,
-                            samples: 1,
+                            samples: sample_count,
                             initial_layout: ImageLayout::Undefined,
                             final_layout: ImageLayout::DepthStencilAttachmentOptimal,
+                        },
+                        resolve_color: {
+                            load: DontCare,
+                            store: Store,
+                            format: color_format,
+                            samples: 1,
                         }
                     },
                     pass: {
-                        color: [color],
-                        depth_stencil: {depth}
+                        color: [multisample_color],
+                        depth_stencil: {multisample_depth},
+                        resolve: [resolve_color]
                     }
             )
             .unwrap(),
@@ -551,10 +576,16 @@ impl HelloTriangleApplication {
         self.swap_chain_images = images;
 
         let depth_format = Self::find_depth_format();
-        let depth_image = Self::create_depth_image(&self.device, dimensions, depth_format);
+        let sample_count = Self::find_sample_count();
+        let depth_image =
+            Self::create_depth_image(&self.device, dimensions, depth_format, sample_count);
 
-        self.render_pass =
-            Self::create_render_pass(&self.device, self.swap_chain.format(), depth_format);
+        self.render_pass = Self::create_render_pass(
+            &self.device,
+            self.swap_chain.format(),
+            depth_format,
+            sample_count,
+        );
 
         self.graphics_pipeline = Self::create_graphics_pipeline(
             &self.device,
@@ -563,9 +594,11 @@ impl HelloTriangleApplication {
         );
 
         self.swap_chain_framebuffers = Self::create_swap_chain_framebuffers(
+            &self.device,
             &self.swap_chain_images,
             &self.render_pass,
             &depth_image,
+            sample_count,
         );
 
         self.create_command_buffers();
@@ -613,20 +646,37 @@ impl HelloTriangleApplication {
     }
 
     fn create_swap_chain_framebuffers(
+        device: &Arc<Device>,
         swap_chain_images: &Vec<Arc<SwapchainImage<Window>>>,
         render_pass: &Arc<RenderPass>,
         depth_image: &Arc<ImageView<Arc<AttachmentImage>>>,
+        sample_count: SampleCount,
     ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
         swap_chain_images
             .iter()
-            .map(|image| {
-                let attachment = ImageView::new(image.clone()).unwrap();
+            .map(|swapchain_image| {
+                let image = ImageView::new(swapchain_image.clone()).unwrap();
+
+                let dimensions = swapchain_image.dimensions();
+                let multisample_image = ImageView::new(
+                    AttachmentImage::transient_multisampled(
+                        device.clone(),
+                        dimensions,
+                        sample_count,
+                        swapchain_image.swapchain().format(),
+                    )
+                    .unwrap()
+                    .clone(),
+                )
+                .unwrap();
 
                 let framebuffer: Arc<dyn FramebufferAbstract + Send + Sync> = Arc::new(
                     Framebuffer::start(render_pass.clone())
-                        .add(attachment)
+                        .add(multisample_image.clone())
                         .unwrap()
                         .add(depth_image.clone())
+                        .unwrap()
+                        .add(image.clone())
                         .unwrap()
                         .build()
                         .unwrap(),
@@ -676,7 +726,11 @@ impl HelloTriangleApplication {
                     .begin_render_pass(
                         framebuffer.clone(),
                         SubpassContents::Inline,
-                        vec![[0.0, 0.0, 0.0, 1.0].into(), ClearValue::Depth(1.0)],
+                        vec![
+                            [0.0, 0.0, 0.0, 1.0].into(),
+                            ClearValue::Depth(1.0),
+                            ClearValue::None,
+                        ],
                     )
                     .unwrap()
                     .set_viewport(0, [viewport.clone()])
@@ -847,7 +901,7 @@ impl HelloTriangleApplication {
             0.0,
             1.0,
             // what's the minimul mip map lod we want to use - 0 means we start with highest mipmap which is original texture
-            6.0,
+            0.0,
             // if something will be super small we set 1_000 so it adjustes automatically
             1_000.0,
         )
