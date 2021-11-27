@@ -722,10 +722,10 @@ impl HelloTriangleApplication {
     }
 
     fn update_uniform_buffer(start_time: &Instant, dimensions: [f32; 2]) -> UniformBufferObject {
-        let duration = Instant::now().duration_since(*start_time);
-        let elapsed = (duration.as_secs() * 1000) + u64::from(duration.subsec_millis());
+        // let duration = Instant::now().duration_since(*start_time);
+        // let elapsed = (duration.as_secs() * 1000) + u64::from(duration.subsec_millis());
 
-        let model = Matrix4::from_angle_z(Rad::from(Deg(elapsed as f32 * 0.18)));
+        let model = Matrix4::from_angle_z(Rad::from(Deg(0.0)));
 
         let view = Matrix4::look_at(
             Point3::new(2.0, 2.0, 2.0),
@@ -811,17 +811,20 @@ impl HelloTriangleApplication {
         let width = image.width();
         let height = image.height();
 
+        let dimensions = ImageDimensions::Dim2d {
+            width,
+            height,
+            // TODO: what are array_layers?
+            array_layers: 1,
+        };
+
         let image_rgba = image.to_rgba8();
 
         let (image, future) = ImmutableImage::from_iter(
             image_rgba.into_raw().iter().cloned(),
-            ImageDimensions::Dim2d {
-                width,
-                height,
-                // TODO: what are array_layers?
-                array_layers: 1,
-            },
-            MipmapsCount::One,
+            dimensions,
+            // vulkano already supports mipmap generation so we don't need to do this by hand
+            MipmapsCount::Log2,
             Format::R8G8B8A8_SRGB,
             graphics_queue.clone(),
         )
@@ -843,8 +846,10 @@ impl HelloTriangleApplication {
             SamplerAddressMode::Repeat,
             0.0,
             1.0,
-            0.0,
-            0.0,
+            // what's the minimul mip map lod we want to use - 0 means we start with highest mipmap which is original texture
+            6.0,
+            // if something will be super small we set 1_000 so it adjustes automatically
+            1_000.0,
         )
         .unwrap()
     }
