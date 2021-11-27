@@ -3,7 +3,9 @@ use std::{collections::HashSet, iter::FromIterator, sync::Arc, time::Instant};
 use cgmath::{Deg, Matrix4, Point3, Rad, Vector3};
 use image::GenericImageView;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
+    buffer::{
+        immutable::ImmutableBufferInitialization, BufferUsage, CpuAccessibleBuffer, ImmutableBuffer,
+    },
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SubpassContents,
     },
@@ -48,9 +50,6 @@ const ENABLE_VALIDATION_LAYERS: bool = true;
 #[cfg(not(debug_assertions))]
 const ENABLE_VALIDATION_LAYERS: bool = false;
 
-// const WIDTH: u32 = 800;
-// const HEIGHT: u32 = 600;
-
 const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
     khr_swapchain: true,
     ..DeviceExtensions::none()
@@ -59,7 +58,7 @@ const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
 const TEXTURE_PATH: &str = "res/viking_room.png";
 const MODEL_PATH: &str = "res/viking_room.obj";
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Copy, Clone)]
 struct Vertex {
     position: [f32; 3],
     color: [f32; 3],
@@ -78,35 +77,7 @@ impl Vertex {
 
 vulkano::impl_vertex!(Vertex, position, color, tex);
 
-// fn vertices() -> [Vertex; 8] {
-//     [
-//         // first plane
-//         Vertex::new([-0.5, -0.5, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0]),
-//         Vertex::new([0.5, -0.5, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0]),
-//         Vertex::new([0.5, 0.5, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0]),
-//         Vertex::new([-0.5, 0.5, 0.0], [1.0, 1.0, 1.0], [1.0, 1.0]),
-//         // second plane
-//         Vertex::new([-0.5, -0.5, -0.5], [1.0, 0.0, 0.0], [1.0, 0.0]),
-//         Vertex::new([0.5, -0.5, -0.5], [0.0, 1.0, 0.0], [0.0, 0.0]),
-//         Vertex::new([0.5, 0.5, -0.5], [0.0, 0.0, 1.0], [0.0, 1.0]),
-//         Vertex::new([-0.5, 0.5, -0.5], [1.0, 1.0, 1.0], [1.0, 1.0]),
-//     ]
-// }
-
-// fn indices() -> [u16; 12] {
-//     [
-//         // first plane
-//         0, 1, 2, 2, 3, 0, // second plane
-//         4, 5, 6, 6, 7, 4,
-//     ]
-// }
-
-#[derive(Copy, Clone)]
-struct UniformBufferObject {
-    model: Matrix4<f32>,
-    view: Matrix4<f32>,
-    proj: Matrix4<f32>,
-}
+type UniformBufferObject = vertex_shader::ty::UniformBufferObject;
 
 struct HelloTriangleApplication {
     instance: Arc<Instance>,
@@ -138,7 +109,8 @@ struct HelloTriangleApplication {
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     recreate_swap_chain: bool,
 
-    uniform_buffers: Vec<Arc<CpuAccessibleBuffer<UniformBufferObject>>>,
+    descriptor_set: Arc<PersistentDescriptorSet>,
+    uniform_buffer: Arc<CpuAccessibleBuffer<UniformBufferObject>>,
 
     start_time: Instant,
     last_time: Instant,
@@ -186,6 +158,24 @@ impl HelloTriangleApplication {
 
         let previous_frame_end = Some(Self::create_sync_objects(&device));
 
+        let start_time = Instant::now();
+
+        // TODO: should we have uniform buffer per swap chain image?
+        // vulkan-tutorial says so but I'm not 100% understanding it how it plays with
+        // descriptor sets.
+        let uniform_buffer =
+            Self::create_uniform_buffer(&device.clone(), start_time, swap_chain.dimensions());
+
+        let image_sampler = Self::create_image_sampler(&device);
+        let texture_image = Self::create_texture_image(&graphics_queue);
+
+        let descriptor_set = Self::create_descriptor_sets(
+            &graphics_pipeline,
+            &uniform_buffer,
+            &texture_image,
+            &image_sampler,
+        );
+
         let mut app = Self {
             instance,
             debug_callback,
@@ -202,11 +192,12 @@ impl HelloTriangleApplication {
             swap_chain_framebuffers,
 
             command_buffers: vec![],
-            uniform_buffers: vec![],
+            descriptor_set,
+            uniform_buffer,
             previous_frame_end,
             recreate_swap_chain: false,
 
-            start_time: Instant::now(),
+            start_time,
             last_time: Instant::now(),
             rotation: 0.0,
 
@@ -650,25 +641,6 @@ impl HelloTriangleApplication {
         let vertex_buffer = Self::create_vertex_buffer(&self.graphics_queue, &self.vertices);
         let index_buffer = Self::create_index_buffer(&self.graphics_queue, &self.indices);
 
-        // TODO: should we have uniform buffer per swap chain image?
-        // vulkan-tutorial says so but I'm not 100% understanding it how it plays with
-        // descriptor sets.
-        let uniform_buffer = self.create_uniform_buffer(
-            self.device.clone(),
-            self.start_time,
-            self.swap_chain.dimensions(),
-        );
-
-        let image_sampler = Self::create_image_sampler(&self.device);
-        let texture_image = Self::create_texture_image(&self.graphics_queue);
-
-        let descriptor_sets = Self::create_descriptor_sets(
-            &self.graphics_pipeline,
-            &uniform_buffer,
-            &texture_image,
-            &image_sampler,
-        );
-
         let index_count = self.indices.len() as u32;
 
         let queue_family = self.graphics_queue.family();
@@ -693,6 +665,13 @@ impl HelloTriangleApplication {
                 )
                 .unwrap();
 
+                let uniform_buffer_data =
+                    Arc::new(Self::update_uniform_buffer(&self.start_time, dimensions));
+
+                builder
+                    .update_buffer(self.uniform_buffer.clone(), uniform_buffer_data)
+                    .unwrap();
+
                 builder
                     .begin_render_pass(
                         framebuffer.clone(),
@@ -706,7 +685,7 @@ impl HelloTriangleApplication {
                         PipelineBindPoint::Graphics,
                         self.graphics_pipeline.layout().clone(),
                         0,
-                        descriptor_sets.clone(),
+                        self.descriptor_set.clone(),
                     )
                     .bind_vertex_buffers(0, vertex_buffer.clone())
                     .bind_index_buffer(index_buffer.clone())
@@ -723,17 +702,16 @@ impl HelloTriangleApplication {
     }
 
     fn create_uniform_buffer(
-        &mut self,
-        device: Arc<Device>,
+        device: &Arc<Device>,
         start_time: Instant,
         dimensions_u32: [u32; 2],
     ) -> Arc<CpuAccessibleBuffer<UniformBufferObject>> {
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
-        let uniform_buffer = self.update_uniform_buffer(start_time, dimensions);
+        let uniform_buffer = Self::update_uniform_buffer(&start_time, dimensions);
 
         let buffer = CpuAccessibleBuffer::from_data(
-            device,
+            device.clone(),
             BufferUsage::uniform_buffer_transfer_destination(),
             false,
             uniform_buffer,
@@ -743,22 +721,11 @@ impl HelloTriangleApplication {
         buffer
     }
 
-    fn update_uniform_buffer(
-        &mut self,
-        start_time: Instant,
-        dimensions: [f32; 2],
-    ) -> UniformBufferObject {
-        // let duration = Instant::now().duration_since(start_time);
-        // let elapsed = (duration.as_secs() * 1000) + u64::from(duration.subsec_millis());
+    fn update_uniform_buffer(start_time: &Instant, dimensions: [f32; 2]) -> UniformBufferObject {
+        let duration = Instant::now().duration_since(*start_time);
+        let elapsed = (duration.as_secs() * 1000) + u64::from(duration.subsec_millis());
 
-        let delta_time = Instant::now().duration_since(self.last_time).as_secs_f32();
-
-        println!("delta time: {}", delta_time);
-
-        self.last_time = Instant::now();
-        self.rotation += 20.0 * delta_time;
-
-        let model = Matrix4::from_angle_z(Rad::from(Deg(self.rotation)));
+        let model = Matrix4::from_angle_z(Rad::from(Deg(elapsed as f32 * 0.18)));
 
         let view = Matrix4::look_at(
             Point3::new(2.0, 2.0, 2.0),
@@ -775,7 +742,11 @@ impl HelloTriangleApplication {
 
         proj.y.y *= -1.0;
 
-        UniformBufferObject { model, view, proj }
+        UniformBufferObject {
+            model: model.into(),
+            view: view.into(),
+            proj: proj.into(),
+        }
     }
 
     fn create_descriptor_sets(
