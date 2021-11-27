@@ -1,6 +1,7 @@
 use std::{collections::HashSet, iter::FromIterator, sync::Arc, time::Instant};
 
-use cgmath::{Deg, Matrix4, Point3, Rad, Vector3};
+use dolly::prelude::*;
+use glam::{Mat4, Vec3};
 use image::GenericImageView;
 use vulkano::{
     buffer::{
@@ -38,7 +39,7 @@ use vulkano::{
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
@@ -112,12 +113,12 @@ struct HelloTriangleApplication {
     descriptor_set: Arc<PersistentDescriptorSet>,
     uniform_buffer: Arc<CpuAccessibleBuffer<UniformBufferObject>>,
 
-    start_time: Instant,
     last_time: Instant,
-    rotation: f32,
 
     vertices: Vec<Vertex>,
     indices: Vec<u32>,
+
+    camera: CameraRig,
 }
 
 impl HelloTriangleApplication {
@@ -166,13 +167,17 @@ impl HelloTriangleApplication {
 
         let previous_frame_end = Some(Self::create_sync_objects(&device));
 
-        let start_time = Instant::now();
+        let camera = CameraRig::builder()
+            .with(YawPitch::new().yaw_degrees(45.0).pitch_degrees(-30.0))
+            .with(Smooth::new_rotation(1.5))
+            .with(Arm::new(Vec3::Z * 4.0))
+            .build();
 
         // TODO: should we have uniform buffer per swap chain image?
         // vulkan-tutorial says so but I'm not 100% understanding it how it plays with
         // descriptor sets.
         let uniform_buffer =
-            Self::create_uniform_buffer(&device.clone(), start_time, swap_chain.dimensions());
+            Self::create_uniform_buffer(&device.clone(), &camera, swap_chain.dimensions());
 
         let image_sampler = Self::create_image_sampler(&device);
         let texture_image = Self::create_texture_image(&graphics_queue);
@@ -205,12 +210,12 @@ impl HelloTriangleApplication {
             previous_frame_end,
             recreate_swap_chain: false,
 
-            start_time,
             last_time: Instant::now(),
-            rotation: 0.0,
 
             vertices,
             indices,
+
+            camera,
         };
 
         app.create_command_buffers();
@@ -716,7 +721,7 @@ impl HelloTriangleApplication {
                 .unwrap();
 
                 let uniform_buffer_data =
-                    Arc::new(Self::update_uniform_buffer(&self.start_time, dimensions));
+                    Arc::new(Self::update_uniform_buffer(&self.camera, dimensions));
 
                 builder
                     .update_buffer(self.uniform_buffer.clone(), uniform_buffer_data)
@@ -757,12 +762,12 @@ impl HelloTriangleApplication {
 
     fn create_uniform_buffer(
         device: &Arc<Device>,
-        start_time: Instant,
+        camera: &CameraRig,
         dimensions_u32: [u32; 2],
     ) -> Arc<CpuAccessibleBuffer<UniformBufferObject>> {
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
-        let uniform_buffer = Self::update_uniform_buffer(&start_time, dimensions);
+        let uniform_buffer = Self::update_uniform_buffer(&camera, dimensions);
 
         let buffer = CpuAccessibleBuffer::from_data(
             device.clone(),
@@ -775,31 +780,28 @@ impl HelloTriangleApplication {
         buffer
     }
 
-    fn update_uniform_buffer(start_time: &Instant, dimensions: [f32; 2]) -> UniformBufferObject {
-        // let duration = Instant::now().duration_since(*start_time);
-        // let elapsed = (duration.as_secs() * 1000) + u64::from(duration.subsec_millis());
+    fn update_uniform_buffer(camera: &CameraRig, dimensions: [f32; 2]) -> UniformBufferObject {
+        let model = Mat4::from_rotation_x(deg_to_rad(-90.0));
 
-        let model = Matrix4::from_angle_z(Rad::from(Deg(0.0)));
-
-        let view = Matrix4::look_at(
-            Point3::new(2.0, 2.0, 2.0),
-            Point3::new(0.0, 0.0, 0.0),
-            Vector3::new(0.0, 0.0, 1.0),
+        let view = Mat4::look_at_rh(
+            camera.final_transform.position,
+            Vec3::ZERO,
+            camera.final_transform.up(),
         );
 
-        let mut proj = cgmath::perspective(
-            Rad::from(Deg(45.0)),
+        let mut proj = Mat4::perspective_rh(
+            deg_to_rad(45.0),
             dimensions[0] as f32 / dimensions[1] as f32,
             0.1,
             10.0,
         );
 
-        proj.y.y *= -1.0;
+        proj.y_axis.y *= -1.0;
 
         UniformBufferObject {
-            model: model.into(),
-            view: view.into(),
-            proj: proj.into(),
+            model: model.to_cols_array_2d(),
+            view: view.to_cols_array_2d(),
+            proj: proj.to_cols_array_2d(),
         }
     }
 
@@ -1023,7 +1025,37 @@ impl HelloTriangleApplication {
                         self.recreate_swap_chain = true;
                     }
 
+                    // on key press
+                    Event::WindowEvent {
+                        event:
+                            WindowEvent::KeyboardInput {
+                                input:
+                                    KeyboardInput {
+                                        virtual_keycode,
+                                        state: ElementState::Pressed,
+                                        ..
+                                    },
+                                ..
+                            },
+                        ..
+                    } => {
+                        let camera_driver = self.camera.driver_mut::<YawPitch>();
+
+                        if let Some(VirtualKeyCode::Z) = virtual_keycode {
+                            camera_driver.rotate_yaw_pitch(-90.0, 0.0);
+                        }
+                        if let Some(VirtualKeyCode::X) = virtual_keycode {
+                            camera_driver.rotate_yaw_pitch(90.0, 0.0);
+                        }
+                    }
+
                     Event::MainEventsCleared { .. } => {
+                        let now = Instant::now();
+                        let delta_time = now.duration_since(self.last_time).as_secs_f32();
+
+                        self.last_time = now;
+                        self.camera.update(delta_time);
+
                         // TODO: it's probably not the most efficient to recreate whole command buffer every frame?
                         self.create_command_buffers();
                         self.draw_frame();
@@ -1038,6 +1070,10 @@ impl HelloTriangleApplication {
 fn main() {
     let app = HelloTriangleApplication::initialize();
     app.main_loop();
+}
+
+fn deg_to_rad(deg: f32) -> f32 {
+    deg * 3.14 / 180.0
 }
 
 mod vertex_shader {
