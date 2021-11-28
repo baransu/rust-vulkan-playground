@@ -1,4 +1,9 @@
-use std::{collections::HashSet, iter::FromIterator, sync::Arc, time::Instant};
+use std::{
+    collections::HashSet,
+    iter::FromIterator,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use dolly::prelude::*;
 use glam::{Mat4, Vec3};
@@ -12,7 +17,7 @@ use vulkano::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
         SecondaryAutoCommandBuffer, SubpassContents,
     },
-    descriptor_set::PersistentDescriptorSet,
+    descriptor_set::{pool::StdDescriptorPool, PersistentDescriptorSet},
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceExtensions, Features, Queue,
@@ -64,21 +69,21 @@ const MODEL_PATH: &str = "res/336_lrm/scene.gltf";
 #[derive(Default, Copy, Clone)]
 struct Vertex {
     position: [f32; 3],
-    color: [f32; 3],
+    normal: [f32; 3],
     tex: [f32; 2],
 }
 
 impl Vertex {
-    fn new(position: [f32; 3], color: [f32; 3], tex: [f32; 2]) -> Vertex {
+    fn new(position: [f32; 3], normal: [f32; 3], tex: [f32; 2]) -> Vertex {
         Vertex {
             position,
-            color,
+            normal,
             tex,
         }
     }
 }
 
-vulkano::impl_vertex!(Vertex, position, color, tex);
+vulkano::impl_vertex!(Vertex, position, normal, tex);
 
 struct Model {
     index_count: u32,
@@ -113,13 +118,13 @@ struct HelloTriangleApplication {
 
     swap_chain_framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
 
-    command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
+    command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
 
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     recreate_swap_chain: bool,
 
-    descriptor_set: Arc<PersistentDescriptorSet>,
-    uniform_buffer: Arc<CpuAccessibleBuffer<UniformBufferObject>>,
+    descriptor_sets: Vec<Arc<PersistentDescriptorSet>>,
+    uniform_buffers: Vec<Arc<CpuAccessibleBuffer<UniformBufferObject>>>,
 
     last_time: Instant,
 
@@ -177,21 +182,25 @@ impl HelloTriangleApplication {
         let camera = CameraRig::builder()
             .with(YawPitch::new().yaw_degrees(45.0).pitch_degrees(-30.0))
             .with(Smooth::new_rotation(1.5))
-            .with(Arm::new(Vec3::Z * 4.0))
+            .with(Arm::new(Vec3::Z * 15.0))
             .build();
 
         // TODO: should we have uniform buffer per swap chain image?
         // vulkan-tutorial says so but I'm not 100% understanding it how it plays with
         // descriptor sets.
-        let uniform_buffer =
-            Self::create_uniform_buffer(&device.clone(), &camera, swap_chain.dimensions());
+        let uniform_buffers = Self::create_uniform_buffers(
+            &device.clone(),
+            swap_chain_images.len(),
+            &camera,
+            swap_chain.dimensions(),
+        );
 
         let image_sampler = Self::create_image_sampler(&device);
         let texture_image = Self::create_texture_image(&graphics_queue);
 
-        let descriptor_set = Self::create_descriptor_sets(
+        let descriptor_sets = Self::create_descriptor_sets(
             &graphics_pipeline,
-            &uniform_buffer,
+            &uniform_buffers,
             &texture_image,
             &image_sampler,
         );
@@ -212,8 +221,8 @@ impl HelloTriangleApplication {
             swap_chain_framebuffers,
 
             command_buffers: vec![],
-            descriptor_set,
-            uniform_buffer,
+            descriptor_sets,
+            uniform_buffers,
             previous_frame_end,
             recreate_swap_chain: false,
 
@@ -698,31 +707,30 @@ impl HelloTriangleApplication {
             .collect::<Vec<_>>()
     }
 
-    // fn create_camera_uniform_buffer(&mut self) -> Arc<PrimaryAutoCommandBuffer> {
+    // fn create_camera_command_buffer(&mut self, index: usize) -> Arc<SecondaryAutoCommandBuffer> {
     //     let queue_family = self.graphics_queue.family();
 
     //     let dimensions_u32 = self.swap_chain_images[0].dimensions();
     //     let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
-    //     let mut builder = AutoCommandBufferBuilder::primary(
+    //     let mut builder = AutoCommandBufferBuilder::secondary_graphics(
     //         self.device.clone(),
     //         queue_family,
     //         CommandBufferUsage::SimultaneousUse,
+    //         self.graphics_pipeline.subpass().clone(),
     //     )
     //     .unwrap();
 
     //     let uniform_buffer_data = Arc::new(Self::update_uniform_buffer(&self.camera, dimensions));
 
     //     builder
-    //         .update_buffer(self.uniform_buffer.clone(), uniform_buffer_data)
+    //         .update_buffer(self.uniform_buffers[index].clone(), uniform_buffer_data)
     //         .unwrap();
 
     //     Arc::new(builder.build().unwrap())
     // }
 
     fn create_command_buffers(&mut self) {
-        let queue_family = self.graphics_queue.family();
-
         let dimensions_u32 = self.swap_chain_images[0].dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
@@ -732,53 +740,36 @@ impl HelloTriangleApplication {
             depth_range: 0.0..1.0,
         };
 
-        println!("framebuffers: {}", self.swap_chain_framebuffers.len());
-
-        let model = self.models.iter().nth(0).unwrap();
-
         self.command_buffers = self
             .swap_chain_framebuffers
             .iter()
-            .map(|framebuffer| {
-                let mut builder = AutoCommandBufferBuilder::primary(
+            .enumerate()
+            .map(|(index, _framebuffer)| {
+                let mut builder = AutoCommandBufferBuilder::secondary_graphics(
                     self.device.clone(),
-                    queue_family,
+                    self.graphics_queue.family(),
                     CommandBufferUsage::SimultaneousUse,
+                    self.graphics_pipeline.subpass().clone(),
                 )
                 .unwrap();
 
-                let uniform_buffer_data =
-                    Arc::new(Self::update_uniform_buffer(&self.camera, dimensions));
-
                 builder
-                    .update_buffer(self.uniform_buffer.clone(), uniform_buffer_data)
-                    .unwrap();
-
-                builder
-                    .begin_render_pass(
-                        framebuffer.clone(),
-                        SubpassContents::Inline,
-                        vec![
-                            [0.0, 0.0, 0.0, 1.0].into(),
-                            ClearValue::Depth(1.0),
-                            ClearValue::None,
-                        ],
-                    )
-                    .unwrap()
                     .set_viewport(0, [viewport.clone()])
                     .bind_pipeline_graphics(self.graphics_pipeline.clone())
                     .bind_descriptor_sets(
                         PipelineBindPoint::Graphics,
                         self.graphics_pipeline.layout().clone(),
                         0,
-                        self.descriptor_set.clone(),
-                    )
-                    .bind_vertex_buffers(0, model.vertex_buffer.clone())
-                    .bind_index_buffer(model.index_buffer.clone())
-                    .draw_indexed(model.index_count, 1, 0, 0, 0)
-                    .unwrap()
-                    .end_render_pass()
-                    .unwrap();
+                        self.descriptor_sets[index].clone(),
+                    );
+
+                for model in self.models.iter() {
+                    builder
+                        .bind_vertex_buffers(0, model.vertex_buffer.clone())
+                        .bind_index_buffer(model.index_buffer.clone())
+                        .draw_indexed(model.index_count, 1, 0, 0, 0)
+                        .unwrap();
+                }
 
                 let command_buffer = builder.build().unwrap();
 
@@ -787,24 +778,31 @@ impl HelloTriangleApplication {
             .collect();
     }
 
-    fn create_uniform_buffer(
+    fn create_uniform_buffers(
         device: &Arc<Device>,
+        num_buffers: usize,
         camera: &CameraRig,
         dimensions_u32: [u32; 2],
-    ) -> Arc<CpuAccessibleBuffer<UniformBufferObject>> {
+    ) -> Vec<Arc<CpuAccessibleBuffer<UniformBufferObject>>> {
+        let mut buffers = Vec::new();
+
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         let uniform_buffer = Self::update_uniform_buffer(&camera, dimensions);
 
-        let buffer = CpuAccessibleBuffer::from_data(
-            device.clone(),
-            BufferUsage::uniform_buffer_transfer_destination(),
-            false,
-            uniform_buffer,
-        )
-        .unwrap();
+        for _ in 0..num_buffers {
+            let buffer = CpuAccessibleBuffer::from_data(
+                device.clone(),
+                BufferUsage::uniform_buffer_transfer_destination(),
+                false,
+                uniform_buffer,
+            )
+            .unwrap();
 
-        buffer
+            buffers.push(buffer)
+        }
+
+        buffers
     }
 
     fn update_uniform_buffer(camera: &CameraRig, dimensions: [f32; 2]) -> UniformBufferObject {
@@ -834,25 +832,30 @@ impl HelloTriangleApplication {
 
     fn create_descriptor_sets(
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        uniform_buffer: &Arc<CpuAccessibleBuffer<UniformBufferObject>>,
+        uniform_buffers: &Vec<Arc<CpuAccessibleBuffer<UniformBufferObject>>>,
         texture_image: &Arc<ImageView<Arc<ImmutableImage>>>,
         image_sampler: &Arc<Sampler>,
-    ) -> Arc<PersistentDescriptorSet> {
+    ) -> Vec<Arc<PersistentDescriptorSet>> {
         let layout = graphics_pipeline
             .layout()
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
 
-        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+        uniform_buffers
+            .iter()
+            .map(|uniform_buffer| {
+                let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-        set_builder
-            .add_buffer(uniform_buffer.clone())
-            .unwrap()
-            .add_sampled_image(texture_image.clone(), image_sampler.clone())
-            .unwrap();
+                set_builder
+                    .add_buffer(uniform_buffer.clone())
+                    .unwrap()
+                    .add_sampled_image(texture_image.clone(), image_sampler.clone())
+                    .unwrap();
 
-        Arc::new(set_builder.build().unwrap())
+                Arc::new(set_builder.build().unwrap())
+            })
+            .collect()
     }
 
     fn create_vertex_buffer(
@@ -972,7 +975,7 @@ impl HelloTriangleApplication {
 
                             Vertex {
                                 position,
-                                color: normal,
+                                normal,
                                 tex: tex_coords_0,
                             }
                         })
@@ -1063,9 +1066,56 @@ impl HelloTriangleApplication {
             self.recreate_swap_chain = true;
         }
 
-        let command_buffer = self.command_buffers[image_index].clone();
+        // let camera_command_buffer = self.create_camera_command_buffer(image_index);
+        let draw_command_buffer = self.command_buffers[image_index].clone();
 
-        let future = acquire_future
+        let mut builder = AutoCommandBufferBuilder::primary(
+            self.device.clone(),
+            self.graphics_queue.family(),
+            CommandBufferUsage::SimultaneousUse,
+        )
+        .unwrap();
+
+        let framebuffer = self.swap_chain_framebuffers[image_index].clone();
+        let dimensions_u32 = self.swap_chain_images[0].dimensions();
+        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
+
+        // let viewport = Viewport {
+        //     origin: [0.0, 0.0],
+        //     dimensions,
+        //     depth_range: 0.0..1.0,
+        // };
+
+        let uniform_buffer_data = Arc::new(Self::update_uniform_buffer(&self.camera, dimensions));
+
+        builder
+            .update_buffer(
+                self.uniform_buffers[image_index].clone(),
+                uniform_buffer_data,
+            )
+            .unwrap()
+            .begin_render_pass(
+                framebuffer.clone(),
+                SubpassContents::SecondaryCommandBuffers,
+                vec![
+                    [0.0, 0.0, 0.0, 1.0].into(),
+                    ClearValue::Depth(1.0),
+                    ClearValue::None,
+                ],
+            )
+            .unwrap()
+            .execute_commands(draw_command_buffer)
+            .unwrap()
+            .end_render_pass()
+            .unwrap();
+
+        let command_buffer = builder.build().unwrap();
+
+        let future = self
+            .previous_frame_end
+            .take()
+            .unwrap()
+            .join(acquire_future)
             .then_execute(self.graphics_queue.clone(), command_buffer)
             .unwrap()
             .then_swapchain_present(
@@ -1147,11 +1197,11 @@ impl HelloTriangleApplication {
                         let now = Instant::now();
                         let delta_time = now.duration_since(self.last_time).as_secs_f32();
 
+                        println!("delta time: {}", delta_time);
+
                         self.last_time = now;
                         self.camera.update(delta_time);
 
-                        // TODO: it's probably not the most efficient to recreate whole command buffer every frame?
-                        self.create_command_buffers();
                         self.draw_frame();
                     }
 
@@ -1183,11 +1233,10 @@ mod vertex_shader {
             } ubo;
 
             layout(location = 0) in vec3 position;
-            layout(location = 1) in vec3 color;
+            layout(location = 1) in vec3 normal;
             layout(location = 2) in vec2 tex;
 
-            layout(location = 0) out vec3 f_color;
-            layout(location = 1) out vec2 f_tex_coord;
+            layout(location = 0) out vec2 f_tex_coord;
 
             out gl_PerVertex {
                 vec4 gl_Position;
@@ -1196,7 +1245,6 @@ mod vertex_shader {
             void main() {
                 gl_Position = ubo.proj * ubo.view * ubo.model * vec4(position, 1.0);
                 f_tex_coord = tex;
-                f_color = color;
             }
         "
     }
@@ -1210,13 +1258,11 @@ mod fragment_shader {
 
             layout(binding = 1) uniform sampler2D tex_sampler;
 
-            layout(location = 0) in vec3 f_color;
-            layout(location = 1) in vec2 f_tex_coord;
+            layout(location = 0) in vec2 f_tex_coord;
 
             layout(location = 0) out vec4 out_color;
 
             void main() {
-                // out_color = vec4(f_color * texture(tex_sampler, f_tex_coord).rgb, 1.0);
                 out_color = texture(tex_sampler, f_tex_coord);
             }
         "
