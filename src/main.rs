@@ -2,13 +2,15 @@ use std::{collections::HashSet, iter::FromIterator, sync::Arc, time::Instant};
 
 use dolly::prelude::*;
 use glam::{Mat4, Vec3};
+use gltf::Semantic;
 use image::GenericImageView;
 use vulkano::{
     buffer::{
         immutable::ImmutableBufferInitialization, BufferUsage, CpuAccessibleBuffer, ImmutableBuffer,
     },
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
+        SecondaryAutoCommandBuffer, SubpassContents,
     },
     descriptor_set::PersistentDescriptorSet,
     device::{
@@ -34,7 +36,7 @@ use vulkano::{
         acquire_next_image, AcquireError, ColorSpace, CompositeAlpha, PresentMode,
         SupportedPresentModes, Surface, Swapchain,
     },
-    sync::{self, GpuFuture, SharingMode},
+    sync::{self, GpuFuture, JoinFuture, SharingMode},
     Version,
 };
 use vulkano_win::VkSurfaceBuild;
@@ -57,7 +59,7 @@ const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
 };
 
 const TEXTURE_PATH: &str = "res/viking_room.png";
-const MODEL_PATH: &str = "res/viking_room.obj";
+const MODEL_PATH: &str = "res/336_lrm/scene.gltf";
 
 #[derive(Default, Copy, Clone)]
 struct Vertex {
@@ -77,6 +79,12 @@ impl Vertex {
 }
 
 vulkano::impl_vertex!(Vertex, position, color, tex);
+
+struct Model {
+    index_count: u32,
+    vertex_buffer: Arc<ImmutableBuffer<[Vertex]>>,
+    index_buffer: Arc<ImmutableBuffer<[u32]>>,
+}
 
 type UniformBufferObject = vertex_shader::ty::UniformBufferObject;
 
@@ -115,8 +123,7 @@ struct HelloTriangleApplication {
 
     last_time: Instant,
 
-    vertices: Vec<Vertex>,
-    indices: Vec<u32>,
+    models: Vec<Model>,
 
     camera: CameraRig,
 }
@@ -144,7 +151,7 @@ impl HelloTriangleApplication {
             &graphics_queue,
         );
 
-        let (vertices, indices) = Self::load_model();
+        let models = Self::load_models(&graphics_queue);
 
         let depth_format = Self::find_depth_format();
         let sample_count = Self::find_sample_count();
@@ -212,8 +219,7 @@ impl HelloTriangleApplication {
 
             last_time: Instant::now(),
 
-            vertices,
-            indices,
+            models,
 
             camera,
         };
@@ -692,12 +698,29 @@ impl HelloTriangleApplication {
             .collect::<Vec<_>>()
     }
 
+    // fn create_camera_uniform_buffer(&mut self) -> Arc<PrimaryAutoCommandBuffer> {
+    //     let queue_family = self.graphics_queue.family();
+
+    //     let dimensions_u32 = self.swap_chain_images[0].dimensions();
+    //     let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
+
+    //     let mut builder = AutoCommandBufferBuilder::primary(
+    //         self.device.clone(),
+    //         queue_family,
+    //         CommandBufferUsage::SimultaneousUse,
+    //     )
+    //     .unwrap();
+
+    //     let uniform_buffer_data = Arc::new(Self::update_uniform_buffer(&self.camera, dimensions));
+
+    //     builder
+    //         .update_buffer(self.uniform_buffer.clone(), uniform_buffer_data)
+    //         .unwrap();
+
+    //     Arc::new(builder.build().unwrap())
+    // }
+
     fn create_command_buffers(&mut self) {
-        let vertex_buffer = Self::create_vertex_buffer(&self.graphics_queue, &self.vertices);
-        let index_buffer = Self::create_index_buffer(&self.graphics_queue, &self.indices);
-
-        let index_count = self.indices.len() as u32;
-
         let queue_family = self.graphics_queue.family();
 
         let dimensions_u32 = self.swap_chain_images[0].dimensions();
@@ -708,6 +731,10 @@ impl HelloTriangleApplication {
             dimensions,
             depth_range: 0.0..1.0,
         };
+
+        println!("framebuffers: {}", self.swap_chain_framebuffers.len());
+
+        let model = self.models.iter().nth(0).unwrap();
 
         self.command_buffers = self
             .swap_chain_framebuffers
@@ -746,9 +773,9 @@ impl HelloTriangleApplication {
                         0,
                         self.descriptor_set.clone(),
                     )
-                    .bind_vertex_buffers(0, vertex_buffer.clone())
-                    .bind_index_buffer(index_buffer.clone())
-                    .draw_indexed(index_count, 1, 0, 0, 0)
+                    .bind_vertex_buffers(0, model.vertex_buffer.clone())
+                    .bind_index_buffer(model.index_buffer.clone())
+                    .draw_indexed(model.index_count, 1, 0, 0, 0)
                     .unwrap()
                     .end_render_pass()
                     .unwrap();
@@ -910,41 +937,108 @@ impl HelloTriangleApplication {
         .unwrap()
     }
 
-    fn load_model() -> (Vec<Vertex>, Vec<u32>) {
-        let mut vertices = Vec::new();
-        let mut indices = Vec::new();
+    fn load_models(graphics_queue: &Arc<Queue>) -> Vec<Model> {
+        let mut models = Vec::new();
 
-        let (models, _materials) = tobj::load_obj(MODEL_PATH, &tobj::LoadOptions::default())
-            .unwrap_or_else(|e| panic!("Failed to load model: {}", e));
+        let (document, buffers, _images) = gltf::import(MODEL_PATH).unwrap();
 
-        for model in models.iter() {
-            let mesh = &model.mesh;
+        for mesh in document.meshes() {
+            for primitive in mesh.primitives() {
+                let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
-            for index in &mesh.indices {
-                let ind_usize = *index as usize;
+                if let Some(_accessor) = primitive.get(&Semantic::Positions) {
+                    let positions = &reader.read_positions().unwrap().collect::<Vec<[f32; 3]>>();
+                    let normals = &reader
+                        .read_normals()
+                        .map_or(vec![], |normals| normals.collect());
 
-                let pos = [
-                    mesh.positions[ind_usize * 3],
-                    mesh.positions[ind_usize * 3 + 1],
-                    mesh.positions[ind_usize * 3 + 2],
-                ];
+                    // TODO: what's channel 0/1
+                    let tex_coords_0 = &reader
+                        .read_tex_coords(0)
+                        .map_or(vec![], |coords| coords.into_f32().collect());
 
-                let color = [1.0, 1.0, 1.0];
+                    // let tex_coords_1 = &reader
+                    //     .read_tex_coords(1)
+                    //     .map_or(vec![], |coords| coords.into_f32().collect());
 
-                let tex_coord = [
-                    mesh.texcoords[ind_usize * 2],
-                    // TODO: is it because vulkan has flipped y?
-                    1.0 - mesh.texcoords[ind_usize * 2 + 1],
-                ];
+                    let vertices = positions
+                        .iter()
+                        .enumerate()
+                        .map(|(index, position)| {
+                            let position = *position;
+                            let normal = *normals.get(index).unwrap_or(&[1.0, 1.0, 1.0]);
+                            let tex_coords_0 = *tex_coords_0.get(index).unwrap_or(&[0.0, 0.0]);
+                            // let tex_coords_1 = *tex_coords_1.get(index).unwrap_or(&[0.0, 0.0]);
 
-                let vertex = Vertex::new(pos, color, tex_coord);
-                vertices.push(vertex);
-                let index = indices.len() as u32;
-                indices.push(index);
+                            Vertex {
+                                position,
+                                color: normal,
+                                tex: tex_coords_0,
+                            }
+                        })
+                        .collect::<Vec<_>>();
+
+                    let indices = reader
+                        .read_indices()
+                        .map(|indices| indices.into_u32().collect::<Vec<_>>())
+                        .unwrap();
+
+                    let vertex_buffer = Self::create_vertex_buffer(&graphics_queue, &vertices);
+                    let index_buffer = Self::create_index_buffer(&graphics_queue, &indices);
+
+                    let model = Model {
+                        vertex_buffer,
+                        index_buffer,
+                        index_count: indices.len() as u32,
+                    };
+
+                    models.push(model);
+                }
             }
         }
 
-        (vertices, indices)
+        // for buffer in buffers {}
+
+        // for node in document.nodes() {
+        //     if let Some(mesh) = node.mesh() {
+        //         for primitive in mesh.primitives() {
+        //             primitive
+        //         }
+        //     }
+        // }
+
+        // // tobj::load_obj(MODEL_PATH, &tobj::LoadOptions::default()).unwrap();
+
+        // for model in models.iter() {
+        //     let mesh = &model.mesh;
+
+        //     for index in &mesh.indices {
+        //         let ind_usize = *index as usize;
+
+        //         let pos = [
+        //             mesh.positions[ind_usize * 3],
+        //             mesh.positions[ind_usize * 3 + 1],
+        //             mesh.positions[ind_usize * 3 + 2],
+        //         ];
+
+        //         let normal = [0.0, 0.0, 0.0];
+
+        //         let tex_coord = [
+        //             mesh.texcoords[ind_usize * 2],
+        //             // this is because Vulkan has flipped Y
+        //             1.0 - mesh.texcoords[ind_usize * 2 + 1],
+        //         ];
+
+        //         let vertex = Vertex::new(pos, normal, tex_coord);
+        //         vertices.push(vertex);
+        //         let index = indices.len() as u32;
+        //         indices.push(index);
+        //     }
+        // }
+
+        println!("Loaded {} models", models.len());
+
+        models
     }
 
     fn draw_frame(&mut self) {
