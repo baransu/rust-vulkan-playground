@@ -64,7 +64,8 @@ const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
 };
 
 const TEXTURE_PATH: &str = "res/viking_room.png";
-const MODEL_PATH: &str = "res/336_lrm/scene.gltf";
+const MODEL_PATH: &str = "res/damaged_helmet/scene.gltf";
+// const MODEL_PATH: &str = "res/336_lrm/scene.gltf";
 
 #[derive(Default, Copy, Clone)]
 struct Vertex {
@@ -232,8 +233,7 @@ impl HelloTriangleApplication {
         let camera = CameraRig::builder()
             .with(YawPitch::new().yaw_degrees(45.0).pitch_degrees(-30.0))
             .with(Smooth::new_rotation(1.5))
-            .with(Arm::new(Vec3::Z * 30.0))
-            .with(Arm::new(Vec3::Y * 30.0))
+            .with(Arm::new(Vec3::Z * 4.0))
             .build();
 
         // TODO: should we have uniform buffer per swap chain image?
@@ -1001,7 +1001,7 @@ impl HelloTriangleApplication {
                     children: node.children().map(|child| child.index()).collect(),
                     final_transform: Mat4::IDENTITY,
                     model_transform: Mat4::from_scale_rotation_translation(
-                        Vec3::new(scale[0], scale[1], scale[2]) * 0.1,
+                        Vec3::new(scale[0], scale[1], scale[2]),
                         // TODO: check order!!!
                         Quat::from_xyzw(rotation[0], rotation[1], rotation[2], rotation[3]),
                         Vec3::new(translation[0], translation[1], translation[2]),
@@ -1014,7 +1014,7 @@ impl HelloTriangleApplication {
 
         for node_id in document.nodes().map(|child| child.index()) {
             let node = root.unsafe_get_node_mut(node_id);
-            node.update_transform(&mut root, &Mat4::IDENTITY);
+            node.update_transform(&mut root, &Mat4::from_rotation_x(deg_to_rad(90.0)));
         }
 
         for node in document.nodes() {
@@ -1397,6 +1397,7 @@ mod vertex_shader {
             layout(location = 7) in mat4 model;
 
             layout(location = 0) out vec4 f_color;
+            layout(location = 1) out vec3 f_normal;
 
             out gl_PerVertex {
                 vec4 gl_Position;
@@ -1405,6 +1406,7 @@ mod vertex_shader {
             void main() {
                 gl_Position = ubo.proj * ubo.view * model * vec4(position, 1.0);
                 f_color = color * base_color_factor;
+                f_normal = normal;
             }
         "
     }
@@ -1419,11 +1421,19 @@ mod fragment_shader {
             layout(binding = 1) uniform sampler2D tex_sampler;
 
             layout(location = 0) in vec4 f_color;
+            layout(location = 1) in vec3 f_normal;
 
             layout(location = 0) out vec4 out_color;
 
             void main() {
-                out_color = f_color;
+                vec3 light_dir = vec3(0.0, 1.0, 0.0);
+                vec3 light_color = vec3(1.0, 1.0, 1.0);
+                vec3 ambient = 0.1 * light_color;
+
+                float diff = max(dot(f_normal, light_dir), 0.0);
+                vec3 diffuse = diff * light_color;
+                vec3 result = (ambient + diffuse) * f_color.xyz;
+                out_color = vec4(result,  1.0);
             }
         "
     }
