@@ -6,9 +6,9 @@ use std::{
 };
 
 use dolly::prelude::*;
-use glam::{Mat4, Vec3};
-use gltf::Semantic;
-use image::GenericImageView;
+use glam::{Mat4, Quat, Vec3};
+use gltf::{image::Source, mesh::util::tex_coords, Node, Semantic};
+use image::{DynamicImage, GenericImageView, ImageFormat};
 use vulkano::{
     buffer::{
         immutable::ImmutableBufferInitialization, BufferUsage, CpuAccessibleBuffer, ImmutableBuffer,
@@ -70,25 +70,77 @@ const MODEL_PATH: &str = "res/336_lrm/scene.gltf";
 struct Vertex {
     position: [f32; 3],
     normal: [f32; 3],
-    tex: [f32; 2],
+    tex: [[f32; 2]; 2],
+    tex_coord: u32,
+    color: [f32; 4],
+    base_color_factor: [f32; 4],
+    model: [[f32; 4]; 4],
 }
 
-impl Vertex {
-    fn new(position: [f32; 3], normal: [f32; 3], tex: [f32; 2]) -> Vertex {
-        Vertex {
-            position,
-            normal,
-            tex,
-        }
-    }
-}
+// impl Vertex {
+//     fn new(
+//         position: [f32; 3],
+//         normal: [f32; 3],
+//         tex: [[f32; 2]; 2],
+//         tex_coord: u32,
+//         color: [f32; 4],
+//     ) -> Vertex {
+//         Vertex {
+//             position,
+//             normal,
+//             tex,
+//             tex_coord,
+//             color,
+//             model,
+//         }
+//     }
+// }
 
-vulkano::impl_vertex!(Vertex, position, normal, tex);
+vulkano::impl_vertex!(
+    Vertex,
+    position,
+    normal,
+    tex,
+    tex_coord,
+    color,
+    base_color_factor,
+    model
+);
 
 struct Model {
     index_count: u32,
     vertex_buffer: Arc<ImmutableBuffer<[Vertex]>>,
     index_buffer: Arc<ImmutableBuffer<[u32]>>,
+    descriptor_set: Arc<PersistentDescriptorSet>,
+}
+
+struct Transform {
+    children: Vec<usize>,
+    final_transform: Mat4,
+    model_transform: Mat4,
+}
+
+impl Transform {
+    fn update_transform(&mut self, root: &mut Root, parent_transform: &Mat4) {
+        self.final_transform = *parent_transform;
+
+        self.final_transform = self.final_transform * self.model_transform;
+
+        for node_id in &self.children {
+            let transform = root.unsafe_get_node_mut(*node_id);
+            transform.update_transform(root, &self.final_transform);
+        }
+    }
+}
+
+struct Root {
+    transforms: Vec<Transform>,
+}
+
+impl Root {
+    pub fn unsafe_get_node_mut(&mut self, index: usize) -> &'static mut Transform {
+        unsafe { &mut *(&mut self.transforms[index] as *mut Transform) }
+    }
 }
 
 type UniformBufferObject = vertex_shader::ty::UniformBufferObject;
@@ -123,8 +175,8 @@ struct HelloTriangleApplication {
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     recreate_swap_chain: bool,
 
-    descriptor_sets: Vec<Arc<PersistentDescriptorSet>>,
-    uniform_buffers: Vec<Arc<CpuAccessibleBuffer<UniformBufferObject>>>,
+    // descriptor_sets: Vec<Arc<PersistentDescriptorSet>>,
+    uniform_buffer: Arc<CpuAccessibleBuffer<UniformBufferObject>>,
 
     last_time: Instant,
 
@@ -156,8 +208,6 @@ impl HelloTriangleApplication {
             &graphics_queue,
         );
 
-        let models = Self::load_models(&graphics_queue);
-
         let depth_format = Self::find_depth_format();
         let sample_count = Self::find_sample_count();
         let depth_image =
@@ -182,26 +232,22 @@ impl HelloTriangleApplication {
         let camera = CameraRig::builder()
             .with(YawPitch::new().yaw_degrees(45.0).pitch_degrees(-30.0))
             .with(Smooth::new_rotation(1.5))
-            .with(Arm::new(Vec3::Z * 15.0))
+            .with(Arm::new(Vec3::Z * 30.0))
+            .with(Arm::new(Vec3::Y * 30.0))
             .build();
 
         // TODO: should we have uniform buffer per swap chain image?
         // vulkan-tutorial says so but I'm not 100% understanding it how it plays with
         // descriptor sets.
-        let uniform_buffers = Self::create_uniform_buffers(
-            &device.clone(),
-            swap_chain_images.len(),
-            &camera,
-            swap_chain.dimensions(),
-        );
+        let uniform_buffer =
+            Self::create_uniform_buffer(&device.clone(), &camera, swap_chain.dimensions());
 
         let image_sampler = Self::create_image_sampler(&device);
-        let texture_image = Self::create_texture_image(&graphics_queue);
 
-        let descriptor_sets = Self::create_descriptor_sets(
+        let models = Self::load_models(
+            &graphics_queue,
             &graphics_pipeline,
-            &uniform_buffers,
-            &texture_image,
+            &uniform_buffer,
             &image_sampler,
         );
 
@@ -221,8 +267,8 @@ impl HelloTriangleApplication {
             swap_chain_framebuffers,
 
             command_buffers: vec![],
-            descriptor_sets,
-            uniform_buffers,
+
+            uniform_buffer,
             previous_frame_end,
             recreate_swap_chain: false,
 
@@ -755,16 +801,16 @@ impl HelloTriangleApplication {
 
                 builder
                     .set_viewport(0, [viewport.clone()])
-                    .bind_pipeline_graphics(self.graphics_pipeline.clone())
-                    .bind_descriptor_sets(
-                        PipelineBindPoint::Graphics,
-                        self.graphics_pipeline.layout().clone(),
-                        0,
-                        self.descriptor_sets[index].clone(),
-                    );
+                    .bind_pipeline_graphics(self.graphics_pipeline.clone());
 
                 for model in self.models.iter() {
                     builder
+                        .bind_descriptor_sets(
+                            PipelineBindPoint::Graphics,
+                            self.graphics_pipeline.layout().clone(),
+                            0,
+                            model.descriptor_set.clone(),
+                        )
                         .bind_vertex_buffers(0, model.vertex_buffer.clone())
                         .bind_index_buffer(model.index_buffer.clone())
                         .draw_indexed(model.index_count, 1, 0, 0, 0)
@@ -778,35 +824,33 @@ impl HelloTriangleApplication {
             .collect();
     }
 
-    fn create_uniform_buffers(
+    fn create_uniform_buffer(
         device: &Arc<Device>,
-        num_buffers: usize,
         camera: &CameraRig,
         dimensions_u32: [u32; 2],
-    ) -> Vec<Arc<CpuAccessibleBuffer<UniformBufferObject>>> {
-        let mut buffers = Vec::new();
-
+    ) -> Arc<CpuAccessibleBuffer<UniformBufferObject>> {
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         let uniform_buffer = Self::update_uniform_buffer(&camera, dimensions);
 
-        for _ in 0..num_buffers {
-            let buffer = CpuAccessibleBuffer::from_data(
-                device.clone(),
-                BufferUsage::uniform_buffer_transfer_destination(),
-                false,
-                uniform_buffer,
-            )
-            .unwrap();
+        let buffer = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage::uniform_buffer_transfer_destination(),
+            false,
+            uniform_buffer,
+        )
+        .unwrap();
 
-            buffers.push(buffer)
-        }
-
-        buffers
+        buffer
     }
 
     fn update_uniform_buffer(camera: &CameraRig, dimensions: [f32; 2]) -> UniformBufferObject {
-        let model = Mat4::from_rotation_x(deg_to_rad(-90.0));
+        // let model = Mat4::from_scale();
+        // let model = Mat4::from_scale_rotation_translation(
+        //     Vec3::new(0.05, 0.05, 0.05),
+        //     Quat::from_rotation_x(deg_to_rad(-90.0)),
+        //     Vec3::ZERO,
+        // );
 
         let view = Mat4::look_at_rh(
             camera.final_transform.position,
@@ -818,44 +862,39 @@ impl HelloTriangleApplication {
             deg_to_rad(45.0),
             dimensions[0] as f32 / dimensions[1] as f32,
             0.1,
-            10.0,
+            1000.0,
         );
 
         proj.y_axis.y *= -1.0;
 
         UniformBufferObject {
-            model: model.to_cols_array_2d(),
+            // model: model.to_cols_array_2d(),
             view: view.to_cols_array_2d(),
             proj: proj.to_cols_array_2d(),
         }
     }
 
-    fn create_descriptor_sets(
+    fn create_descriptor_set(
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        uniform_buffers: &Vec<Arc<CpuAccessibleBuffer<UniformBufferObject>>>,
+        uniform_buffer: &Arc<CpuAccessibleBuffer<UniformBufferObject>>,
         texture_image: &Arc<ImageView<Arc<ImmutableImage>>>,
         image_sampler: &Arc<Sampler>,
-    ) -> Vec<Arc<PersistentDescriptorSet>> {
+    ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
 
-        uniform_buffers
-            .iter()
-            .map(|uniform_buffer| {
-                let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-                set_builder
-                    .add_buffer(uniform_buffer.clone())
-                    .unwrap()
-                    .add_sampled_image(texture_image.clone(), image_sampler.clone())
-                    .unwrap();
+        set_builder.add_buffer(uniform_buffer.clone()).unwrap();
 
-                Arc::new(set_builder.build().unwrap())
-            })
-            .collect()
+        set_builder
+            .add_sampled_image(texture_image.clone(), image_sampler.clone())
+            .unwrap();
+
+        Arc::new(set_builder.build().unwrap())
     }
 
     fn create_vertex_buffer(
@@ -891,9 +930,10 @@ impl HelloTriangleApplication {
         buffer
     }
 
-    fn create_texture_image(graphics_queue: &Arc<Queue>) -> Arc<ImageView<Arc<ImmutableImage>>> {
-        let image = image::open(TEXTURE_PATH).unwrap();
-
+    fn create_texture(
+        graphics_queue: &Arc<Queue>,
+        image: &DynamicImage,
+    ) -> Arc<ImageView<Arc<ImmutableImage>>> {
         let width = image.width();
         let height = image.height();
 
@@ -940,62 +980,181 @@ impl HelloTriangleApplication {
         .unwrap()
     }
 
-    fn load_models(graphics_queue: &Arc<Queue>) -> Vec<Model> {
+    fn load_models(
+        graphics_queue: &Arc<Queue>,
+        graphics_pipeline: &Arc<GraphicsPipeline>,
+        uniform_buffer: &Arc<CpuAccessibleBuffer<UniformBufferObject>>,
+        image_sampler: &Arc<Sampler>,
+    ) -> Vec<Model> {
         let mut models = Vec::new();
 
         let (document, buffers, _images) = gltf::import(MODEL_PATH).unwrap();
 
-        for mesh in document.meshes() {
-            for primitive in mesh.primitives() {
-                let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+        let transforms = document
+            .nodes()
+            .map(|node| {
+                let (translation, rotation, scale) = node.transform().decomposed();
 
-                if let Some(_accessor) = primitive.get(&Semantic::Positions) {
-                    let positions = &reader.read_positions().unwrap().collect::<Vec<[f32; 3]>>();
-                    let normals = &reader
-                        .read_normals()
-                        .map_or(vec![], |normals| normals.collect());
+                // println!("node.translation {:?}", translation);
 
-                    // TODO: what's channel 0/1
-                    let tex_coords_0 = &reader
-                        .read_tex_coords(0)
-                        .map_or(vec![], |coords| coords.into_f32().collect());
+                Transform {
+                    children: node.children().map(|child| child.index()).collect(),
+                    final_transform: Mat4::IDENTITY,
+                    model_transform: Mat4::from_scale_rotation_translation(
+                        Vec3::new(scale[0], scale[1], scale[2]) * 0.1,
+                        // TODO: check order!!!
+                        Quat::from_xyzw(rotation[0], rotation[1], rotation[2], rotation[3]),
+                        Vec3::new(translation[0], translation[1], translation[2]),
+                    ),
+                }
+            })
+            .collect::<Vec<_>>();
 
-                    // let tex_coords_1 = &reader
-                    //     .read_tex_coords(1)
-                    //     .map_or(vec![], |coords| coords.into_f32().collect());
+        let mut root = Root { transforms };
 
-                    let vertices = positions
-                        .iter()
-                        .enumerate()
-                        .map(|(index, position)| {
-                            let position = *position;
-                            let normal = *normals.get(index).unwrap_or(&[1.0, 1.0, 1.0]);
-                            let tex_coords_0 = *tex_coords_0.get(index).unwrap_or(&[0.0, 0.0]);
-                            // let tex_coords_1 = *tex_coords_1.get(index).unwrap_or(&[0.0, 0.0]);
+        for node_id in document.nodes().map(|child| child.index()) {
+            let node = root.unsafe_get_node_mut(node_id);
+            node.update_transform(&mut root, &Mat4::IDENTITY);
+        }
 
-                            Vertex {
-                                position,
-                                normal,
-                                tex: tex_coords_0,
-                            }
-                        })
-                        .collect::<Vec<_>>();
+        for node in document.nodes() {
+            if let Some(mesh) = node.mesh() {
+                for primitive in mesh.primitives() {
+                    let pbr = primitive.material().pbr_metallic_roughness();
 
-                    let indices = reader
-                        .read_indices()
-                        .map(|indices| indices.into_u32().collect::<Vec<_>>())
-                        .unwrap();
+                    let base_color_factor = pbr.base_color_factor();
 
-                    let vertex_buffer = Self::create_vertex_buffer(&graphics_queue, &vertices);
-                    let index_buffer = Self::create_index_buffer(&graphics_queue, &indices);
+                    // let (texture_image, tex_coord) = pbr
+                    //     .base_color_texture()
+                    //     .map(|color_info| {
+                    //         let img = &color_info.texture();
+                    //         // material.base_color_texture = Some(load_texture(
+                    //         let image = match img.source().source() {
+                    //             Source::View { view, mime_type } => {
+                    //                 let parent_buffer_data = &buffers[view.buffer().index()].0;
+                    //                 let begin = view.offset();
+                    //                 let end = begin + view.length();
+                    //                 let data = &parent_buffer_data[begin..end];
+                    //                 match mime_type {
+                    //                     "image/jpeg" => {
+                    //                         image::load_from_memory_with_format(data, ImageFormat::Jpeg)
+                    //                     }
+                    //                     "image/png" => {
+                    //                         image::load_from_memory_with_format(data, ImageFormat::Png)
+                    //                     }
+                    //                     _ => panic!(format!(
+                    //                         "unsupported image type (image: {}, mime_type: {})",
+                    //                         img.index(),
+                    //                         mime_type
+                    //                     )),
+                    //                 }
+                    //             }
+                    //             Source::Uri { uri, .. } => {
+                    //                 panic!("Source::Uri not supported: {}", uri)
+                    //             }
+                    //         }
+                    //         .unwrap();
 
-                    let model = Model {
-                        vertex_buffer,
-                        index_buffer,
-                        index_count: indices.len() as u32,
-                    };
+                    //         (
+                    //             Self::create_texture(&graphics_queue, &image),
+                    //             color_info.tex_coord(),
+                    //         )
 
-                    models.push(model);
+                    //         // color_info.tex_coord(),
+                    //         // root,
+                    //         // imp,
+                    //         // base_path,
+                    //         // ));
+                    //     })
+                    //     .unwrap_or_else(|| {
+                    //         // just a fillter image to make descriptor set happy
+                    //         let image = DynamicImage::new_rgb8(1, 1);
+                    //         (Self::create_texture(&graphics_queue, &image), 0)
+                    //     });
+
+                    let image = DynamicImage::new_rgb8(1, 1);
+                    let (texture_image, tex_coord) =
+                        (Self::create_texture(&graphics_queue, &image), 0);
+
+                    let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+
+                    if let Some(_accessor) = primitive.get(&Semantic::Positions) {
+                        let positions =
+                            &reader.read_positions().unwrap().collect::<Vec<[f32; 3]>>();
+                        let normals = &reader
+                            .read_normals()
+                            .map_or(vec![], |normals| normals.collect());
+
+                        let color = &reader
+                            .read_colors(0)
+                            .map_or(vec![], |colors| colors.into_rgba_f32().collect());
+
+                        // TODO: what's channel 0/1
+                        let tex_coords_0 = &reader
+                            .read_tex_coords(0)
+                            .map_or(vec![], |coords| coords.into_f32().collect());
+
+                        let tex_coords_1 = &reader
+                            .read_tex_coords(1)
+                            .map_or(vec![], |coords| coords.into_f32().collect());
+
+                        if tex_coords_0.len() > 0 || tex_coords_1.len() > 0 {
+                            println!("name: {:?}", mesh.name());
+                            println!("tex_coords_0: {:?}", tex_coords_0);
+                            println!("tex_coords_1: {:?}", tex_coords_1);
+                        }
+
+                        let vertices = positions
+                            .iter()
+                            .enumerate()
+                            .map(|(index, position)| {
+                                let position = *position;
+                                let normal = *normals.get(index).unwrap_or(&[1.0, 1.0, 1.0]);
+                                let tex_coords_0 = *tex_coords_0.get(index).unwrap_or(&[0.0, 0.0]);
+                                let tex_coords_1 = *tex_coords_1.get(index).unwrap_or(&[0.0, 0.0]);
+
+                                let color = *color.get(index).unwrap_or(&[1.0, 1.0, 1.0, 1.0]);
+
+                                Vertex {
+                                    base_color_factor,
+                                    color,
+                                    position,
+                                    normal,
+                                    tex: [
+                                        [tex_coords_0[0], 1.0 - tex_coords_0[0]],
+                                        [tex_coords_1[0], 1.0 - tex_coords_1[0]],
+                                    ],
+                                    tex_coord,
+                                    model: root
+                                        .unsafe_get_node_mut(node.index())
+                                        .final_transform
+                                        .to_cols_array_2d(),
+                                }
+                            })
+                            .collect::<Vec<_>>();
+
+                        let indices = reader
+                            .read_indices()
+                            .map(|indices| indices.into_u32().collect::<Vec<_>>())
+                            .unwrap();
+
+                        let vertex_buffer = Self::create_vertex_buffer(&graphics_queue, &vertices);
+                        let index_buffer = Self::create_index_buffer(&graphics_queue, &indices);
+
+                        let model = Model {
+                            vertex_buffer,
+                            index_buffer,
+                            index_count: indices.len() as u32,
+                            descriptor_set: Self::create_descriptor_set(
+                                &graphics_pipeline,
+                                uniform_buffer,
+                                &texture_image,
+                                image_sampler,
+                            ),
+                        };
+
+                        models.push(model);
+                    }
                 }
             }
         }
@@ -1089,10 +1248,7 @@ impl HelloTriangleApplication {
         let uniform_buffer_data = Arc::new(Self::update_uniform_buffer(&self.camera, dimensions));
 
         builder
-            .update_buffer(
-                self.uniform_buffers[image_index].clone(),
-                uniform_buffer_data,
-            )
+            .update_buffer(self.uniform_buffer.clone(), uniform_buffer_data)
             .unwrap()
             .begin_render_pass(
                 framebuffer.clone(),
@@ -1197,7 +1353,7 @@ impl HelloTriangleApplication {
                         let now = Instant::now();
                         let delta_time = now.duration_since(self.last_time).as_secs_f32();
 
-                        println!("delta time: {}", delta_time);
+                        // println!("delta time: {}", delta_time);
 
                         self.last_time = now;
                         self.camera.update(delta_time);
@@ -1227,24 +1383,28 @@ mod vertex_shader {
             #version 450
 
             layout(binding = 0) uniform UniformBufferObject {
-                mat4 model;
+                // mat4 model;
                 mat4 view;
                 mat4 proj;
             } ubo;
 
             layout(location = 0) in vec3 position;
             layout(location = 1) in vec3 normal;
-            layout(location = 2) in vec2 tex;
+            layout(location = 2) in vec2 tex[2];
+            layout(location = 4) in int tex_coord;
+            layout(location = 5) in vec4 color;
+            layout(location = 6) in vec4 base_color_factor;
+            layout(location = 7) in mat4 model;
 
-            layout(location = 0) out vec2 f_tex_coord;
+            layout(location = 0) out vec4 f_color;
 
             out gl_PerVertex {
                 vec4 gl_Position;
             };
 
             void main() {
-                gl_Position = ubo.proj * ubo.view * ubo.model * vec4(position, 1.0);
-                f_tex_coord = tex;
+                gl_Position = ubo.proj * ubo.view * model * vec4(position, 1.0);
+                f_color = color * base_color_factor;
             }
         "
     }
@@ -1258,12 +1418,12 @@ mod fragment_shader {
 
             layout(binding = 1) uniform sampler2D tex_sampler;
 
-            layout(location = 0) in vec2 f_tex_coord;
+            layout(location = 0) in vec4 f_color;
 
             layout(location = 0) out vec4 out_color;
 
             void main() {
-                out_color = texture(tex_sampler, f_tex_coord);
+                out_color = f_color;
             }
         "
     }
