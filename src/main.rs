@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs, io,
     iter::FromIterator,
     path::Path,
@@ -8,7 +8,7 @@ use std::{
 };
 
 use dolly::prelude::*;
-use glam::{Mat4, Quat, Vec3};
+use glam::{EulerRot, Mat4, Quat, Vec2, Vec3};
 use gltf::{image::Source, mesh::util::tex_coords, Node, Semantic};
 use image::{DynamicImage, GenericImageView, ImageFormat};
 use vulkano::{
@@ -48,7 +48,10 @@ use vulkano::{
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event::{
+        ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
+        WindowEvent,
+    },
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
@@ -813,20 +816,18 @@ impl HelloTriangleApplication {
 
         proj.y_axis.y *= -1.0;
 
-        let matrix = proj
-            * view
-            * (
-                // this is needed to fix model rotation
-                Mat4::from_rotation_x(deg_to_rad(90.0))
-                    * Mat4::from_scale_rotation_translation(
-                        transform.scale,
-                        transform.rotation,
-                        transform.translation,
-                    )
+        // this is needed to fix model rotation
+        let model = Mat4::from_rotation_x(deg_to_rad(90.0))
+            * Mat4::from_scale_rotation_translation(
+                transform.scale,
+                transform.rotation,
+                transform.translation,
             );
 
         MVPUniformBufferObject {
-            matrix: matrix.to_cols_array_2d(),
+            view: view.to_cols_array_2d(),
+            proj: proj.to_cols_array_2d(),
+            model: model.to_cols_array_2d(),
         }
     }
 
@@ -1278,6 +1279,9 @@ impl HelloTriangleApplication {
     fn update(&mut self, delta_time: f32) {}
 
     fn main_loop(mut self) {
+        let mut mouse_buttons: HashMap<MouseButton, ElementState> = HashMap::new();
+        let mut last_cursor = Vec2::new(0.0, 0.0);
+
         self.event_loop
             .take()
             .unwrap()
@@ -1297,6 +1301,13 @@ impl HelloTriangleApplication {
                         ..
                     } => {
                         self.recreate_swap_chain = true;
+                    }
+
+                    Event::WindowEvent {
+                        event: WindowEvent::MouseInput { state, button, .. },
+                        ..
+                    } => {
+                        mouse_buttons.insert(button, state);
                     }
 
                     // on key press
@@ -1321,6 +1332,48 @@ impl HelloTriangleApplication {
                         if let Some(VirtualKeyCode::X) = virtual_keycode {
                             camera_driver.rotate_yaw_pitch(90.0, 0.0);
                         }
+                    }
+
+                    Event::WindowEvent {
+                        event:
+                            WindowEvent::MouseWheel {
+                                delta: MouseScrollDelta::PixelDelta(position),
+                                ..
+                            },
+                        ..
+                    } => {
+                        let y = position.y as f32;
+
+                        for model in self.models.iter_mut() {
+                            model.transform.scale += y / 100.0;
+                            model.transform.scale =
+                                model.transform.scale.max(Vec3::new(0.1, 0.1, 0.1));
+                        }
+                    }
+
+                    Event::WindowEvent {
+                        event: WindowEvent::CursorMoved { position, .. },
+                        ..
+                    } => {
+                        match mouse_buttons.get(&MouseButton::Left) {
+                            Some(&ElementState::Pressed) => {
+                                let (x, y) = (position.x as f32, position.y as f32);
+
+                                let delta_x = x - last_cursor.x;
+                                let delta_y = y - last_cursor.y;
+
+                                for model in self.models.iter_mut() {
+                                    model.transform.rotation = model.transform.rotation
+                                        * Quat::from_axis_angle(Vec3::Z, deg_to_rad(delta_x))
+                                        * Quat::from_axis_angle(Vec3::X, deg_to_rad(-delta_y));
+                                }
+                            }
+
+                            _ => {}
+                        };
+
+                        last_cursor.x = position.x as f32;
+                        last_cursor.y = position.y as f32;
                     }
 
                     Event::MainEventsCleared { .. } => {
@@ -1358,7 +1411,9 @@ mod vertex_shader {
             #version 450
 
             layout(binding = 0) uniform MVPUniformBufferObject {
-                mat4 matrix;
+                mat4 view;
+                mat4 proj;
+                mat4 model;
             } mvp_ubo;
 
             layout(location = 0) in vec3 position;
@@ -1368,15 +1423,17 @@ mod vertex_shader {
 
             layout(location = 0) out vec2 f_uv;
             layout(location = 1) out vec3 f_normal;
+            layout(location = 2) out vec3 f_position;
 
             out gl_PerVertex {
                 vec4 gl_Position;
             };
 
             void main() {
-                gl_Position = mvp_ubo.matrix * vec4(position, 1.0);
+                gl_Position = mvp_ubo.proj * mvp_ubo.view * mvp_ubo.model * vec4(position, 1.0);
+                f_position = vec3(mvp_ubo.model * vec4(position, 1.0));
                 f_uv = uv;
-                f_normal = normal;
+                f_normal = mat3(transpose(inverse(mvp_ubo.model))) * normal;  
             }
         "
     }
@@ -1392,15 +1449,19 @@ mod fragment_shader {
 
             layout(location = 0) in vec2 f_uv;
             layout(location = 1) in vec3 f_normal;
+            layout(location = 2) in vec3 f_position;
 
             layout(location = 0) out vec4 out_color;
 
             void main() {
-                vec3 light_dir = vec3(0.0, 1.0, 0.0);
+                vec3 light_pos = vec3(5.0, 0.0, 0.0);
                 vec3 light_color = vec3(1.0, 1.0, 1.0);
                 vec3 ambient = 0.1 * light_color;
 
-                float diff = max(dot(f_normal, light_dir), 0.0);
+                vec3 norm = normalize(f_normal);
+                vec3 light_dir = normalize(light_pos - f_position);  
+
+                float diff = max(dot(norm, light_dir), 0.0);
                 vec3 diffuse = diff * light_color;
                 vec3 result = (ambient + diffuse) * texture(tex_sampler, f_uv).xyz;
                 out_color = vec4(result,  1.0);
