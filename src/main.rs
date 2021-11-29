@@ -74,45 +74,17 @@ struct Vertex {
     tex: [[f32; 2]; 2],
     tex_coord: u32,
     color: [f32; 4],
-    base_color_factor: [f32; 4],
-    model: [[f32; 4]; 4],
 }
 
-// impl Vertex {
-//     fn new(
-//         position: [f32; 3],
-//         normal: [f32; 3],
-//         tex: [[f32; 2]; 2],
-//         tex_coord: u32,
-//         color: [f32; 4],
-//     ) -> Vertex {
-//         Vertex {
-//             position,
-//             normal,
-//             tex,
-//             tex_coord,
-//             color,
-//             model,
-//         }
-//     }
-// }
-
-vulkano::impl_vertex!(
-    Vertex,
-    position,
-    normal,
-    tex,
-    tex_coord,
-    color,
-    base_color_factor,
-    model
-);
+vulkano::impl_vertex!(Vertex, position, normal, tex, tex_coord, color);
 
 struct Model {
     index_count: u32,
     vertex_buffer: Arc<ImmutableBuffer<[Vertex]>>,
     index_buffer: Arc<ImmutableBuffer<[u32]>>,
+    uniform_buffer: Arc<CpuAccessibleBuffer<MVPUniformBufferObject>>,
     descriptor_set: Arc<PersistentDescriptorSet>,
+    model_transform: Mat4,
 }
 
 struct Transform {
@@ -144,7 +116,7 @@ impl Root {
     }
 }
 
-type UniformBufferObject = vertex_shader::ty::UniformBufferObject;
+type MVPUniformBufferObject = vertex_shader::ty::MVPUniformBufferObject;
 
 struct HelloTriangleApplication {
     instance: Arc<Instance>,
@@ -175,9 +147,6 @@ struct HelloTriangleApplication {
 
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     recreate_swap_chain: bool,
-
-    // descriptor_sets: Vec<Arc<PersistentDescriptorSet>>,
-    uniform_buffer: Arc<CpuAccessibleBuffer<UniformBufferObject>>,
 
     last_time: Instant,
 
@@ -236,19 +205,15 @@ impl HelloTriangleApplication {
             .with(Arm::new(Vec3::Z * 4.0))
             .build();
 
-        // TODO: should we have uniform buffer per swap chain image?
-        // vulkan-tutorial says so but I'm not 100% understanding it how it plays with
-        // descriptor sets.
-        let uniform_buffer =
-            Self::create_uniform_buffer(&device.clone(), &camera, swap_chain.dimensions());
-
         let image_sampler = Self::create_image_sampler(&device);
 
         let models = Self::load_models(
+            &device,
             &graphics_queue,
             &graphics_pipeline,
-            &uniform_buffer,
             &image_sampler,
+            &camera,
+            swap_chain_images[0].dimensions(),
         );
 
         let mut app = Self {
@@ -268,7 +233,6 @@ impl HelloTriangleApplication {
 
             command_buffers: vec![],
 
-            uniform_buffer,
             previous_frame_end,
             recreate_swap_chain: false,
 
@@ -828,30 +792,28 @@ impl HelloTriangleApplication {
         device: &Arc<Device>,
         camera: &CameraRig,
         dimensions_u32: [u32; 2],
-    ) -> Arc<CpuAccessibleBuffer<UniformBufferObject>> {
+        model_transform: &Mat4,
+    ) -> Arc<CpuAccessibleBuffer<MVPUniformBufferObject>> {
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
-        let uniform_buffer = Self::update_uniform_buffer(&camera, dimensions);
+        let uniform_buffer_data = Self::update_uniform_buffer(&camera, dimensions, model_transform);
 
         let buffer = CpuAccessibleBuffer::from_data(
             device.clone(),
             BufferUsage::uniform_buffer_transfer_destination(),
             false,
-            uniform_buffer,
+            uniform_buffer_data,
         )
         .unwrap();
 
         buffer
     }
 
-    fn update_uniform_buffer(camera: &CameraRig, dimensions: [f32; 2]) -> UniformBufferObject {
-        // let model = Mat4::from_scale();
-        // let model = Mat4::from_scale_rotation_translation(
-        //     Vec3::new(0.05, 0.05, 0.05),
-        //     Quat::from_rotation_x(deg_to_rad(-90.0)),
-        //     Vec3::ZERO,
-        // );
-
+    fn update_uniform_buffer(
+        camera: &CameraRig,
+        dimensions: [f32; 2],
+        model_transform: &Mat4,
+    ) -> MVPUniformBufferObject {
         let view = Mat4::look_at_rh(
             camera.final_transform.position,
             Vec3::ZERO,
@@ -867,16 +829,14 @@ impl HelloTriangleApplication {
 
         proj.y_axis.y *= -1.0;
 
-        UniformBufferObject {
-            // model: model.to_cols_array_2d(),
-            view: view.to_cols_array_2d(),
-            proj: proj.to_cols_array_2d(),
+        MVPUniformBufferObject {
+            matrix: (proj * view * (*model_transform)).to_cols_array_2d(),
         }
     }
 
     fn create_descriptor_set(
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        uniform_buffer: &Arc<CpuAccessibleBuffer<UniformBufferObject>>,
+        uniform_buffer: &Arc<CpuAccessibleBuffer<MVPUniformBufferObject>>,
         texture_image: &Arc<ImageView<Arc<ImmutableImage>>>,
         image_sampler: &Arc<Sampler>,
     ) -> Arc<PersistentDescriptorSet> {
@@ -981,10 +941,12 @@ impl HelloTriangleApplication {
     }
 
     fn load_models(
+        device: &Arc<Device>,
         graphics_queue: &Arc<Queue>,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        uniform_buffer: &Arc<CpuAccessibleBuffer<UniformBufferObject>>,
         image_sampler: &Arc<Sampler>,
+        camera: &CameraRig,
+        dimensions_u32: [u32; 2],
     ) -> Vec<Model> {
         let mut models = Vec::new();
 
@@ -1116,7 +1078,7 @@ impl HelloTriangleApplication {
                                 let color = *color.get(index).unwrap_or(&[1.0, 1.0, 1.0, 1.0]);
 
                                 Vertex {
-                                    base_color_factor,
+                                    // base_color_factor,
                                     color,
                                     position,
                                     normal,
@@ -1125,10 +1087,6 @@ impl HelloTriangleApplication {
                                         [tex_coords_1[0], 1.0 - tex_coords_1[0]],
                                     ],
                                     tex_coord,
-                                    model: root
-                                        .unsafe_get_node_mut(node.index())
-                                        .final_transform
-                                        .to_cols_array_2d(),
                                 }
                             })
                             .collect::<Vec<_>>();
@@ -1141,16 +1099,30 @@ impl HelloTriangleApplication {
                         let vertex_buffer = Self::create_vertex_buffer(&graphics_queue, &vertices);
                         let index_buffer = Self::create_index_buffer(&graphics_queue, &indices);
 
+                        let model_transform =
+                            root.unsafe_get_node_mut(node.index()).final_transform;
+
+                        let uniform_buffer = Self::create_uniform_buffer(
+                            &device,
+                            &camera,
+                            dimensions_u32,
+                            &model_transform,
+                        );
+
+                        let descriptor_set = Self::create_descriptor_set(
+                            &graphics_pipeline,
+                            &uniform_buffer,
+                            &texture_image,
+                            image_sampler,
+                        );
+
                         let model = Model {
+                            model_transform,
                             vertex_buffer,
                             index_buffer,
                             index_count: indices.len() as u32,
-                            descriptor_set: Self::create_descriptor_set(
-                                &graphics_pipeline,
-                                uniform_buffer,
-                                &texture_image,
-                                image_sampler,
-                            ),
+                            uniform_buffer,
+                            descriptor_set,
                         };
 
                         models.push(model);
@@ -1159,48 +1131,13 @@ impl HelloTriangleApplication {
             }
         }
 
-        // for buffer in buffers {}
-
-        // for node in document.nodes() {
-        //     if let Some(mesh) = node.mesh() {
-        //         for primitive in mesh.primitives() {
-        //             primitive
-        //         }
-        //     }
-        // }
-
-        // // tobj::load_obj(MODEL_PATH, &tobj::LoadOptions::default()).unwrap();
-
-        // for model in models.iter() {
-        //     let mesh = &model.mesh;
-
-        //     for index in &mesh.indices {
-        //         let ind_usize = *index as usize;
-
-        //         let pos = [
-        //             mesh.positions[ind_usize * 3],
-        //             mesh.positions[ind_usize * 3 + 1],
-        //             mesh.positions[ind_usize * 3 + 2],
-        //         ];
-
-        //         let normal = [0.0, 0.0, 0.0];
-
-        //         let tex_coord = [
-        //             mesh.texcoords[ind_usize * 2],
-        //             // this is because Vulkan has flipped Y
-        //             1.0 - mesh.texcoords[ind_usize * 2 + 1],
-        //         ];
-
-        //         let vertex = Vertex::new(pos, normal, tex_coord);
-        //         vertices.push(vertex);
-        //         let index = indices.len() as u32;
-        //         indices.push(index);
-        //     }
-        // }
-
         println!("Loaded {} models", models.len());
 
         models
+    }
+
+    fn create_sync_objects(device: &Arc<Device>) -> Box<dyn GpuFuture> {
+        Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>
     }
 
     fn draw_frame(&mut self) {
@@ -1225,7 +1162,6 @@ impl HelloTriangleApplication {
             self.recreate_swap_chain = true;
         }
 
-        // let camera_command_buffer = self.create_camera_command_buffer(image_index);
         let draw_command_buffer = self.command_buffers[image_index].clone();
 
         let mut builder = AutoCommandBufferBuilder::primary(
@@ -1239,17 +1175,19 @@ impl HelloTriangleApplication {
         let dimensions_u32 = self.swap_chain_images[0].dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
-        // let viewport = Viewport {
-        //     origin: [0.0, 0.0],
-        //     dimensions,
-        //     depth_range: 0.0..1.0,
-        // };
+        for model in &self.models {
+            let data = Arc::new(Self::update_uniform_buffer(
+                &self.camera,
+                dimensions,
+                &model.model_transform,
+            ));
 
-        let uniform_buffer_data = Arc::new(Self::update_uniform_buffer(&self.camera, dimensions));
+            builder
+                .update_buffer(model.uniform_buffer.clone(), data)
+                .unwrap();
+        }
 
         builder
-            .update_buffer(self.uniform_buffer.clone(), uniform_buffer_data)
-            .unwrap()
             .begin_render_pass(
                 framebuffer.clone(),
                 SubpassContents::SecondaryCommandBuffers,
@@ -1297,10 +1235,6 @@ impl HelloTriangleApplication {
                     Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<_>);
             }
         }
-    }
-
-    fn create_sync_objects(device: &Arc<Device>) -> Box<dyn GpuFuture> {
-        Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>
     }
 
     fn main_loop(mut self) {
@@ -1382,19 +1316,15 @@ mod vertex_shader {
         src: "
             #version 450
 
-            layout(binding = 0) uniform UniformBufferObject {
-                // mat4 model;
-                mat4 view;
-                mat4 proj;
-            } ubo;
+            layout(binding = 0) uniform MVPUniformBufferObject {
+                mat4 matrix;
+            } mvp_ubo;
 
             layout(location = 0) in vec3 position;
             layout(location = 1) in vec3 normal;
             layout(location = 2) in vec2 tex[2];
             layout(location = 4) in int tex_coord;
             layout(location = 5) in vec4 color;
-            layout(location = 6) in vec4 base_color_factor;
-            layout(location = 7) in mat4 model;
 
             layout(location = 0) out vec4 f_color;
             layout(location = 1) out vec3 f_normal;
@@ -1404,8 +1334,8 @@ mod vertex_shader {
             };
 
             void main() {
-                gl_Position = ubo.proj * ubo.view * model * vec4(position, 1.0);
-                f_color = color * base_color_factor;
+                gl_Position = mvp_ubo.matrix * vec4(position, 1.0);
+                f_color = color;
                 f_normal = normal;
             }
         "
