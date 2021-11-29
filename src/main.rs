@@ -1,6 +1,8 @@
 use std::{
     collections::HashSet,
+    fs, io,
     iter::FromIterator,
+    path::Path,
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -65,18 +67,18 @@ const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
 
 const TEXTURE_PATH: &str = "res/viking_room.png";
 const MODEL_PATH: &str = "res/damaged_helmet/scene.gltf";
+
 // const MODEL_PATH: &str = "res/336_lrm/scene.gltf";
 
 #[derive(Default, Copy, Clone)]
 struct Vertex {
     position: [f32; 3],
     normal: [f32; 3],
-    tex: [[f32; 2]; 2],
-    tex_coord: u32,
+    uv: [f32; 2],
     color: [f32; 4],
 }
 
-vulkano::impl_vertex!(Vertex, position, normal, tex, tex_coord, color);
+vulkano::impl_vertex!(Vertex, position, normal, uv, color);
 
 struct Model {
     index_count: u32,
@@ -84,27 +86,32 @@ struct Model {
     index_buffer: Arc<ImmutableBuffer<[u32]>>,
     uniform_buffer: Arc<CpuAccessibleBuffer<MVPUniformBufferObject>>,
     descriptor_set: Arc<PersistentDescriptorSet>,
-    model_transform: Mat4,
+
+    transform: Transform,
 }
 
+#[derive(Clone)]
 struct Transform {
-    children: Vec<usize>,
-    final_transform: Mat4,
-    model_transform: Mat4,
+    // children: Vec<usize>,
+    // final_transform: Mat4,
+    translation: Vec3,
+    rotation: Quat,
+    scale: Vec3,
 }
 
-impl Transform {
-    fn update_transform(&mut self, root: &mut Root, parent_transform: &Mat4) {
-        self.final_transform = *parent_transform;
+// impl Transform {
+//     fn update_transform(&mut self, root: &mut Root, parent_transform: &Mat4) {
+//         self.final_transform = *parent_transform;
 
-        self.final_transform = self.final_transform * self.model_transform;
+//         self.final_transform = self.final_transform
+//             * Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation);
 
-        for node_id in &self.children {
-            let transform = root.unsafe_get_node_mut(*node_id);
-            transform.update_transform(root, &self.final_transform);
-        }
-    }
-}
+//         for node_id in &self.children {
+//             let transform = root.unsafe_get_node_mut(*node_id);
+//             transform.update_transform(root, &self.final_transform);
+//         }
+//     }
+// }
 
 struct Root {
     transforms: Vec<Transform>,
@@ -717,29 +724,6 @@ impl HelloTriangleApplication {
             .collect::<Vec<_>>()
     }
 
-    // fn create_camera_command_buffer(&mut self, index: usize) -> Arc<SecondaryAutoCommandBuffer> {
-    //     let queue_family = self.graphics_queue.family();
-
-    //     let dimensions_u32 = self.swap_chain_images[0].dimensions();
-    //     let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-
-    //     let mut builder = AutoCommandBufferBuilder::secondary_graphics(
-    //         self.device.clone(),
-    //         queue_family,
-    //         CommandBufferUsage::SimultaneousUse,
-    //         self.graphics_pipeline.subpass().clone(),
-    //     )
-    //     .unwrap();
-
-    //     let uniform_buffer_data = Arc::new(Self::update_uniform_buffer(&self.camera, dimensions));
-
-    //     builder
-    //         .update_buffer(self.uniform_buffers[index].clone(), uniform_buffer_data)
-    //         .unwrap();
-
-    //     Arc::new(builder.build().unwrap())
-    // }
-
     fn create_command_buffers(&mut self) {
         let dimensions_u32 = self.swap_chain_images[0].dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
@@ -792,11 +776,11 @@ impl HelloTriangleApplication {
         device: &Arc<Device>,
         camera: &CameraRig,
         dimensions_u32: [u32; 2],
-        model_transform: &Mat4,
+        transform: &Transform,
     ) -> Arc<CpuAccessibleBuffer<MVPUniformBufferObject>> {
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
-        let uniform_buffer_data = Self::update_uniform_buffer(&camera, dimensions, model_transform);
+        let uniform_buffer_data = Self::update_uniform_buffer(&camera, dimensions, transform);
 
         let buffer = CpuAccessibleBuffer::from_data(
             device.clone(),
@@ -812,7 +796,7 @@ impl HelloTriangleApplication {
     fn update_uniform_buffer(
         camera: &CameraRig,
         dimensions: [f32; 2],
-        model_transform: &Mat4,
+        transform: &Transform,
     ) -> MVPUniformBufferObject {
         let view = Mat4::look_at_rh(
             camera.final_transform.position,
@@ -829,8 +813,20 @@ impl HelloTriangleApplication {
 
         proj.y_axis.y *= -1.0;
 
+        let matrix = proj
+            * view
+            * (
+                // this is needed to fix model rotation
+                Mat4::from_rotation_x(deg_to_rad(90.0))
+                    * Mat4::from_scale_rotation_translation(
+                        transform.scale,
+                        transform.rotation,
+                        transform.translation,
+                    )
+            );
+
         MVPUniformBufferObject {
-            matrix: (proj * view * (*model_transform)).to_cols_array_2d(),
+            matrix: matrix.to_cols_array_2d(),
         }
     }
 
@@ -957,27 +953,22 @@ impl HelloTriangleApplication {
             .map(|node| {
                 let (translation, rotation, scale) = node.transform().decomposed();
 
-                // println!("node.translation {:?}", translation);
-
                 Transform {
-                    children: node.children().map(|child| child.index()).collect(),
-                    final_transform: Mat4::IDENTITY,
-                    model_transform: Mat4::from_scale_rotation_translation(
-                        Vec3::new(scale[0], scale[1], scale[2]),
-                        // TODO: check order!!!
-                        Quat::from_xyzw(rotation[0], rotation[1], rotation[2], rotation[3]),
-                        Vec3::new(translation[0], translation[1], translation[2]),
-                    ),
+                    // children: node.children().map(|child| child.index()).collect(),
+                    // final_transform: Mat4::IDENTITY,
+                    scale: Vec3::new(scale[0], scale[1], scale[2]),
+                    rotation: Quat::from_xyzw(rotation[0], rotation[1], rotation[2], rotation[3]),
+                    translation: Vec3::new(translation[0], translation[1], translation[2]),
                 }
             })
             .collect::<Vec<_>>();
 
         let mut root = Root { transforms };
 
-        for node_id in document.nodes().map(|child| child.index()) {
-            let node = root.unsafe_get_node_mut(node_id);
-            node.update_transform(&mut root, &Mat4::from_rotation_x(deg_to_rad(90.0)));
-        }
+        // for node_id in document.nodes().map(|child| child.index()) {
+        //     let node = root.unsafe_get_node_mut(node_id);
+        //     node.update_transform(&mut root, &Mat4::from_rotation_x(deg_to_rad(90.0)));
+        // }
 
         for node in document.nodes() {
             if let Some(mesh) = node.mesh() {
@@ -986,57 +977,111 @@ impl HelloTriangleApplication {
 
                     let base_color_factor = pbr.base_color_factor();
 
-                    // let (texture_image, tex_coord) = pbr
-                    //     .base_color_texture()
-                    //     .map(|color_info| {
-                    //         let img = &color_info.texture();
-                    //         // material.base_color_texture = Some(load_texture(
-                    //         let image = match img.source().source() {
-                    //             Source::View { view, mime_type } => {
-                    //                 let parent_buffer_data = &buffers[view.buffer().index()].0;
-                    //                 let begin = view.offset();
-                    //                 let end = begin + view.length();
-                    //                 let data = &parent_buffer_data[begin..end];
-                    //                 match mime_type {
-                    //                     "image/jpeg" => {
-                    //                         image::load_from_memory_with_format(data, ImageFormat::Jpeg)
-                    //                     }
-                    //                     "image/png" => {
-                    //                         image::load_from_memory_with_format(data, ImageFormat::Png)
-                    //                     }
-                    //                     _ => panic!(format!(
-                    //                         "unsupported image type (image: {}, mime_type: {})",
-                    //                         img.index(),
-                    //                         mime_type
-                    //                     )),
-                    //                 }
-                    //             }
-                    //             Source::Uri { uri, .. } => {
-                    //                 panic!("Source::Uri not supported: {}", uri)
-                    //             }
-                    //         }
-                    //         .unwrap();
+                    let (texture_image, tex_coord) = pbr
+                        .base_color_texture()
+                        .map(|color_info| {
+                            let img = &color_info.texture();
+                            // material.base_color_texture = Some(load_texture(
+                            let image = match img.source().source() {
+                                Source::View { view, mime_type } => {
+                                    let parent_buffer_data = &buffers[view.buffer().index()].0;
+                                    let begin = view.offset();
+                                    let end = begin + view.length();
+                                    let data = &parent_buffer_data[begin..end];
+                                    match mime_type {
+                                        "image/jpeg" => image::load_from_memory_with_format(
+                                            data,
+                                            ImageFormat::Jpeg,
+                                        ),
+                                        "image/png" => image::load_from_memory_with_format(
+                                            data,
+                                            ImageFormat::Png,
+                                        ),
+                                        _ => panic!(format!(
+                                            "unsupported image type (image: {}, mime_type: {})",
+                                            img.index(),
+                                            mime_type
+                                        )),
+                                    }
+                                }
+                                Source::Uri { uri, mime_type } => {
+                                    let base_path = Path::new(MODEL_PATH);
 
-                    //         (
-                    //             Self::create_texture(&graphics_queue, &image),
-                    //             color_info.tex_coord(),
-                    //         )
+                                    if uri.starts_with("data:") {
+                                        let encoded = uri.split(',').nth(1).unwrap();
+                                        let data = base64::decode(&encoded).unwrap();
+                                        let mime_type = if let Some(ty) = mime_type {
+                                            ty
+                                        } else {
+                                            uri.split(',')
+                                                .nth(0)
+                                                .unwrap()
+                                                .split(':')
+                                                .nth(1)
+                                                .unwrap()
+                                                .split(';')
+                                                .nth(0)
+                                                .unwrap()
+                                        };
 
-                    //         // color_info.tex_coord(),
-                    //         // root,
-                    //         // imp,
-                    //         // base_path,
-                    //         // ));
-                    //     })
-                    //     .unwrap_or_else(|| {
-                    //         // just a fillter image to make descriptor set happy
-                    //         let image = DynamicImage::new_rgb8(1, 1);
-                    //         (Self::create_texture(&graphics_queue, &image), 0)
-                    //     });
+                                        match mime_type {
+                                            "image/jpeg" => image::load_from_memory_with_format(
+                                                &data,
+                                                ImageFormat::Jpeg,
+                                            ),
+                                            "image/png" => image::load_from_memory_with_format(
+                                                &data,
+                                                ImageFormat::Png,
+                                            ),
+                                            _ => panic!(format!(
+                                                "unsupported image type (image: {}, mime_type: {})",
+                                                img.index(),
+                                                mime_type
+                                            )),
+                                        }
+                                    } else if let Some(mime_type) = mime_type {
+                                        let path = base_path
+                                            .parent()
+                                            .unwrap_or_else(|| Path::new("./"))
+                                            .join(uri);
 
-                    let image = DynamicImage::new_rgb8(1, 1);
-                    let (texture_image, tex_coord) =
-                        (Self::create_texture(&graphics_queue, &image), 0);
+                                        println!("loading texture from {}", path.display());
+
+                                        let file = fs::File::open(path).unwrap();
+                                        let reader = io::BufReader::new(file);
+                                        match mime_type {
+                                            "image/jpeg" => image::load(reader, ImageFormat::Jpeg),
+                                            "image/png" => image::load(reader, ImageFormat::Png),
+                                            _ => panic!(format!(
+                                                "unsupported image type (image: {}, mime_type: {})",
+                                                img.index(),
+                                                mime_type
+                                            )),
+                                        }
+                                    } else {
+                                        let path = base_path
+                                            .parent()
+                                            .unwrap_or_else(|| Path::new("./"))
+                                            .join(uri);
+
+                                        println!("loading texture from {}", path.display());
+
+                                        image::open(path)
+                                    }
+                                }
+                            }
+                            .unwrap();
+
+                            (
+                                Self::create_texture(&graphics_queue, &image),
+                                color_info.tex_coord(),
+                            )
+                        })
+                        .unwrap_or_else(|| {
+                            // just a fillter image to make descriptor set happy
+                            let image = DynamicImage::new_rgb8(1, 1);
+                            (Self::create_texture(&graphics_queue, &image), 0)
+                        });
 
                     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
@@ -1051,7 +1096,7 @@ impl HelloTriangleApplication {
                             .read_colors(0)
                             .map_or(vec![], |colors| colors.into_rgba_f32().collect());
 
-                        // TODO: what's channel 0/1
+                        // TODO: what gltf has more than one uv channel?
                         let tex_coords_0 = &reader
                             .read_tex_coords(0)
                             .map_or(vec![], |coords| coords.into_f32().collect());
@@ -1059,12 +1104,6 @@ impl HelloTriangleApplication {
                         let tex_coords_1 = &reader
                             .read_tex_coords(1)
                             .map_or(vec![], |coords| coords.into_f32().collect());
-
-                        if tex_coords_0.len() > 0 || tex_coords_1.len() > 0 {
-                            println!("name: {:?}", mesh.name());
-                            println!("tex_coords_0: {:?}", tex_coords_0);
-                            println!("tex_coords_1: {:?}", tex_coords_1);
-                        }
 
                         let vertices = positions
                             .iter()
@@ -1077,16 +1116,16 @@ impl HelloTriangleApplication {
 
                                 let color = *color.get(index).unwrap_or(&[1.0, 1.0, 1.0, 1.0]);
 
+                                let uv = [
+                                    [tex_coords_0[0], tex_coords_0[1]],
+                                    [tex_coords_1[0], tex_coords_1[1]],
+                                ][tex_coord as usize];
+
                                 Vertex {
-                                    // base_color_factor,
                                     color,
                                     position,
                                     normal,
-                                    tex: [
-                                        [tex_coords_0[0], 1.0 - tex_coords_0[0]],
-                                        [tex_coords_1[0], 1.0 - tex_coords_1[0]],
-                                    ],
-                                    tex_coord,
+                                    uv,
                                 }
                             })
                             .collect::<Vec<_>>();
@@ -1099,14 +1138,13 @@ impl HelloTriangleApplication {
                         let vertex_buffer = Self::create_vertex_buffer(&graphics_queue, &vertices);
                         let index_buffer = Self::create_index_buffer(&graphics_queue, &indices);
 
-                        let model_transform =
-                            root.unsafe_get_node_mut(node.index()).final_transform;
+                        let transform = root.unsafe_get_node_mut(node.index());
 
                         let uniform_buffer = Self::create_uniform_buffer(
                             &device,
                             &camera,
                             dimensions_u32,
-                            &model_transform,
+                            &transform,
                         );
 
                         let descriptor_set = Self::create_descriptor_set(
@@ -1117,7 +1155,7 @@ impl HelloTriangleApplication {
                         );
 
                         let model = Model {
-                            model_transform,
+                            transform: (*transform).clone(),
                             vertex_buffer,
                             index_buffer,
                             index_count: indices.len() as u32,
@@ -1179,7 +1217,7 @@ impl HelloTriangleApplication {
             let data = Arc::new(Self::update_uniform_buffer(
                 &self.camera,
                 dimensions,
-                &model.model_transform,
+                &model.transform,
             ));
 
             builder
@@ -1237,6 +1275,8 @@ impl HelloTriangleApplication {
         }
     }
 
+    fn update(&mut self, delta_time: f32) {}
+
     fn main_loop(mut self) {
         self.event_loop
             .take()
@@ -1292,6 +1332,7 @@ impl HelloTriangleApplication {
                         self.last_time = now;
                         self.camera.update(delta_time);
 
+                        self.update(delta_time);
                         self.draw_frame();
                     }
 
@@ -1322,11 +1363,10 @@ mod vertex_shader {
 
             layout(location = 0) in vec3 position;
             layout(location = 1) in vec3 normal;
-            layout(location = 2) in vec2 tex[2];
-            layout(location = 4) in int tex_coord;
-            layout(location = 5) in vec4 color;
+            layout(location = 2) in vec2 uv;
+            layout(location = 3) in vec4 color;
 
-            layout(location = 0) out vec4 f_color;
+            layout(location = 0) out vec2 f_uv;
             layout(location = 1) out vec3 f_normal;
 
             out gl_PerVertex {
@@ -1335,7 +1375,7 @@ mod vertex_shader {
 
             void main() {
                 gl_Position = mvp_ubo.matrix * vec4(position, 1.0);
-                f_color = color;
+                f_uv = uv;
                 f_normal = normal;
             }
         "
@@ -1350,7 +1390,7 @@ mod fragment_shader {
 
             layout(binding = 1) uniform sampler2D tex_sampler;
 
-            layout(location = 0) in vec4 f_color;
+            layout(location = 0) in vec2 f_uv;
             layout(location = 1) in vec3 f_normal;
 
             layout(location = 0) out vec4 out_color;
@@ -1362,7 +1402,7 @@ mod fragment_shader {
 
                 float diff = max(dot(f_normal, light_dir), 0.0);
                 vec3 diffuse = diff * light_color;
-                vec3 result = (ambient + diffuse) * f_color.xyz;
+                vec3 result = (ambient + diffuse) * texture(tex_sampler, f_uv).xyz;
                 out_color = vec4(result,  1.0);
             }
         "
