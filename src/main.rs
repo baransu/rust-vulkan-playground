@@ -1,25 +1,22 @@
 use std::{
     collections::{HashMap, HashSet},
+    f32::consts::PI,
     fs, io,
     iter::FromIterator,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::Instant,
 };
 
-use dolly::prelude::*;
-use glam::{EulerRot, Mat4, Quat, Vec2, Vec3};
-use gltf::{image::Source, mesh::util::tex_coords, Node, Semantic};
+use glam::{Mat4, Quat, Vec3};
+use gltf::{image::Source, Semantic};
 use image::{DynamicImage, GenericImageView, ImageFormat};
 use vulkano::{
-    buffer::{
-        immutable::ImmutableBufferInitialization, BufferUsage, CpuAccessibleBuffer, ImmutableBuffer,
-    },
+    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        SecondaryAutoCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer, SubpassContents,
     },
-    descriptor_set::{pool::StdDescriptorPool, PersistentDescriptorSet},
+    descriptor_set::PersistentDescriptorSet,
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceExtensions, Features, Queue,
@@ -43,15 +40,12 @@ use vulkano::{
         acquire_next_image, AcquireError, ColorSpace, CompositeAlpha, PresentMode,
         SupportedPresentModes, Surface, Swapchain,
     },
-    sync::{self, GpuFuture, JoinFuture, SharingMode},
+    sync::{self, GpuFuture, SharingMode},
     Version,
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{
-    event::{
-        ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
-        WindowEvent,
-    },
+    event::{DeviceEvent, ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
@@ -68,7 +62,7 @@ const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
     ..DeviceExtensions::none()
 };
 
-const TEXTURE_PATH: &str = "res/viking_room.png";
+// const TEXTURE_PATH: &str = "res/viking_room.png";
 const MODEL_PATH: &str = "res/damaged_helmet/scene.gltf";
 
 // const MODEL_PATH: &str = "res/336_lrm/scene.gltf";
@@ -128,6 +122,38 @@ impl Root {
 
 type MVPUniformBufferObject = vertex_shader::ty::MVPUniformBufferObject;
 
+struct Camera {
+    theta: f32,
+    phi: f32,
+    r: f32,
+    target: Vec3,
+}
+
+impl Camera {
+    fn position(&self) -> Vec3 {
+        Vec3::new(
+            self.target[0] + self.r * self.phi.sin() * self.theta.sin(),
+            self.target[1] + self.r * self.phi.cos(),
+            self.target[2] + self.r * self.phi.sin() * self.theta.cos(),
+        )
+    }
+
+    fn target(&self) -> Vec3 {
+        self.target
+    }
+}
+
+impl Default for Camera {
+    fn default() -> Self {
+        Camera {
+            theta: 0.0_f32.to_radians(),
+            phi: 90.0_f32.to_radians(),
+            r: 5.0,
+            target: Vec3::new(0.0, 0.0, 0.0),
+        }
+    }
+}
+
 struct HelloTriangleApplication {
     instance: Arc<Instance>,
     debug_callback: Option<DebugCallback>,
@@ -162,7 +188,7 @@ struct HelloTriangleApplication {
 
     models: Vec<Model>,
 
-    camera: CameraRig,
+    camera: Camera,
 }
 
 impl HelloTriangleApplication {
@@ -209,11 +235,7 @@ impl HelloTriangleApplication {
 
         let previous_frame_end = Some(Self::create_sync_objects(&device));
 
-        let camera = CameraRig::builder()
-            .with(YawPitch::new().yaw_degrees(45.0).pitch_degrees(-30.0))
-            .with(Smooth::new_rotation(1.5))
-            .with(Arm::new(Vec3::Z * 4.0))
-            .build();
+        let camera = Default::default();
 
         let image_sampler = Self::create_image_sampler(&device);
 
@@ -740,8 +762,7 @@ impl HelloTriangleApplication {
         self.command_buffers = self
             .swap_chain_framebuffers
             .iter()
-            .enumerate()
-            .map(|(index, _framebuffer)| {
+            .map(|_framebuffer| {
                 let mut builder = AutoCommandBufferBuilder::secondary_graphics(
                     self.device.clone(),
                     self.graphics_queue.family(),
@@ -777,7 +798,7 @@ impl HelloTriangleApplication {
 
     fn create_uniform_buffer(
         device: &Arc<Device>,
-        camera: &CameraRig,
+        camera: &Camera,
         dimensions_u32: [u32; 2],
         transform: &Transform,
     ) -> Arc<CpuAccessibleBuffer<MVPUniformBufferObject>> {
@@ -797,15 +818,11 @@ impl HelloTriangleApplication {
     }
 
     fn update_uniform_buffer(
-        camera: &CameraRig,
+        camera: &Camera,
         dimensions: [f32; 2],
         transform: &Transform,
     ) -> MVPUniformBufferObject {
-        let view = Mat4::look_at_rh(
-            camera.final_transform.position,
-            Vec3::ZERO,
-            camera.final_transform.up(),
-        );
+        let view = Mat4::look_at_rh(camera.position(), camera.target(), Vec3::Y);
 
         let mut proj = Mat4::perspective_rh(
             deg_to_rad(45.0),
@@ -942,7 +959,7 @@ impl HelloTriangleApplication {
         graphics_queue: &Arc<Queue>,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         image_sampler: &Arc<Sampler>,
-        camera: &CameraRig,
+        camera: &Camera,
         dimensions_u32: [u32; 2],
     ) -> Vec<Model> {
         let mut models = Vec::new();
@@ -1276,11 +1293,9 @@ impl HelloTriangleApplication {
         }
     }
 
-    fn update(&mut self, delta_time: f32) {}
-
     fn main_loop(mut self) {
         let mut mouse_buttons: HashMap<MouseButton, ElementState> = HashMap::new();
-        let mut last_cursor = Vec2::new(0.0, 0.0);
+        // let mut cursor_delta = Vec2::new(0.0, 0.0);
 
         self.event_loop
             .take()
@@ -1310,30 +1325,21 @@ impl HelloTriangleApplication {
                         mouse_buttons.insert(button, state);
                     }
 
-                    // on key press
-                    Event::WindowEvent {
-                        event:
-                            WindowEvent::KeyboardInput {
-                                input:
-                                    KeyboardInput {
-                                        virtual_keycode,
-                                        state: ElementState::Pressed,
-                                        ..
-                                    },
-                                ..
-                            },
-                        ..
-                    } => {
-                        let camera_driver = self.camera.driver_mut::<YawPitch>();
-
-                        if let Some(VirtualKeyCode::Z) = virtual_keycode {
-                            camera_driver.rotate_yaw_pitch(-90.0, 0.0);
-                        }
-                        if let Some(VirtualKeyCode::X) = virtual_keycode {
-                            camera_driver.rotate_yaw_pitch(90.0, 0.0);
-                        }
-                    }
-
+                    // // on key press
+                    // Event::WindowEvent {
+                    //     event:
+                    //         WindowEvent::KeyboardInput {
+                    //             input:
+                    //                 KeyboardInput {
+                    //                     virtual_keycode,
+                    //                     state: ElementState::Pressed,
+                    //                     ..
+                    //                 },
+                    //             ..
+                    //         },
+                    //     ..
+                    // } => {
+                    // }
                     Event::WindowEvent {
                         event:
                             WindowEvent::MouseWheel {
@@ -1351,41 +1357,38 @@ impl HelloTriangleApplication {
                         }
                     }
 
-                    Event::WindowEvent {
-                        event: WindowEvent::CursorMoved { position, .. },
+                    Event::DeviceEvent {
+                        event: DeviceEvent::MouseMotion { delta, .. },
                         ..
                     } => {
                         match mouse_buttons.get(&MouseButton::Left) {
                             Some(&ElementState::Pressed) => {
-                                let (x, y) = (position.x as f32, position.y as f32);
+                                let screen_width = self.swap_chain.dimensions()[0] as f32;
+                                let screen_height = self.swap_chain.dimensions()[1] as f32;
 
-                                let delta_x = x - last_cursor.x;
-                                let delta_y = y - last_cursor.y;
+                                let theta = 2.0 * PI * (delta.0 as f32) / screen_width;
+                                let phi = 2.0 * PI * (delta.1 as f32) / screen_height;
 
-                                for model in self.models.iter_mut() {
-                                    model.transform.rotation = model.transform.rotation
-                                        * Quat::from_axis_angle(Vec3::Z, deg_to_rad(delta_x))
-                                        * Quat::from_axis_angle(Vec3::X, deg_to_rad(-delta_y));
-                                }
+                                self.camera.theta -= theta;
+
+                                self.camera.phi = (self.camera.phi - phi)
+                                    .clamp(10.0_f32.to_radians(), 170.0_f32.to_radians());
                             }
 
                             _ => {}
                         };
-
-                        last_cursor.x = position.x as f32;
-                        last_cursor.y = position.y as f32;
                     }
 
                     Event::MainEventsCleared { .. } => {
                         let now = Instant::now();
                         let delta_time = now.duration_since(self.last_time).as_secs_f32();
 
-                        // println!("delta time: {}", delta_time);
+                        let fps = 1.0 / delta_time;
+
+                        println!("fps: {}", fps);
 
                         self.last_time = now;
-                        self.camera.update(delta_time);
 
-                        self.update(delta_time);
                         self.draw_frame();
                     }
 
