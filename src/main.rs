@@ -1,25 +1,22 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
+    f32::consts::PI,
     fs, io,
     iter::FromIterator,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::Instant,
 };
 
-use dolly::prelude::*;
 use glam::{Mat4, Quat, Vec3};
-use gltf::{image::Source, mesh::util::tex_coords, Node, Semantic};
+use gltf::{image::Source, Semantic};
 use image::{DynamicImage, GenericImageView, ImageFormat};
 use vulkano::{
-    buffer::{
-        immutable::ImmutableBufferInitialization, BufferUsage, CpuAccessibleBuffer, ImmutableBuffer,
-    },
+    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        SecondaryAutoCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer, SubpassContents,
     },
-    descriptor_set::{pool::StdDescriptorPool, PersistentDescriptorSet},
+    descriptor_set::PersistentDescriptorSet,
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceExtensions, Features, Queue,
@@ -43,12 +40,12 @@ use vulkano::{
         acquire_next_image, AcquireError, ColorSpace, CompositeAlpha, PresentMode,
         SupportedPresentModes, Surface, Swapchain,
     },
-    sync::{self, GpuFuture, JoinFuture, SharingMode},
+    sync::{self, GpuFuture, SharingMode},
     Version,
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event::{DeviceEvent, ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
@@ -65,7 +62,7 @@ const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
     ..DeviceExtensions::none()
 };
 
-const TEXTURE_PATH: &str = "res/viking_room.png";
+// const TEXTURE_PATH: &str = "res/viking_room.png";
 const MODEL_PATH: &str = "res/damaged_helmet/scene.gltf";
 
 // const MODEL_PATH: &str = "res/336_lrm/scene.gltf";
@@ -125,6 +122,38 @@ impl Root {
 
 type MVPUniformBufferObject = vertex_shader::ty::MVPUniformBufferObject;
 
+struct Camera {
+    theta: f32,
+    phi: f32,
+    r: f32,
+    target: Vec3,
+}
+
+impl Camera {
+    fn position(&self) -> Vec3 {
+        Vec3::new(
+            self.target[0] + self.r * self.phi.sin() * self.theta.sin(),
+            self.target[1] + self.r * self.phi.cos(),
+            self.target[2] + self.r * self.phi.sin() * self.theta.cos(),
+        )
+    }
+
+    fn target(&self) -> Vec3 {
+        self.target
+    }
+}
+
+impl Default for Camera {
+    fn default() -> Self {
+        Camera {
+            theta: 0.0_f32.to_radians(),
+            phi: 90.0_f32.to_radians(),
+            r: 5.0,
+            target: Vec3::new(0.0, 0.0, 0.0),
+        }
+    }
+}
+
 struct HelloTriangleApplication {
     instance: Arc<Instance>,
     debug_callback: Option<DebugCallback>,
@@ -159,7 +188,7 @@ struct HelloTriangleApplication {
 
     models: Vec<Model>,
 
-    camera: CameraRig,
+    camera: Camera,
 }
 
 impl HelloTriangleApplication {
@@ -206,11 +235,7 @@ impl HelloTriangleApplication {
 
         let previous_frame_end = Some(Self::create_sync_objects(&device));
 
-        let camera = CameraRig::builder()
-            .with(YawPitch::new().yaw_degrees(45.0).pitch_degrees(-30.0))
-            .with(Smooth::new_rotation(1.5))
-            .with(Arm::new(Vec3::Z * 4.0))
-            .build();
+        let camera = Default::default();
 
         let image_sampler = Self::create_image_sampler(&device);
 
@@ -737,8 +762,7 @@ impl HelloTriangleApplication {
         self.command_buffers = self
             .swap_chain_framebuffers
             .iter()
-            .enumerate()
-            .map(|(index, _framebuffer)| {
+            .map(|_framebuffer| {
                 let mut builder = AutoCommandBufferBuilder::secondary_graphics(
                     self.device.clone(),
                     self.graphics_queue.family(),
@@ -774,7 +798,7 @@ impl HelloTriangleApplication {
 
     fn create_uniform_buffer(
         device: &Arc<Device>,
-        camera: &CameraRig,
+        camera: &Camera,
         dimensions_u32: [u32; 2],
         transform: &Transform,
     ) -> Arc<CpuAccessibleBuffer<MVPUniformBufferObject>> {
@@ -794,15 +818,11 @@ impl HelloTriangleApplication {
     }
 
     fn update_uniform_buffer(
-        camera: &CameraRig,
+        camera: &Camera,
         dimensions: [f32; 2],
         transform: &Transform,
     ) -> MVPUniformBufferObject {
-        let view = Mat4::look_at_rh(
-            camera.final_transform.position,
-            Vec3::ZERO,
-            camera.final_transform.up(),
-        );
+        let view = Mat4::look_at_rh(camera.position(), camera.target(), Vec3::Y);
 
         let mut proj = Mat4::perspective_rh(
             deg_to_rad(45.0),
@@ -813,20 +833,18 @@ impl HelloTriangleApplication {
 
         proj.y_axis.y *= -1.0;
 
-        let matrix = proj
-            * view
-            * (
-                // this is needed to fix model rotation
-                Mat4::from_rotation_x(deg_to_rad(90.0))
-                    * Mat4::from_scale_rotation_translation(
-                        transform.scale,
-                        transform.rotation,
-                        transform.translation,
-                    )
+        // this is needed to fix model rotation
+        let model = Mat4::from_rotation_x(deg_to_rad(90.0))
+            * Mat4::from_scale_rotation_translation(
+                transform.scale,
+                transform.rotation,
+                transform.translation,
             );
 
         MVPUniformBufferObject {
-            matrix: matrix.to_cols_array_2d(),
+            view: view.to_cols_array_2d(),
+            proj: proj.to_cols_array_2d(),
+            model: model.to_cols_array_2d(),
         }
     }
 
@@ -941,7 +959,7 @@ impl HelloTriangleApplication {
         graphics_queue: &Arc<Queue>,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         image_sampler: &Arc<Sampler>,
-        camera: &CameraRig,
+        camera: &Camera,
         dimensions_u32: [u32; 2],
     ) -> Vec<Model> {
         let mut models = Vec::new();
@@ -1275,9 +1293,10 @@ impl HelloTriangleApplication {
         }
     }
 
-    fn update(&mut self, delta_time: f32) {}
-
     fn main_loop(mut self) {
+        let mut mouse_buttons: HashMap<MouseButton, ElementState> = HashMap::new();
+        // let mut cursor_delta = Vec2::new(0.0, 0.0);
+
         self.event_loop
             .take()
             .unwrap()
@@ -1299,40 +1318,77 @@ impl HelloTriangleApplication {
                         self.recreate_swap_chain = true;
                     }
 
-                    // on key press
+                    Event::WindowEvent {
+                        event: WindowEvent::MouseInput { state, button, .. },
+                        ..
+                    } => {
+                        mouse_buttons.insert(button, state);
+                    }
+
+                    // // on key press
+                    // Event::WindowEvent {
+                    //     event:
+                    //         WindowEvent::KeyboardInput {
+                    //             input:
+                    //                 KeyboardInput {
+                    //                     virtual_keycode,
+                    //                     state: ElementState::Pressed,
+                    //                     ..
+                    //                 },
+                    //             ..
+                    //         },
+                    //     ..
+                    // } => {
+                    // }
                     Event::WindowEvent {
                         event:
-                            WindowEvent::KeyboardInput {
-                                input:
-                                    KeyboardInput {
-                                        virtual_keycode,
-                                        state: ElementState::Pressed,
-                                        ..
-                                    },
+                            WindowEvent::MouseWheel {
+                                delta: MouseScrollDelta::PixelDelta(position),
                                 ..
                             },
                         ..
                     } => {
-                        let camera_driver = self.camera.driver_mut::<YawPitch>();
+                        let y = position.y as f32;
 
-                        if let Some(VirtualKeyCode::Z) = virtual_keycode {
-                            camera_driver.rotate_yaw_pitch(-90.0, 0.0);
+                        for model in self.models.iter_mut() {
+                            model.transform.scale += y / 100.0;
+                            model.transform.scale =
+                                model.transform.scale.max(Vec3::new(0.1, 0.1, 0.1));
                         }
-                        if let Some(VirtualKeyCode::X) = virtual_keycode {
-                            camera_driver.rotate_yaw_pitch(90.0, 0.0);
-                        }
+                    }
+
+                    Event::DeviceEvent {
+                        event: DeviceEvent::MouseMotion { delta, .. },
+                        ..
+                    } => {
+                        match mouse_buttons.get(&MouseButton::Left) {
+                            Some(&ElementState::Pressed) => {
+                                let screen_width = self.swap_chain.dimensions()[0] as f32;
+                                let screen_height = self.swap_chain.dimensions()[1] as f32;
+
+                                let theta = 2.0 * PI * (delta.0 as f32) / screen_width;
+                                let phi = 2.0 * PI * (delta.1 as f32) / screen_height;
+
+                                self.camera.theta -= theta;
+
+                                self.camera.phi = (self.camera.phi - phi)
+                                    .clamp(10.0_f32.to_radians(), 170.0_f32.to_radians());
+                            }
+
+                            _ => {}
+                        };
                     }
 
                     Event::MainEventsCleared { .. } => {
                         let now = Instant::now();
                         let delta_time = now.duration_since(self.last_time).as_secs_f32();
 
-                        // println!("delta time: {}", delta_time);
+                        let fps = 1.0 / delta_time;
+
+                        println!("fps: {}", fps);
 
                         self.last_time = now;
-                        self.camera.update(delta_time);
 
-                        self.update(delta_time);
                         self.draw_frame();
                     }
 
@@ -1358,7 +1414,9 @@ mod vertex_shader {
             #version 450
 
             layout(binding = 0) uniform MVPUniformBufferObject {
-                mat4 matrix;
+                mat4 view;
+                mat4 proj;
+                mat4 model;
             } mvp_ubo;
 
             layout(location = 0) in vec3 position;
@@ -1368,15 +1426,17 @@ mod vertex_shader {
 
             layout(location = 0) out vec2 f_uv;
             layout(location = 1) out vec3 f_normal;
+            layout(location = 2) out vec3 f_position;
 
             out gl_PerVertex {
                 vec4 gl_Position;
             };
 
             void main() {
-                gl_Position = mvp_ubo.matrix * vec4(position, 1.0);
+                gl_Position = mvp_ubo.proj * mvp_ubo.view * mvp_ubo.model * vec4(position, 1.0);
+                f_position = vec3(mvp_ubo.model * vec4(position, 1.0));
                 f_uv = uv;
-                f_normal = normal;
+                f_normal = mat3(transpose(inverse(mvp_ubo.model))) * normal;  
             }
         "
     }
@@ -1392,15 +1452,19 @@ mod fragment_shader {
 
             layout(location = 0) in vec2 f_uv;
             layout(location = 1) in vec3 f_normal;
+            layout(location = 2) in vec3 f_position;
 
             layout(location = 0) out vec4 out_color;
 
             void main() {
-                vec3 light_dir = vec3(0.0, 1.0, 0.0);
+                vec3 light_pos = vec3(5.0, 0.0, 0.0);
                 vec3 light_color = vec3(1.0, 1.0, 1.0);
                 vec3 ambient = 0.1 * light_color;
 
-                float diff = max(dot(f_normal, light_dir), 0.0);
+                vec3 norm = normalize(f_normal);
+                vec3 light_dir = normalize(light_pos - f_position);  
+
+                float diff = max(dot(norm, light_dir), 0.0);
                 vec3 diffuse = diff * light_color;
                 vec3 result = (ambient + diffuse) * texture(tex_sampler, f_uv).xyz;
                 out_color = vec4(result,  1.0);

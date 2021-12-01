@@ -442,15 +442,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dolly"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc90faadd2147490aedcee30f3a4187165ad282ae62a949113edb2713873e94c"
-dependencies = [
- "glam",
-]
-
-[[package]]
 name = "downcast-rs"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1162,7 +1153,6 @@ name = "rust-vulkan"
 version = "0.1.0"
 dependencies = [
  "base64 0.13.0",
- "dolly",
  "glam",
  "gltf",
  "image",
