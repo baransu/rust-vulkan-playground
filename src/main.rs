@@ -1,34 +1,22 @@
-use std::{
-    collections::{HashMap, HashSet},
-    f32::consts::PI,
-    fs, io,
-    iter::FromIterator,
-    path::Path,
-    sync::Arc,
-    time::Instant,
-};
+pub mod renderer;
+
+use std::{collections::HashMap, f32::consts::PI, fs, io, path::Path, sync::Arc, time::Instant};
 
 use glam::{Mat4, Quat, Vec3};
 use gltf::{image::Source, Semantic};
 use image::{DynamicImage, GenericImageView, ImageFormat};
+use renderer::context::Context;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer, SubpassContents,
     },
     descriptor_set::PersistentDescriptorSet,
-    device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceExtensions, Features, Queue,
-    },
+    device::{Device, Queue},
     format::{ClearValue, Format},
     image::{
         view::ImageView, AttachmentImage, ImageDimensions, ImageUsage, ImmutableImage,
-        MipmapsCount, SampleCount, SwapchainImage,
-    },
-    instance::{
-        debug::{DebugCallback, MessageSeverity, MessageType},
-        layers_list, ApplicationInfo, Instance, InstanceExtensions,
+        MipmapsCount, SampleCount,
     },
     pipeline::{
         depth_stencil::DepthStencil, viewport::Viewport, GraphicsPipeline, PipelineBindPoint,
@@ -36,30 +24,12 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass},
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     single_pass_renderpass,
-    swapchain::{
-        acquire_next_image, AcquireError, ColorSpace, CompositeAlpha, PresentMode,
-        SupportedPresentModes, Surface, Swapchain,
-    },
-    sync::{self, GpuFuture, SharingMode},
-    Version,
+    swapchain::{acquire_next_image, AcquireError},
+    sync::{self, GpuFuture},
 };
-use vulkano_win::VkSurfaceBuild;
 use winit::{
     event::{DeviceEvent, ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
-};
-
-const VALIDATION_LAYERS: &[&str] = &["VK_LAYER_LUNARG_standard_validation"];
-
-#[cfg(all(debug_assertions))]
-const ENABLE_VALIDATION_LAYERS: bool = true;
-#[cfg(not(debug_assertions))]
-const ENABLE_VALIDATION_LAYERS: bool = false;
-
-const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
-    khr_swapchain: true,
-    ..DeviceExtensions::none()
+    event_loop::ControlFlow,
 };
 
 // const TEXTURE_PATH: &str = "res/viking_room.png";
@@ -154,25 +124,9 @@ impl Default for Camera {
     }
 }
 
-struct HelloTriangleApplication {
-    instance: Arc<Instance>,
-    debug_callback: Option<DebugCallback>,
-    /**
-     * This is why we need to wrap event_loop into Option
-     *
-     * https://stackoverflow.com/questions/67349506/ownership-issues-when-attempting-to-work-with-member-variables-passed-to-closure
-     *
-     * I don't really understand how it works and why exactly it's needed.
-     */
-    event_loop: Option<EventLoop<()>>,
-    surface: Arc<Surface<Window>>,
+struct Application {
+    context: Context,
 
-    physical_device_index: usize, // can't store PhysicalDevice directly (lifetime issues)
-    device: Arc<Device>,
-    graphics_queue: Arc<Queue>,
-    present_queue: Arc<Queue>,
-    swap_chain: Arc<Swapchain<Window>>,
-    swap_chain_images: Vec<Arc<SwapchainImage<Window>>>,
     render_pass: Arc<RenderPass>,
 
     graphics_pipeline: Arc<GraphicsPipeline>,
@@ -191,74 +145,35 @@ struct HelloTriangleApplication {
     camera: Camera,
 }
 
-impl HelloTriangleApplication {
+impl Application {
     pub fn initialize() -> Self {
-        let instance = Self::create_instance();
-        let debug_callback = Self::setup_debug_callback(&instance);
-        let (event_loop, surface) = Self::init_window(&instance);
-
-        let (physical_device_index, unique_queue_families_ids) =
-            Self::pick_physical_device(&surface, &instance);
-
-        let (device, graphics_queue, present_queue) = Self::create_logical_device(
-            &instance,
-            physical_device_index,
-            unique_queue_families_ids,
-        );
-
-        let (swap_chain, swap_chain_images) = Self::create_swap_chain(
-            &instance,
-            &surface,
-            physical_device_index,
-            &device,
-            &graphics_queue,
-        );
+        let context = Context::initialize();
 
         let depth_format = Self::find_depth_format();
         let sample_count = Self::find_sample_count();
-        let depth_image =
-            Self::create_depth_image(&device, swap_chain.dimensions(), depth_format, sample_count);
+        let depth_image = Self::create_depth_image(&context, depth_format, sample_count);
 
-        let render_pass =
-            Self::create_render_pass(&device, swap_chain.format(), depth_format, sample_count);
+        let render_pass = Self::create_render_pass(&context, depth_format, sample_count);
 
-        let graphics_pipeline =
-            Self::create_graphics_pipeline(&device, swap_chain.dimensions(), &render_pass);
+        let graphics_pipeline = Self::create_graphics_pipeline(&context, &render_pass);
 
         let swap_chain_framebuffers = Self::create_swap_chain_framebuffers(
-            &device,
-            &swap_chain_images,
+            &context,
             &render_pass,
             &depth_image,
             sample_count,
         );
 
-        let previous_frame_end = Some(Self::create_sync_objects(&device));
+        let previous_frame_end = Some(Self::create_sync_objects(&context.device));
 
         let camera = Default::default();
 
-        let image_sampler = Self::create_image_sampler(&device);
+        let image_sampler = Self::create_image_sampler(&context.device);
 
-        let models = Self::load_models(
-            &device,
-            &graphics_queue,
-            &graphics_pipeline,
-            &image_sampler,
-            &camera,
-            swap_chain_images[0].dimensions(),
-        );
+        let models = Self::load_models(&context, &graphics_pipeline, &image_sampler, &camera);
 
         let mut app = Self {
-            instance,
-            debug_callback,
-            event_loop: Some(event_loop),
-            physical_device_index,
-            device,
-            graphics_queue,
-            present_queue,
-            surface,
-            swap_chain,
-            swap_chain_images,
+            context,
             render_pass,
             graphics_pipeline,
             swap_chain_framebuffers,
@@ -280,197 +195,6 @@ impl HelloTriangleApplication {
         app
     }
 
-    fn init_window(instance: &Arc<Instance>) -> (EventLoop<()>, Arc<Surface<Window>>) {
-        let event_loop = EventLoop::new();
-
-        let surface = WindowBuilder::new()
-            .with_title("Vulkan")
-            .build_vk_surface(&event_loop, instance.clone())
-            .unwrap();
-
-        (event_loop, surface)
-    }
-
-    fn create_instance() -> Arc<Instance> {
-        if ENABLE_VALIDATION_LAYERS && !Self::check_validation_layer_support() {
-            println!("Validation layers requested, but not available!")
-        }
-
-        let supported_extensions = InstanceExtensions::supported_by_core().unwrap();
-
-        println!("Supported extensions: {:?}", supported_extensions);
-
-        let app_info = ApplicationInfo {
-            application_name: Some("Hello Triangle".into()),
-            application_version: Some(Version {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            }),
-            engine_name: Some("No Engine".into()),
-            engine_version: Some(Version {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            }),
-        };
-
-        let required_extensions = Self::get_required_extensions();
-
-        if ENABLE_VALIDATION_LAYERS && Self::check_validation_layer_support() {
-            Instance::new(
-                Some(&app_info),
-                Version::V1_1,
-                &required_extensions,
-                VALIDATION_LAYERS.iter().cloned(),
-            )
-            .unwrap()
-        } else {
-            Instance::new(Some(&app_info), Version::V1_1, &required_extensions, None).unwrap()
-        }
-    }
-
-    fn check_validation_layer_support() -> bool {
-        let layers: Vec<_> = layers_list()
-            .unwrap()
-            .map(|l| l.name().to_owned())
-            .collect();
-
-        VALIDATION_LAYERS
-            .iter()
-            .all(|layer_name| layers.contains(&layer_name.to_string()))
-    }
-
-    fn get_required_extensions() -> InstanceExtensions {
-        let mut extensions = vulkano_win::required_extensions();
-
-        if ENABLE_VALIDATION_LAYERS {
-            extensions.ext_debug_utils = true;
-        }
-
-        extensions
-    }
-
-    fn setup_debug_callback(instance: &Arc<Instance>) -> Option<DebugCallback> {
-        if !ENABLE_VALIDATION_LAYERS {
-            return None;
-        }
-
-        let severity = MessageSeverity {
-            error: true,
-            warning: true,
-            information: false,
-            verbose: true,
-        };
-
-        let message_type = MessageType {
-            general: true,
-            validation: true,
-            performance: true,
-        };
-
-        DebugCallback::new(&instance, severity, message_type, |msg| {
-            println!("validation layer: {:?}", msg.description);
-        })
-        .ok()
-    }
-
-    fn get_unique_queue_families_ids_if_device_suitable(
-        device: &PhysicalDevice,
-        surface: &Arc<Surface<Window>>,
-    ) -> Option<HashSet<u32>> {
-        let queue_families = device
-            .queue_families()
-            .filter(|&q| q.supports_graphics() || surface.is_supported(q).unwrap_or(false));
-
-        let queue_families_uniq_ids =
-            HashSet::from_iter(queue_families.map(|q| q.id()).into_iter());
-
-        let extensions_supported = Self::check_device_extension_support(device);
-
-        let swap_chain_adequate = if extensions_supported {
-            let capabilities = surface
-                .capabilities(*device)
-                .expect("failed to get surface capabilities");
-            !capabilities.supported_formats.is_empty()
-                && capabilities.present_modes.iter().next().is_some()
-        } else {
-            false
-        };
-
-        if !queue_families_uniq_ids.is_empty() && extensions_supported && swap_chain_adequate {
-            Some(queue_families_uniq_ids)
-        } else {
-            None
-        }
-    }
-
-    fn pick_physical_device(
-        surface: &Arc<Surface<Window>>,
-        instance: &Arc<Instance>,
-    ) -> (usize, HashSet<u32>) {
-        let (physical_device, unique_queue_families_ids) = PhysicalDevice::enumerate(instance)
-            .filter(|&p| p.supported_extensions().is_superset_of(&DEVICE_EXTENSIONS))
-            .filter_map(|device| {
-                Self::get_unique_queue_families_ids_if_device_suitable(&device, surface)
-                    .map(|unique_queue_families_ids| (device, unique_queue_families_ids))
-            })
-            .min_by_key(|(device, _)| {
-                // Better score to device types that are likely to be faster/better.
-                match device.properties().device_type {
-                    PhysicalDeviceType::DiscreteGpu => 0,
-                    PhysicalDeviceType::IntegratedGpu => 1,
-                    PhysicalDeviceType::VirtualGpu => 2,
-                    PhysicalDeviceType::Cpu => 3,
-                    PhysicalDeviceType::Other => 4,
-                }
-            })
-            .unwrap();
-
-        println!(
-            "Using device: {} (type: {:?})",
-            physical_device.properties().device_name,
-            physical_device.properties().device_type,
-        );
-
-        (physical_device.index(), unique_queue_families_ids.clone())
-    }
-
-    fn create_logical_device(
-        instance: &Arc<Instance>,
-        physical_device_index: usize,
-        unique_queue_families_ids: HashSet<u32>,
-    ) -> (Arc<Device>, Arc<Queue>, Arc<Queue>) {
-        let physical_device = PhysicalDevice::from_index(&instance, physical_device_index).unwrap();
-
-        let queue_priority = 1.0;
-
-        let queue_families = physical_device
-            .queue_families()
-            .filter(|q| unique_queue_families_ids.contains(&q.id()))
-            .map(|q| (q, queue_priority));
-
-        // Some devices require certain extensions to be enabled if they are present
-        // (e.g. `khr_portability_subset`). We add them to the device extensions that we're going to
-        // enable.
-        let required_extensions = &physical_device
-            .required_extensions()
-            .union(&DEVICE_EXTENSIONS);
-
-        let (device, mut queues) = Device::new(
-            physical_device,
-            &Features::none(),
-            required_extensions,
-            queue_families,
-        )
-        .unwrap();
-
-        let graphics_queue = queues.next().unwrap();
-        let present_queue = queues.next().unwrap_or_else(|| graphics_queue.clone());
-
-        (device, graphics_queue, present_queue)
-    }
-
     fn find_depth_format() -> Format {
         // https://github.com/matthew-russo/vulkan-tutorial-rs/blob/26_depth_buffering/src/bin/26_depth_buffering.rs.diff#L115
         Format::D16_UNORM
@@ -484,14 +208,13 @@ impl HelloTriangleApplication {
     }
 
     fn create_depth_image(
-        device: &Arc<Device>,
-        dimensions: [u32; 2],
+        context: &Context,
         format: Format,
         sample_count: SampleCount,
     ) -> Arc<ImageView<Arc<AttachmentImage>>> {
         let image = AttachmentImage::multisampled_with_usage(
-            device.clone(),
-            dimensions,
+            context.device.clone(),
+            context.swap_chain.dimensions(),
             sample_count,
             format,
             ImageUsage {
@@ -505,13 +228,14 @@ impl HelloTriangleApplication {
     }
 
     fn create_render_pass(
-        device: &Arc<Device>,
-        color_format: Format,
+        context: &Context,
         depth_format: Format,
         sample_count: SampleCount,
     ) -> Arc<RenderPass> {
+        let color_format = context.swap_chain.format();
+
         Arc::new(
-            single_pass_renderpass!(device.clone(),
+            single_pass_renderpass!(context.device.clone(),
                     attachments: {
                         multisample_color: {
                             load: Clear,
@@ -544,120 +268,19 @@ impl HelloTriangleApplication {
         )
     }
 
-    fn check_device_extension_support(device: &PhysicalDevice) -> bool {
-        let supported_extensions = PhysicalDevice::supported_extensions(device);
-        supported_extensions.intersection(&DEVICE_EXTENSIONS) == DEVICE_EXTENSIONS
-    }
-
-    fn choose_swap_surface_format(
-        available_formats: &[(Format, ColorSpace)],
-    ) -> (Format, ColorSpace) {
-        *available_formats
-            .iter()
-            .find(|(format, color_space)| {
-                *format == Format::B8G8R8A8_SRGB && *color_space == ColorSpace::SrgbNonLinear
-            })
-            .unwrap_or_else(|| &available_formats[0])
-    }
-
-    fn choose_swap_present_mode(available_present_modes: SupportedPresentModes) -> PresentMode {
-        if available_present_modes.mailbox {
-            PresentMode::Mailbox
-        } else if available_present_modes.immediate {
-            PresentMode::Immediate
-        } else {
-            PresentMode::Fifo
-        }
-    }
-
-    fn create_swap_chain(
-        instance: &Arc<Instance>,
-        surface: &Arc<Surface<Window>>,
-        physical_device_index: usize,
-        device: &Arc<Device>,
-        graphics_queue: &Arc<Queue>,
-    ) -> (Arc<Swapchain<Window>>, Vec<Arc<SwapchainImage<Window>>>) {
-        let physical_device = PhysicalDevice::from_index(&instance, physical_device_index).unwrap();
-        let capabilities = surface
-            .capabilities(physical_device)
-            .expect("failed to get surface capabilities");
-
-        let (surface_format, surface_color_space) =
-            Self::choose_swap_surface_format(&capabilities.supported_formats);
-        let present_mode = Self::choose_swap_present_mode(capabilities.present_modes);
-
-        let mut image_count = capabilities.min_image_count + 1;
-        if capabilities.max_image_count.is_some()
-            && image_count > capabilities.max_image_count.unwrap()
-        {
-            image_count = capabilities.max_image_count.unwrap();
-        }
-
-        let image_usage = ImageUsage {
-            color_attachment: true,
-            ..ImageUsage::none()
-        };
-
-        // TODO: make present and graphics queue work
-        let sharing: SharingMode =
-            // if graphics_queue.id_within_family() != present_queue.id_within_family() {
-            //     vec![graphics_queue, present_queue].as_slice().into()
-            // } else {
-                graphics_queue.into();
-        // };
-
-        let dimensions: [u32; 2] = surface.window().inner_size().into();
-
-        let (swap_chain, images) = Swapchain::start(device.clone(), surface.clone())
-            .num_images(image_count)
-            .format(surface_format)
-            .color_space(surface_color_space)
-            .dimensions(dimensions)
-            .composite_alpha(CompositeAlpha::Opaque)
-            .usage(image_usage)
-            .sharing_mode(sharing)
-            .transform(capabilities.current_transform)
-            .layers(1)
-            .clipped(true)
-            .present_mode(present_mode)
-            .build()
-            .unwrap();
-
-        (swap_chain, images)
-    }
-
     fn recreate_swap_chain(&mut self) {
-        let dimensions: [u32; 2] = self.surface.window().inner_size().into();
-
-        let (swap_chain, images) = Swapchain::recreate(&self.swap_chain)
-            .dimensions(dimensions)
-            .build()
-            .unwrap();
-
-        self.swap_chain = swap_chain;
-        self.swap_chain_images = images;
+        self.context.recreate_swap_chain();
 
         let depth_format = Self::find_depth_format();
         let sample_count = Self::find_sample_count();
-        let depth_image =
-            Self::create_depth_image(&self.device, dimensions, depth_format, sample_count);
+        let depth_image = Self::create_depth_image(&self.context, depth_format, sample_count);
 
-        self.render_pass = Self::create_render_pass(
-            &self.device,
-            self.swap_chain.format(),
-            depth_format,
-            sample_count,
-        );
+        self.render_pass = Self::create_render_pass(&self.context, depth_format, sample_count);
 
-        self.graphics_pipeline = Self::create_graphics_pipeline(
-            &self.device,
-            self.swap_chain.dimensions(),
-            &self.render_pass,
-        );
+        self.graphics_pipeline = Self::create_graphics_pipeline(&self.context, &self.render_pass);
 
         self.swap_chain_framebuffers = Self::create_swap_chain_framebuffers(
-            &self.device,
-            &self.swap_chain_images,
+            &self.context,
             &self.render_pass,
             &depth_image,
             sample_count,
@@ -667,14 +290,14 @@ impl HelloTriangleApplication {
     }
 
     fn create_graphics_pipeline(
-        device: &Arc<Device>,
-        swap_chain_extent: [u32; 2],
+        context: &Context,
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module = vertex_shader::Shader::load(device.clone()).unwrap();
-        let frag_shader_module = fragment_shader::Shader::load(device.clone()).unwrap();
+        let vert_shader_module = vertex_shader::Shader::load(context.device.clone()).unwrap();
+        let frag_shader_module = fragment_shader::Shader::load(context.device.clone()).unwrap();
 
-        let dimensions = [swap_chain_extent[0] as f32, swap_chain_extent[1] as f32];
+        let dimensions_u32 = context.swap_chain.dimensions();
+        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
         let viewport = Viewport {
             origin: [0.0, 0.0],
             dimensions,
@@ -700,7 +323,7 @@ impl HelloTriangleApplication {
                 .depth_stencil(DepthStencil::simple_depth_test())
                 .viewports_dynamic_scissors_irrelevant(1)
                 .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(device.clone())
+                .build(context.device.clone())
                 .unwrap(),
         );
 
@@ -708,13 +331,13 @@ impl HelloTriangleApplication {
     }
 
     fn create_swap_chain_framebuffers(
-        device: &Arc<Device>,
-        swap_chain_images: &Vec<Arc<SwapchainImage<Window>>>,
+        context: &Context,
         render_pass: &Arc<RenderPass>,
         depth_image: &Arc<ImageView<Arc<AttachmentImage>>>,
         sample_count: SampleCount,
     ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
-        swap_chain_images
+        context
+            .swap_chain_images
             .iter()
             .map(|swapchain_image| {
                 let image = ImageView::new(swapchain_image.clone()).unwrap();
@@ -722,7 +345,7 @@ impl HelloTriangleApplication {
                 let dimensions = swapchain_image.dimensions();
                 let multisample_image = ImageView::new(
                     AttachmentImage::transient_multisampled(
-                        device.clone(),
+                        context.device.clone(),
                         dimensions,
                         sample_count,
                         swapchain_image.swapchain().format(),
@@ -750,7 +373,7 @@ impl HelloTriangleApplication {
     }
 
     fn create_command_buffers(&mut self) {
-        let dimensions_u32 = self.swap_chain_images[0].dimensions();
+        let dimensions_u32 = self.context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         let viewport = Viewport {
@@ -764,8 +387,8 @@ impl HelloTriangleApplication {
             .iter()
             .map(|_framebuffer| {
                 let mut builder = AutoCommandBufferBuilder::secondary_graphics(
-                    self.device.clone(),
-                    self.graphics_queue.family(),
+                    self.context.device.clone(),
+                    self.context.graphics_queue.family(),
                     CommandBufferUsage::SimultaneousUse,
                     self.graphics_pipeline.subpass().clone(),
                 )
@@ -797,17 +420,17 @@ impl HelloTriangleApplication {
     }
 
     fn create_uniform_buffer(
-        device: &Arc<Device>,
+        context: &Context,
         camera: &Camera,
-        dimensions_u32: [u32; 2],
         transform: &Transform,
     ) -> Arc<CpuAccessibleBuffer<MVPUniformBufferObject>> {
+        let dimensions_u32 = context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         let uniform_buffer_data = Self::update_uniform_buffer(&camera, dimensions, transform);
 
         let buffer = CpuAccessibleBuffer::from_data(
-            device.clone(),
+            context.device.clone(),
             BufferUsage::uniform_buffer_transfer_destination(),
             false,
             uniform_buffer_data,
@@ -825,7 +448,7 @@ impl HelloTriangleApplication {
         let view = Mat4::look_at_rh(camera.position(), camera.target(), Vec3::Y);
 
         let mut proj = Mat4::perspective_rh(
-            deg_to_rad(45.0),
+            (45.0_f32).to_radians(),
             dimensions[0] as f32 / dimensions[1] as f32,
             0.1,
             1000.0,
@@ -834,7 +457,7 @@ impl HelloTriangleApplication {
         proj.y_axis.y *= -1.0;
 
         // this is needed to fix model rotation
-        let model = Mat4::from_rotation_x(deg_to_rad(90.0))
+        let model = Mat4::from_rotation_x((90.0_f32).to_radians())
             * Mat4::from_scale_rotation_translation(
                 transform.scale,
                 transform.rotation,
@@ -955,12 +578,10 @@ impl HelloTriangleApplication {
     }
 
     fn load_models(
-        device: &Arc<Device>,
-        graphics_queue: &Arc<Queue>,
+        context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         image_sampler: &Arc<Sampler>,
         camera: &Camera,
-        dimensions_u32: [u32; 2],
     ) -> Vec<Model> {
         let mut models = Vec::new();
 
@@ -1091,14 +712,14 @@ impl HelloTriangleApplication {
                             .unwrap();
 
                             (
-                                Self::create_texture(&graphics_queue, &image),
+                                Self::create_texture(&context.graphics_queue, &image),
                                 color_info.tex_coord(),
                             )
                         })
                         .unwrap_or_else(|| {
                             // just a fillter image to make descriptor set happy
                             let image = DynamicImage::new_rgb8(1, 1);
-                            (Self::create_texture(&graphics_queue, &image), 0)
+                            (Self::create_texture(&context.graphics_queue, &image), 0)
                         });
 
                     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
@@ -1153,17 +774,15 @@ impl HelloTriangleApplication {
                             .map(|indices| indices.into_u32().collect::<Vec<_>>())
                             .unwrap();
 
-                        let vertex_buffer = Self::create_vertex_buffer(&graphics_queue, &vertices);
-                        let index_buffer = Self::create_index_buffer(&graphics_queue, &indices);
+                        let vertex_buffer =
+                            Self::create_vertex_buffer(&context.graphics_queue, &vertices);
+                        let index_buffer =
+                            Self::create_index_buffer(&context.graphics_queue, &indices);
 
                         let transform = root.unsafe_get_node_mut(node.index());
 
-                        let uniform_buffer = Self::create_uniform_buffer(
-                            &device,
-                            &camera,
-                            dimensions_u32,
-                            &transform,
-                        );
+                        let uniform_buffer =
+                            Self::create_uniform_buffer(&context, &camera, &transform);
 
                         let descriptor_set = Self::create_descriptor_set(
                             &graphics_pipeline,
@@ -1205,7 +824,7 @@ impl HelloTriangleApplication {
         }
 
         let (image_index, suboptimal, acquire_future) =
-            match acquire_next_image(self.swap_chain.clone(), None) {
+            match acquire_next_image(self.context.swap_chain.clone(), None) {
                 Ok(r) => r,
                 Err(AcquireError::OutOfDate) => {
                     self.recreate_swap_chain = true;
@@ -1221,14 +840,14 @@ impl HelloTriangleApplication {
         let draw_command_buffer = self.command_buffers[image_index].clone();
 
         let mut builder = AutoCommandBufferBuilder::primary(
-            self.device.clone(),
-            self.graphics_queue.family(),
+            self.context.device.clone(),
+            self.context.graphics_queue.family(),
             CommandBufferUsage::SimultaneousUse,
         )
         .unwrap();
 
         let framebuffer = self.swap_chain_framebuffers[image_index].clone();
-        let dimensions_u32 = self.swap_chain_images[0].dimensions();
+        let dimensions_u32 = self.context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         for model in &self.models {
@@ -1266,12 +885,12 @@ impl HelloTriangleApplication {
             .take()
             .unwrap()
             .join(acquire_future)
-            .then_execute(self.graphics_queue.clone(), command_buffer)
+            .then_execute(self.context.graphics_queue.clone(), command_buffer)
             .unwrap()
             .then_swapchain_present(
                 // TODO: swap to present queue???
-                self.graphics_queue.clone(),
-                self.swap_chain.clone(),
+                self.context.graphics_queue.clone(),
+                self.context.swap_chain.clone(),
                 image_index,
             )
             .then_signal_fence_and_flush();
@@ -1283,21 +902,21 @@ impl HelloTriangleApplication {
             Err(vulkano::sync::FlushError::OutOfDate) => {
                 self.recreate_swap_chain = true;
                 self.previous_frame_end =
-                    Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<_>);
+                    Some(Box::new(vulkano::sync::now(self.context.device.clone())) as Box<_>);
             }
             Err(e) => {
                 println!("{:?}", e);
                 self.previous_frame_end =
-                    Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<_>);
+                    Some(Box::new(vulkano::sync::now(self.context.device.clone())) as Box<_>);
             }
         }
     }
 
     fn main_loop(mut self) {
         let mut mouse_buttons: HashMap<MouseButton, ElementState> = HashMap::new();
-        // let mut cursor_delta = Vec2::new(0.0, 0.0);
 
-        self.event_loop
+        self.context
+            .event_loop
             .take()
             .unwrap()
             .run(move |event, _, control_flow| {
@@ -1363,8 +982,8 @@ impl HelloTriangleApplication {
                     } => {
                         match mouse_buttons.get(&MouseButton::Left) {
                             Some(&ElementState::Pressed) => {
-                                let screen_width = self.swap_chain.dimensions()[0] as f32;
-                                let screen_height = self.swap_chain.dimensions()[1] as f32;
+                                let screen_width = self.context.swap_chain.dimensions()[0] as f32;
+                                let screen_height = self.context.swap_chain.dimensions()[1] as f32;
 
                                 let theta = 2.0 * PI * (delta.0 as f32) / screen_width;
                                 let phi = 2.0 * PI * (delta.1 as f32) / screen_height;
@@ -1399,12 +1018,8 @@ impl HelloTriangleApplication {
 }
 
 fn main() {
-    let app = HelloTriangleApplication::initialize();
+    let app = Application::initialize();
     app.main_loop();
-}
-
-fn deg_to_rad(deg: f32) -> f32 {
-    deg * 3.14 / 180.0
 }
 
 mod vertex_shader {
