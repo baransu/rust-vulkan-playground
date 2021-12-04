@@ -26,14 +26,26 @@ use winit::{
     event_loop::ControlFlow,
 };
 
-fn vertices() -> [Vertex; 4] {
-    let normal = [0.0, 0.0, 0.0];
-    let color = [0.0, 0.0, 0.0, 0.0];
+#[derive(Default, Debug, Clone)]
+struct QuadVertex {
+    position: [f32; 2],
+    uv: [f32; 2],
+}
+
+impl QuadVertex {
+    fn new(position: [f32; 2], uv: [f32; 2]) -> QuadVertex {
+        QuadVertex { position, uv }
+    }
+}
+
+vulkano::impl_vertex!(QuadVertex, position, uv);
+
+fn vertices() -> [QuadVertex; 4] {
     [
-        Vertex::new([-1.0, -1.0, 0.0], normal, [0.0, 0.0], color),
-        Vertex::new([1.0, -1.0, 0.0], normal, [1.0, 0.0], color),
-        Vertex::new([1.0, 1.0, 0.0], normal, [1.0, 1.0], color),
-        Vertex::new([-1.0, 1.0, 0.0], normal, [0.0, 1.0], color),
+        QuadVertex::new([-1.0, -1.0], [0.0, 0.0]),
+        QuadVertex::new([1.0, -1.0], [1.0, 0.0]),
+        QuadVertex::new([1.0, 1.0], [1.0, 1.0]),
+        QuadVertex::new([-1.0, 1.0], [0.0, 1.0]),
     ]
 }
 
@@ -306,7 +318,7 @@ impl Application {
 
         let pipeline = Arc::new(
             GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vertex>()
+                .vertex_input_single_buffer::<QuadVertex>()
                 .vertex_shader(vert_shader_module.main_entry_point(), ())
                 .triangle_list()
                 .primitive_restart(false)
