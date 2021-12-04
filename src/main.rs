@@ -1,23 +1,19 @@
 pub mod renderer;
 
-use std::{collections::HashMap, f32::consts::PI, fs, io, path::Path, sync::Arc, time::Instant};
+use std::{collections::HashMap, f32::consts::PI, sync::Arc, time::Instant};
 
-use glam::{Mat4, Quat, Vec3};
-use gltf::{image::Source, Semantic};
-use image::{DynamicImage, GenericImageView, ImageFormat};
-use renderer::context::Context;
+use glam::{Mat4, Vec3};
+use renderer::{
+    camera::Camera, context::Context, model::Transform, scene::Scene,
+    shaders::MVPUniformBufferObject, vertex::Vertex,
+};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer, SubpassContents,
     },
-    descriptor_set::PersistentDescriptorSet,
-    device::{Device, Queue},
+    device::Device,
     format::{ClearValue, Format},
-    image::{
-        view::ImageView, AttachmentImage, ImageDimensions, ImageUsage, ImmutableImage,
-        MipmapsCount, SampleCount,
-    },
+    image::{view::ImageView, AttachmentImage, ImageUsage, SampleCount},
     pipeline::{
         depth_stencil::DepthStencil, viewport::Viewport, GraphicsPipeline, PipelineBindPoint,
     },
@@ -32,97 +28,7 @@ use winit::{
     event_loop::ControlFlow,
 };
 
-// const TEXTURE_PATH: &str = "res/viking_room.png";
 const MODEL_PATH: &str = "res/damaged_helmet/scene.gltf";
-
-// const MODEL_PATH: &str = "res/336_lrm/scene.gltf";
-
-#[derive(Default, Copy, Clone)]
-struct Vertex {
-    position: [f32; 3],
-    normal: [f32; 3],
-    uv: [f32; 2],
-    color: [f32; 4],
-}
-
-vulkano::impl_vertex!(Vertex, position, normal, uv, color);
-
-struct Model {
-    index_count: u32,
-    vertex_buffer: Arc<ImmutableBuffer<[Vertex]>>,
-    index_buffer: Arc<ImmutableBuffer<[u32]>>,
-    uniform_buffer: Arc<CpuAccessibleBuffer<MVPUniformBufferObject>>,
-    descriptor_set: Arc<PersistentDescriptorSet>,
-
-    transform: Transform,
-}
-
-#[derive(Clone)]
-struct Transform {
-    // children: Vec<usize>,
-    // final_transform: Mat4,
-    translation: Vec3,
-    rotation: Quat,
-    scale: Vec3,
-}
-
-// impl Transform {
-//     fn update_transform(&mut self, root: &mut Root, parent_transform: &Mat4) {
-//         self.final_transform = *parent_transform;
-
-//         self.final_transform = self.final_transform
-//             * Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation);
-
-//         for node_id in &self.children {
-//             let transform = root.unsafe_get_node_mut(*node_id);
-//             transform.update_transform(root, &self.final_transform);
-//         }
-//     }
-// }
-
-struct Root {
-    transforms: Vec<Transform>,
-}
-
-impl Root {
-    pub fn unsafe_get_node_mut(&mut self, index: usize) -> &'static mut Transform {
-        unsafe { &mut *(&mut self.transforms[index] as *mut Transform) }
-    }
-}
-
-type MVPUniformBufferObject = vertex_shader::ty::MVPUniformBufferObject;
-
-struct Camera {
-    theta: f32,
-    phi: f32,
-    r: f32,
-    target: Vec3,
-}
-
-impl Camera {
-    fn position(&self) -> Vec3 {
-        Vec3::new(
-            self.target[0] + self.r * self.phi.sin() * self.theta.sin(),
-            self.target[1] + self.r * self.phi.cos(),
-            self.target[2] + self.r * self.phi.sin() * self.theta.cos(),
-        )
-    }
-
-    fn target(&self) -> Vec3 {
-        self.target
-    }
-}
-
-impl Default for Camera {
-    fn default() -> Self {
-        Camera {
-            theta: 0.0_f32.to_radians(),
-            phi: 90.0_f32.to_radians(),
-            r: 5.0,
-            target: Vec3::new(0.0, 0.0, 0.0),
-        }
-    }
-}
 
 struct Application {
     context: Context,
@@ -140,7 +46,7 @@ struct Application {
 
     last_time: Instant,
 
-    models: Vec<Model>,
+    scene: Scene,
 
     camera: Camera,
 }
@@ -170,7 +76,7 @@ impl Application {
 
         let image_sampler = Self::create_image_sampler(&context.device);
 
-        let models = Self::load_models(&context, &graphics_pipeline, &image_sampler, &camera);
+        let scene = Scene::load(&context, MODEL_PATH, &graphics_pipeline, &image_sampler);
 
         let mut app = Self {
             context,
@@ -185,7 +91,7 @@ impl Application {
 
             last_time: Instant::now(),
 
-            models,
+            scene,
 
             camera,
         };
@@ -293,8 +199,10 @@ impl Application {
         context: &Context,
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module = vertex_shader::Shader::load(context.device.clone()).unwrap();
-        let frag_shader_module = fragment_shader::Shader::load(context.device.clone()).unwrap();
+        let vert_shader_module =
+            renderer::shaders::vertex_shader::Shader::load(context.device.clone()).unwrap();
+        let frag_shader_module =
+            renderer::shaders::fragment_shader::Shader::load(context.device.clone()).unwrap();
 
         let dimensions_u32 = context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
@@ -398,7 +306,7 @@ impl Application {
                     .set_viewport(0, [viewport.clone()])
                     .bind_pipeline_graphics(self.graphics_pipeline.clone());
 
-                for model in self.models.iter() {
+                for model in self.scene.models.iter() {
                     builder
                         .bind_descriptor_sets(
                             PipelineBindPoint::Graphics,
@@ -417,27 +325,6 @@ impl Application {
                 Arc::new(command_buffer)
             })
             .collect();
-    }
-
-    fn create_uniform_buffer(
-        context: &Context,
-        camera: &Camera,
-        transform: &Transform,
-    ) -> Arc<CpuAccessibleBuffer<MVPUniformBufferObject>> {
-        let dimensions_u32 = context.swap_chain.dimensions();
-        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-
-        let uniform_buffer_data = Self::update_uniform_buffer(&camera, dimensions, transform);
-
-        let buffer = CpuAccessibleBuffer::from_data(
-            context.device.clone(),
-            BufferUsage::uniform_buffer_transfer_destination(),
-            false,
-            uniform_buffer_data,
-        )
-        .unwrap();
-
-        buffer
     }
 
     fn update_uniform_buffer(
@@ -471,93 +358,6 @@ impl Application {
         }
     }
 
-    fn create_descriptor_set(
-        graphics_pipeline: &Arc<GraphicsPipeline>,
-        uniform_buffer: &Arc<CpuAccessibleBuffer<MVPUniformBufferObject>>,
-        texture_image: &Arc<ImageView<Arc<ImmutableImage>>>,
-        image_sampler: &Arc<Sampler>,
-    ) -> Arc<PersistentDescriptorSet> {
-        let layout = graphics_pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(0)
-            .unwrap();
-
-        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-        set_builder.add_buffer(uniform_buffer.clone()).unwrap();
-
-        set_builder
-            .add_sampled_image(texture_image.clone(), image_sampler.clone())
-            .unwrap();
-
-        Arc::new(set_builder.build().unwrap())
-    }
-
-    fn create_vertex_buffer(
-        graphics_queue: &Arc<Queue>,
-        vertices: &Vec<Vertex>,
-    ) -> Arc<ImmutableBuffer<[Vertex]>> {
-        let (buffer, future) = ImmutableBuffer::from_iter(
-            vertices.iter().cloned(),
-            BufferUsage::vertex_buffer(),
-            // TODO: idealy it should be transfer queue?
-            graphics_queue.clone(),
-        )
-        .unwrap();
-
-        future.flush().unwrap();
-
-        buffer
-    }
-
-    fn create_index_buffer(
-        graphics_queue: &Arc<Queue>,
-        indices: &Vec<u32>,
-    ) -> Arc<ImmutableBuffer<[u32]>> {
-        let (buffer, future) = ImmutableBuffer::from_iter(
-            indices.iter().cloned(),
-            BufferUsage::index_buffer(),
-            graphics_queue.clone(),
-        )
-        .unwrap();
-
-        future.flush().unwrap();
-
-        buffer
-    }
-
-    fn create_texture(
-        graphics_queue: &Arc<Queue>,
-        image: &DynamicImage,
-    ) -> Arc<ImageView<Arc<ImmutableImage>>> {
-        let width = image.width();
-        let height = image.height();
-
-        let dimensions = ImageDimensions::Dim2d {
-            width,
-            height,
-            // TODO: what are array_layers?
-            array_layers: 1,
-        };
-
-        let image_rgba = image.to_rgba8();
-
-        let (image, future) = ImmutableImage::from_iter(
-            image_rgba.into_raw().iter().cloned(),
-            dimensions,
-            // vulkano already supports mipmap generation so we don't need to do this by hand
-            MipmapsCount::Log2,
-            Format::R8G8B8A8_SRGB,
-            graphics_queue.clone(),
-        )
-        .unwrap();
-
-        future.flush().unwrap();
-
-        ImageView::new(image).unwrap()
-    }
-
     fn create_image_sampler(device: &Arc<Device>) -> Arc<Sampler> {
         Sampler::new(
             device.clone(),
@@ -575,240 +375,6 @@ impl Application {
             1_000.0,
         )
         .unwrap()
-    }
-
-    fn load_models(
-        context: &Context,
-        graphics_pipeline: &Arc<GraphicsPipeline>,
-        image_sampler: &Arc<Sampler>,
-        camera: &Camera,
-    ) -> Vec<Model> {
-        let mut models = Vec::new();
-
-        let (document, buffers, _images) = gltf::import(MODEL_PATH).unwrap();
-
-        let transforms = document
-            .nodes()
-            .map(|node| {
-                let (translation, rotation, scale) = node.transform().decomposed();
-
-                Transform {
-                    // children: node.children().map(|child| child.index()).collect(),
-                    // final_transform: Mat4::IDENTITY,
-                    scale: Vec3::new(scale[0], scale[1], scale[2]),
-                    rotation: Quat::from_xyzw(rotation[0], rotation[1], rotation[2], rotation[3]),
-                    translation: Vec3::new(translation[0], translation[1], translation[2]),
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let mut root = Root { transforms };
-
-        // for node_id in document.nodes().map(|child| child.index()) {
-        //     let node = root.unsafe_get_node_mut(node_id);
-        //     node.update_transform(&mut root, &Mat4::from_rotation_x(deg_to_rad(90.0)));
-        // }
-
-        for node in document.nodes() {
-            if let Some(mesh) = node.mesh() {
-                for primitive in mesh.primitives() {
-                    let pbr = primitive.material().pbr_metallic_roughness();
-
-                    let base_color_factor = pbr.base_color_factor();
-
-                    let (texture_image, tex_coord) = pbr
-                        .base_color_texture()
-                        .map(|color_info| {
-                            let img = &color_info.texture();
-                            // material.base_color_texture = Some(load_texture(
-                            let image = match img.source().source() {
-                                Source::View { view, mime_type } => {
-                                    let parent_buffer_data = &buffers[view.buffer().index()].0;
-                                    let begin = view.offset();
-                                    let end = begin + view.length();
-                                    let data = &parent_buffer_data[begin..end];
-                                    match mime_type {
-                                        "image/jpeg" => image::load_from_memory_with_format(
-                                            data,
-                                            ImageFormat::Jpeg,
-                                        ),
-                                        "image/png" => image::load_from_memory_with_format(
-                                            data,
-                                            ImageFormat::Png,
-                                        ),
-                                        _ => panic!(format!(
-                                            "unsupported image type (image: {}, mime_type: {})",
-                                            img.index(),
-                                            mime_type
-                                        )),
-                                    }
-                                }
-                                Source::Uri { uri, mime_type } => {
-                                    let base_path = Path::new(MODEL_PATH);
-
-                                    if uri.starts_with("data:") {
-                                        let encoded = uri.split(',').nth(1).unwrap();
-                                        let data = base64::decode(&encoded).unwrap();
-                                        let mime_type = if let Some(ty) = mime_type {
-                                            ty
-                                        } else {
-                                            uri.split(',')
-                                                .nth(0)
-                                                .unwrap()
-                                                .split(':')
-                                                .nth(1)
-                                                .unwrap()
-                                                .split(';')
-                                                .nth(0)
-                                                .unwrap()
-                                        };
-
-                                        match mime_type {
-                                            "image/jpeg" => image::load_from_memory_with_format(
-                                                &data,
-                                                ImageFormat::Jpeg,
-                                            ),
-                                            "image/png" => image::load_from_memory_with_format(
-                                                &data,
-                                                ImageFormat::Png,
-                                            ),
-                                            _ => panic!(format!(
-                                                "unsupported image type (image: {}, mime_type: {})",
-                                                img.index(),
-                                                mime_type
-                                            )),
-                                        }
-                                    } else if let Some(mime_type) = mime_type {
-                                        let path = base_path
-                                            .parent()
-                                            .unwrap_or_else(|| Path::new("./"))
-                                            .join(uri);
-
-                                        println!("loading texture from {}", path.display());
-
-                                        let file = fs::File::open(path).unwrap();
-                                        let reader = io::BufReader::new(file);
-                                        match mime_type {
-                                            "image/jpeg" => image::load(reader, ImageFormat::Jpeg),
-                                            "image/png" => image::load(reader, ImageFormat::Png),
-                                            _ => panic!(format!(
-                                                "unsupported image type (image: {}, mime_type: {})",
-                                                img.index(),
-                                                mime_type
-                                            )),
-                                        }
-                                    } else {
-                                        let path = base_path
-                                            .parent()
-                                            .unwrap_or_else(|| Path::new("./"))
-                                            .join(uri);
-
-                                        println!("loading texture from {}", path.display());
-
-                                        image::open(path)
-                                    }
-                                }
-                            }
-                            .unwrap();
-
-                            (
-                                Self::create_texture(&context.graphics_queue, &image),
-                                color_info.tex_coord(),
-                            )
-                        })
-                        .unwrap_or_else(|| {
-                            // just a fillter image to make descriptor set happy
-                            let image = DynamicImage::new_rgb8(1, 1);
-                            (Self::create_texture(&context.graphics_queue, &image), 0)
-                        });
-
-                    let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
-
-                    if let Some(_accessor) = primitive.get(&Semantic::Positions) {
-                        let positions =
-                            &reader.read_positions().unwrap().collect::<Vec<[f32; 3]>>();
-                        let normals = &reader
-                            .read_normals()
-                            .map_or(vec![], |normals| normals.collect());
-
-                        let color = &reader
-                            .read_colors(0)
-                            .map_or(vec![], |colors| colors.into_rgba_f32().collect());
-
-                        // TODO: what gltf has more than one uv channel?
-                        let tex_coords_0 = &reader
-                            .read_tex_coords(0)
-                            .map_or(vec![], |coords| coords.into_f32().collect());
-
-                        let tex_coords_1 = &reader
-                            .read_tex_coords(1)
-                            .map_or(vec![], |coords| coords.into_f32().collect());
-
-                        let vertices = positions
-                            .iter()
-                            .enumerate()
-                            .map(|(index, position)| {
-                                let position = *position;
-                                let normal = *normals.get(index).unwrap_or(&[1.0, 1.0, 1.0]);
-                                let tex_coords_0 = *tex_coords_0.get(index).unwrap_or(&[0.0, 0.0]);
-                                let tex_coords_1 = *tex_coords_1.get(index).unwrap_or(&[0.0, 0.0]);
-
-                                let color = *color.get(index).unwrap_or(&[1.0, 1.0, 1.0, 1.0]);
-
-                                let uv = [
-                                    [tex_coords_0[0], tex_coords_0[1]],
-                                    [tex_coords_1[0], tex_coords_1[1]],
-                                ][tex_coord as usize];
-
-                                Vertex {
-                                    color,
-                                    position,
-                                    normal,
-                                    uv,
-                                }
-                            })
-                            .collect::<Vec<_>>();
-
-                        let indices = reader
-                            .read_indices()
-                            .map(|indices| indices.into_u32().collect::<Vec<_>>())
-                            .unwrap();
-
-                        let vertex_buffer =
-                            Self::create_vertex_buffer(&context.graphics_queue, &vertices);
-                        let index_buffer =
-                            Self::create_index_buffer(&context.graphics_queue, &indices);
-
-                        let transform = root.unsafe_get_node_mut(node.index());
-
-                        let uniform_buffer =
-                            Self::create_uniform_buffer(&context, &camera, &transform);
-
-                        let descriptor_set = Self::create_descriptor_set(
-                            &graphics_pipeline,
-                            &uniform_buffer,
-                            &texture_image,
-                            image_sampler,
-                        );
-
-                        let model = Model {
-                            transform: (*transform).clone(),
-                            vertex_buffer,
-                            index_buffer,
-                            index_count: indices.len() as u32,
-                            uniform_buffer,
-                            descriptor_set,
-                        };
-
-                        models.push(model);
-                    }
-                }
-            }
-        }
-
-        println!("Loaded {} models", models.len());
-
-        models
     }
 
     fn create_sync_objects(device: &Arc<Device>) -> Box<dyn GpuFuture> {
@@ -850,7 +416,7 @@ impl Application {
         let dimensions_u32 = self.context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
-        for model in &self.models {
+        for model in &self.scene.models {
             let data = Arc::new(Self::update_uniform_buffer(
                 &self.camera,
                 dimensions,
@@ -969,7 +535,7 @@ impl Application {
                     } => {
                         let y = position.y as f32;
 
-                        for model in self.models.iter_mut() {
+                        for model in self.scene.models.iter_mut() {
                             model.transform.scale += y / 100.0;
                             model.transform.scale =
                                 model.transform.scale.max(Vec3::new(0.1, 0.1, 0.1));
@@ -1020,70 +586,4 @@ impl Application {
 fn main() {
     let app = Application::initialize();
     app.main_loop();
-}
-
-mod vertex_shader {
-    vulkano_shaders::shader! {
-        ty: "vertex",
-        src: "
-            #version 450
-
-            layout(binding = 0) uniform MVPUniformBufferObject {
-                mat4 view;
-                mat4 proj;
-                mat4 model;
-            } mvp_ubo;
-
-            layout(location = 0) in vec3 position;
-            layout(location = 1) in vec3 normal;
-            layout(location = 2) in vec2 uv;
-            layout(location = 3) in vec4 color;
-
-            layout(location = 0) out vec2 f_uv;
-            layout(location = 1) out vec3 f_normal;
-            layout(location = 2) out vec3 f_position;
-
-            out gl_PerVertex {
-                vec4 gl_Position;
-            };
-
-            void main() {
-                gl_Position = mvp_ubo.proj * mvp_ubo.view * mvp_ubo.model * vec4(position, 1.0);
-                f_position = vec3(mvp_ubo.model * vec4(position, 1.0));
-                f_uv = uv;
-                f_normal = mat3(transpose(inverse(mvp_ubo.model))) * normal;  
-            }
-        "
-    }
-}
-
-mod fragment_shader {
-    vulkano_shaders::shader! {
-        ty: "fragment",
-        src: "
-            #version 450
-
-            layout(binding = 1) uniform sampler2D tex_sampler;
-
-            layout(location = 0) in vec2 f_uv;
-            layout(location = 1) in vec3 f_normal;
-            layout(location = 2) in vec3 f_position;
-
-            layout(location = 0) out vec4 out_color;
-
-            void main() {
-                vec3 light_pos = vec3(5.0, 0.0, 0.0);
-                vec3 light_color = vec3(1.0, 1.0, 1.0);
-                vec3 ambient = 0.1 * light_color;
-
-                vec3 norm = normalize(f_normal);
-                vec3 light_dir = normalize(light_pos - f_position);  
-
-                float diff = max(dot(norm, light_dir), 0.0);
-                vec3 diffuse = diff * light_color;
-                vec3 result = (ambient + diffuse) * texture(tex_sampler, f_uv).xyz;
-                out_color = vec4(result,  1.0);
-            }
-        "
-    }
 }
