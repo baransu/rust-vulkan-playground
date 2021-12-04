@@ -2,11 +2,8 @@ pub mod renderer;
 
 use std::{collections::HashMap, f32::consts::PI, sync::Arc, time::Instant};
 
-use glam::{Mat4, Vec3};
-use renderer::{
-    camera::Camera, context::Context, model::Transform, scene::Scene,
-    shaders::MVPUniformBufferObject, vertex::Vertex,
-};
+use glam::Vec3;
+use renderer::{camera::Camera, context::Context, scene::Scene, vertex::Vertex};
 use vulkano::{
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer, SubpassContents,
@@ -310,37 +307,6 @@ impl Application {
         self.command_buffers = command_buffers;
     }
 
-    fn update_uniform_buffer(
-        camera: &Camera,
-        dimensions: [f32; 2],
-        transform: &Transform,
-    ) -> MVPUniformBufferObject {
-        let view = Mat4::look_at_rh(camera.position(), camera.target(), Vec3::Y);
-
-        let mut proj = Mat4::perspective_rh(
-            (45.0_f32).to_radians(),
-            dimensions[0] as f32 / dimensions[1] as f32,
-            0.1,
-            1000.0,
-        );
-
-        proj.y_axis.y *= -1.0;
-
-        // this is needed to fix model rotation
-        let model = Mat4::from_rotation_x((90.0_f32).to_radians())
-            * Mat4::from_scale_rotation_translation(
-                transform.scale,
-                transform.rotation,
-                transform.translation,
-            );
-
-        MVPUniformBufferObject {
-            view: view.to_cols_array_2d(),
-            proj: proj.to_cols_array_2d(),
-            model: model.to_cols_array_2d(),
-        }
-    }
-
     fn create_image_sampler(device: &Arc<Device>) -> Arc<Sampler> {
         Sampler::new(
             device.clone(),
@@ -400,11 +366,7 @@ impl Application {
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         for model in &self.scene.models {
-            let data = Arc::new(Self::update_uniform_buffer(
-                &self.camera,
-                dimensions,
-                &model.transform,
-            ));
+            let data = Arc::new(model.transform.get_mvp_ubo(&self.camera, dimensions));
 
             builder
                 .update_buffer(model.uniform_buffer.clone(), data)
