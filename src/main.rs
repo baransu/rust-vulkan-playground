@@ -71,7 +71,7 @@ struct Application {
     offscreen_framebuffers: Vec<OffscreenFramebuffer>,
     offscreen_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
 
-    blur_descriptor_sets: Vec<Arc<PersistentDescriptorSet>>,
+    post_descriptor_sets: Vec<Arc<PersistentDescriptorSet>>,
 
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     recreate_swap_chain: bool,
@@ -103,7 +103,7 @@ impl Application {
 
         let camera = Default::default();
 
-        let blur_descriptor_sets = Self::create_blur_descriptor_sets(
+        let post_descriptor_sets = Self::create_post_descriptor_sets(
             &context,
             &graphics_pipeline,
             &offscreen_framebuffers,
@@ -120,7 +120,7 @@ impl Application {
             offscreen_framebuffers,
             offscreen_command_buffers: vec![],
 
-            blur_descriptor_sets,
+            post_descriptor_sets,
 
             previous_frame_end,
             recreate_swap_chain: false,
@@ -304,9 +304,9 @@ impl Application {
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
         let vert_shader_module =
-            renderer::shaders::blur_vertex_shader::Shader::load(context.device.clone()).unwrap();
+            renderer::shaders::post_vertex_shader::Shader::load(context.device.clone()).unwrap();
         let frag_shader_module =
-            renderer::shaders::blur_fragment_shader::Shader::load(context.device.clone()).unwrap();
+            renderer::shaders::post_fragment_shader::Shader::load(context.device.clone()).unwrap();
 
         let dimensions_u32 = context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
@@ -533,7 +533,7 @@ impl Application {
                     PipelineBindPoint::Graphics,
                     self.graphics_pipeline.layout().clone(),
                     0,
-                    self.blur_descriptor_sets[i].clone(),
+                    self.post_descriptor_sets[i].clone(),
                 )
                 .bind_vertex_buffers(0, quad_vertex_buffer.clone())
                 .bind_index_buffer(quad_index_buffer.clone())
@@ -548,7 +548,7 @@ impl Application {
         self.command_buffers = command_buffers;
     }
 
-    fn create_blur_descriptor_sets(
+    fn create_post_descriptor_sets(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         offscreen_framebuffers: &Vec<OffscreenFramebuffer>,
