@@ -6,7 +6,7 @@ use vulkano::{
         Device, DeviceExtensions, Features, Queue,
     },
     format::Format,
-    image::{ImageUsage, SwapchainImage},
+    image::{ImageUsage, SampleCount, SwapchainImage},
     instance::{
         debug::{DebugCallback, MessageSeverity, MessageType},
         layers_list, ApplicationInfo, Instance, InstanceExtensions,
@@ -58,6 +58,9 @@ pub struct Context {
     present_queue: Arc<Queue>,
     pub swap_chain: Arc<Swapchain<Window>>,
     pub swap_chain_images: Vec<Arc<SwapchainImage<Window>>>,
+
+    pub depth_format: Format,
+    pub sample_count: SampleCount,
 }
 
 impl Context {
@@ -95,6 +98,9 @@ impl Context {
             present_queue,
             swap_chain,
             swap_chain_images,
+
+            depth_format: Self::find_depth_format(),
+            sample_count: Self::find_sample_count(),
         }
     }
 
@@ -381,5 +387,17 @@ impl Context {
         } else {
             PresentMode::Fifo
         }
+    }
+
+    fn find_depth_format() -> Format {
+        // https://github.com/matthew-russo/vulkan-tutorial-rs/blob/26_depth_buffering/src/bin/26_depth_buffering.rs.diff#L115
+        Format::D16_UNORM
+    }
+
+    fn find_sample_count() -> SampleCount {
+        // https://github.com/matthew-russo/vulkan-tutorial-rs/blob/29_multisampling/src/bin/29_multisampling.rs.diff#L52-L59
+
+        // macOS doesn't support MSAA8, so we'll use MSAA4 instead.
+        SampleCount::Sample4
     }
 }

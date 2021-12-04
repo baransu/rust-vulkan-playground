@@ -12,8 +12,8 @@ use vulkano::{
         AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer, SubpassContents,
     },
     device::Device,
-    format::{ClearValue, Format},
-    image::{view::ImageView, AttachmentImage, ImageUsage, SampleCount},
+    format::ClearValue,
+    image::{view::ImageView, AttachmentImage, ImageUsage},
     pipeline::{
         depth_stencil::DepthStencil, viewport::Viewport, GraphicsPipeline, PipelineBindPoint,
     },
@@ -37,7 +37,7 @@ struct Application {
 
     graphics_pipeline: Arc<GraphicsPipeline>,
 
-    swap_chain_framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
+    framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
 
     command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
 
@@ -55,20 +55,11 @@ impl Application {
     pub fn initialize() -> Self {
         let context = Context::initialize();
 
-        let depth_format = Self::find_depth_format();
-        let sample_count = Self::find_sample_count();
-        let depth_image = Self::create_depth_image(&context, depth_format, sample_count);
-
-        let render_pass = Self::create_render_pass(&context, depth_format, sample_count);
+        let render_pass = Self::create_render_pass(&context);
 
         let graphics_pipeline = Self::create_graphics_pipeline(&context, &render_pass);
 
-        let swap_chain_framebuffers = Self::create_swap_chain_framebuffers(
-            &context,
-            &render_pass,
-            &depth_image,
-            sample_count,
-        );
+        let swap_chain_framebuffers = Self::create_framebuffers(&context, &render_pass);
 
         let previous_frame_end = Some(Self::create_sync_objects(&context.device));
 
@@ -82,7 +73,7 @@ impl Application {
             context,
             render_pass,
             graphics_pipeline,
-            swap_chain_framebuffers,
+            framebuffers: swap_chain_framebuffers,
 
             command_buffers: vec![],
 
@@ -101,28 +92,12 @@ impl Application {
         app
     }
 
-    fn find_depth_format() -> Format {
-        // https://github.com/matthew-russo/vulkan-tutorial-rs/blob/26_depth_buffering/src/bin/26_depth_buffering.rs.diff#L115
-        Format::D16_UNORM
-    }
-
-    fn find_sample_count() -> SampleCount {
-        // https://github.com/matthew-russo/vulkan-tutorial-rs/blob/29_multisampling/src/bin/29_multisampling.rs.diff#L52-L59
-
-        // macOS doesn't support MSAA8, so we'll use MSAA4 instead.
-        SampleCount::Sample4
-    }
-
-    fn create_depth_image(
-        context: &Context,
-        format: Format,
-        sample_count: SampleCount,
-    ) -> Arc<ImageView<Arc<AttachmentImage>>> {
+    fn create_depth_image(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
         let image = AttachmentImage::multisampled_with_usage(
             context.device.clone(),
             context.swap_chain.dimensions(),
-            sample_count,
-            format,
+            context.sample_count,
+            context.depth_format,
             ImageUsage {
                 depth_stencil_attachment: true,
                 ..ImageUsage::none()
@@ -133,12 +108,30 @@ impl Application {
         ImageView::new(image).unwrap()
     }
 
-    fn create_render_pass(
-        context: &Context,
-        depth_format: Format,
-        sample_count: SampleCount,
-    ) -> Arc<RenderPass> {
+    fn create_color_image(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
+        let image = AttachmentImage::multisampled_with_usage(
+            context.device.clone(),
+            context.swap_chain.dimensions(),
+            context.sample_count,
+            context.swap_chain.format(),
+            ImageUsage {
+                transient_attachment: true,
+                ..ImageUsage::none()
+            },
+        )
+        .unwrap();
+
+        ImageView::new(image).unwrap()
+    }
+
+    /**
+     * Creates render pass which has color and depth attachments.
+     * Last attachment is resolve which can be attached to swap chain image used to output to screen.
+     */
+    fn create_render_pass(context: &Context) -> Arc<RenderPass> {
         let color_format = context.swap_chain.format();
+        let depth_format = context.depth_format;
+        let sample_count = context.sample_count;
 
         Arc::new(
             single_pass_renderpass!(context.device.clone(),
@@ -177,24 +170,18 @@ impl Application {
     fn recreate_swap_chain(&mut self) {
         self.context.recreate_swap_chain();
 
-        let depth_format = Self::find_depth_format();
-        let sample_count = Self::find_sample_count();
-        let depth_image = Self::create_depth_image(&self.context, depth_format, sample_count);
-
-        self.render_pass = Self::create_render_pass(&self.context, depth_format, sample_count);
+        self.render_pass = Self::create_render_pass(&self.context);
 
         self.graphics_pipeline = Self::create_graphics_pipeline(&self.context, &self.render_pass);
 
-        self.swap_chain_framebuffers = Self::create_swap_chain_framebuffers(
-            &self.context,
-            &self.render_pass,
-            &depth_image,
-            sample_count,
-        );
+        self.framebuffers = Self::create_framebuffers(&self.context, &self.render_pass);
 
         self.create_command_buffers();
     }
 
+    /**
+     * Creates graphics pipeline from the given render pass, and vertex/fragment shaders.
+     */
     fn create_graphics_pipeline(
         context: &Context,
         render_pass: &Arc<RenderPass>,
@@ -238,34 +225,27 @@ impl Application {
         pipeline
     }
 
-    fn create_swap_chain_framebuffers(
+    /**
+     * This function created frame buffer for each swap chain image.
+     *
+     * It contains 3 attachments (color, depth, resolve) where resolve is swap chain image which is used to output to screen.
+     */
+    fn create_framebuffers(
         context: &Context,
         render_pass: &Arc<RenderPass>,
-        depth_image: &Arc<ImageView<Arc<AttachmentImage>>>,
-        sample_count: SampleCount,
     ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
+        let depth_image = Self::create_depth_image(&context);
+        let color_image = Self::create_color_image(&context);
+
         context
             .swap_chain_images
             .iter()
             .map(|swapchain_image| {
                 let image = ImageView::new(swapchain_image.clone()).unwrap();
 
-                let dimensions = swapchain_image.dimensions();
-                let multisample_image = ImageView::new(
-                    AttachmentImage::transient_multisampled(
-                        context.device.clone(),
-                        dimensions,
-                        sample_count,
-                        swapchain_image.swapchain().format(),
-                    )
-                    .unwrap()
-                    .clone(),
-                )
-                .unwrap();
-
                 let framebuffer: Arc<dyn FramebufferAbstract + Send + Sync> = Arc::new(
                     Framebuffer::start(render_pass.clone())
-                        .add(multisample_image.clone())
+                        .add(color_image.clone())
                         .unwrap()
                         .add(depth_image.clone())
                         .unwrap()
@@ -290,41 +270,44 @@ impl Application {
             depth_range: 0.0..1.0,
         };
 
-        self.command_buffers = self
-            .swap_chain_framebuffers
-            .iter()
-            .map(|_framebuffer| {
-                let mut builder = AutoCommandBufferBuilder::secondary_graphics(
-                    self.context.device.clone(),
-                    self.context.graphics_queue.family(),
-                    CommandBufferUsage::SimultaneousUse,
-                    self.graphics_pipeline.subpass().clone(),
-                )
-                .unwrap();
+        let num_command_buffers = self.context.swap_chain.num_images() as usize;
 
+        let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> =
+            Vec::with_capacity(num_command_buffers);
+
+        for _i in 0..num_command_buffers {
+            let mut builder = AutoCommandBufferBuilder::secondary_graphics(
+                self.context.device.clone(),
+                self.context.graphics_queue.family(),
+                CommandBufferUsage::SimultaneousUse,
+                self.graphics_pipeline.subpass().clone(),
+            )
+            .unwrap();
+
+            builder
+                .set_viewport(0, [viewport.clone()])
+                .bind_pipeline_graphics(self.graphics_pipeline.clone());
+
+            for model in self.scene.models.iter() {
                 builder
-                    .set_viewport(0, [viewport.clone()])
-                    .bind_pipeline_graphics(self.graphics_pipeline.clone());
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::Graphics,
+                        self.graphics_pipeline.layout().clone(),
+                        0,
+                        model.descriptor_set.clone(),
+                    )
+                    .bind_vertex_buffers(0, model.vertex_buffer.clone())
+                    .bind_index_buffer(model.index_buffer.clone())
+                    .draw_indexed(model.index_count, 1, 0, 0, 0)
+                    .unwrap();
+            }
 
-                for model in self.scene.models.iter() {
-                    builder
-                        .bind_descriptor_sets(
-                            PipelineBindPoint::Graphics,
-                            self.graphics_pipeline.layout().clone(),
-                            0,
-                            model.descriptor_set.clone(),
-                        )
-                        .bind_vertex_buffers(0, model.vertex_buffer.clone())
-                        .bind_index_buffer(model.index_buffer.clone())
-                        .draw_indexed(model.index_count, 1, 0, 0, 0)
-                        .unwrap();
-                }
+            let command_buffer = Arc::new(builder.build().unwrap());
 
-                let command_buffer = builder.build().unwrap();
+            command_buffers.push(command_buffer);
+        }
 
-                Arc::new(command_buffer)
-            })
-            .collect();
+        self.command_buffers = command_buffers;
     }
 
     fn update_uniform_buffer(
@@ -412,7 +395,7 @@ impl Application {
         )
         .unwrap();
 
-        let framebuffer = self.swap_chain_framebuffers[image_index].clone();
+        let framebuffer = self.framebuffers[image_index].clone();
         let dimensions_u32 = self.context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
@@ -429,6 +412,9 @@ impl Application {
         }
 
         builder
+            // begin offscreen render pass
+            // draw scene
+            // end offscreen render pass
             .begin_render_pass(
                 framebuffer.clone(),
                 SubpassContents::SecondaryCommandBuffers,
