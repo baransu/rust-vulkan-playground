@@ -1,4 +1,4 @@
-pub mod vertex_shader {
+pub mod model_vertex_shader {
     vulkano_shaders::shader! {
                     ty: "vertex",
                     src: "
@@ -33,7 +33,7 @@ pub mod vertex_shader {
     }
 }
 
-pub mod fragment_shader {
+pub mod model_fragment_shader {
     vulkano_shaders::shader! {
                     ty: "fragment",
                     src: "
@@ -64,4 +64,44 @@ pub mod fragment_shader {
     }
 }
 
-pub type MVPUniformBufferObject = vertex_shader::ty::MVPUniformBufferObject;
+pub type MVPUniformBufferObject = model_vertex_shader::ty::MVPUniformBufferObject;
+
+pub mod blur_vertex_shader {
+    vulkano_shaders::shader! {
+                                    ty: "vertex",
+                                    src: "
+				#version 450
+
+				layout(location = 0) in vec3 position;
+				layout(location = 1) in vec3 normal;
+				layout(location = 2) in vec2 uv;
+				layout(location = 3) in vec4 color;
+
+				layout(location = 0) out vec2 outUV;
+				
+				void main() {
+					outUV = uv;
+					gl_Position = vec4(position, 1.0);
+				}									
+	"
+    }
+}
+
+pub mod blur_fragment_shader {
+    vulkano_shaders::shader! {
+                                    ty: "fragment",
+                                    src: "
+		#version 450
+
+		layout (set = 0, binding = 0) uniform sampler2D screen_texture;
+		
+		layout (location = 0) in vec2 inUV;
+		
+		layout (location = 0) out vec4 outFragColor;
+		
+		void main() {
+			outFragColor = texture(screen_texture, inUV);
+		}
+	"
+    }
+}

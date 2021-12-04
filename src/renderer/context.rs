@@ -11,6 +11,7 @@ use vulkano::{
         debug::{DebugCallback, MessageSeverity, MessageType},
         layers_list, ApplicationInfo, Instance, InstanceExtensions,
     },
+    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     swapchain::{
         ColorSpace, CompositeAlpha, PresentMode, SupportedPresentModes, Surface, Swapchain,
     },
@@ -61,6 +62,7 @@ pub struct Context {
 
     pub depth_format: Format,
     pub sample_count: SampleCount,
+    pub image_sampler: Arc<Sampler>,
 }
 
 impl Context {
@@ -87,6 +89,8 @@ impl Context {
             &graphics_queue,
         );
 
+        let image_sampler = Self::create_image_sampler(&device);
+
         Context {
             instance,
             debug_callback,
@@ -101,6 +105,7 @@ impl Context {
 
             depth_format: Self::find_depth_format(),
             sample_count: Self::find_sample_count(),
+            image_sampler,
         }
     }
 
@@ -399,5 +404,24 @@ impl Context {
 
         // macOS doesn't support MSAA8, so we'll use MSAA4 instead.
         SampleCount::Sample4
+    }
+
+    fn create_image_sampler(device: &Arc<Device>) -> Arc<Sampler> {
+        Sampler::new(
+            device.clone(),
+            Filter::Linear,
+            Filter::Linear,
+            MipmapMode::Nearest,
+            SamplerAddressMode::Repeat,
+            SamplerAddressMode::Repeat,
+            SamplerAddressMode::Repeat,
+            0.0,
+            1.0,
+            // what's the minimul mip map lod we want to use - 0 means we start with highest mipmap which is original texture
+            0.0,
+            // if something will be super small we set 1_000 so it adjustes automatically
+            1_000.0,
+        )
+        .unwrap()
     }
 }

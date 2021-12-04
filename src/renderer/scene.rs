@@ -20,13 +20,8 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn load(
-        context: &Context,
-        path: &str,
-        graphics_pipeline: &Arc<GraphicsPipeline>,
-        image_sampler: &Arc<Sampler>,
-    ) -> Self {
-        let models = Self::load_models(context, path, graphics_pipeline, image_sampler);
+    pub fn load(context: &Context, path: &str, graphics_pipeline: &Arc<GraphicsPipeline>) -> Self {
+        let models = Self::load_models(context, path, graphics_pipeline);
 
         Scene { models }
     }
@@ -35,7 +30,6 @@ impl Scene {
         context: &Context,
         path: &str,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        image_sampler: &Arc<Sampler>,
     ) -> Vec<Model> {
         let mut models = Vec::new();
 
@@ -59,7 +53,7 @@ impl Scene {
                 for primitive in mesh.primitives() {
                     let pbr = primitive.material().pbr_metallic_roughness();
 
-                    let base_color_factor = pbr.base_color_factor();
+                    // let base_color_factor = pbr.base_color_factor();
 
                     let (texture_image, tex_coord) = pbr
                         .base_color_texture()
@@ -132,13 +126,13 @@ impl Scene {
 
                         let transform = transforms.get(node.index()).unwrap();
 
-                        let uniform_buffer = Self::create_uniform_buffer(&context, &transform);
+                        let uniform_buffer = Self::create_uniform_buffer(&context);
 
                         let descriptor_set = Self::create_descriptor_set(
                             &graphics_pipeline,
                             &uniform_buffer,
                             &texture_image,
-                            image_sampler,
+                            &context.image_sampler,
                         );
 
                         let model = Model {
@@ -196,11 +190,7 @@ impl Scene {
 
     fn create_uniform_buffer(
         context: &Context,
-        transform: &Transform,
     ) -> Arc<CpuAccessibleBuffer<MVPUniformBufferObject>> {
-        let dimensions_u32 = context.swap_chain.dimensions();
-        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-
         let identity = Mat4::IDENTITY.to_cols_array_2d();
 
         let uniform_buffer_data = MVPUniformBufferObject {
