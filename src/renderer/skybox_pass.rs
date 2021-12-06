@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use glam::Mat4;
 use ktx::include_ktx;
 use vulkano::{
-    buffer::{BufferUsage, ImmutableBuffer},
+    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::{self, PersistentDescriptorSet},
     pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
@@ -11,7 +12,11 @@ use vulkano::{
     sync::GpuFuture,
 };
 
-use super::{context::Context, shaders::skybox_vertex_shader, texture::Texture};
+use super::{
+    context::Context,
+    shaders::{skybox_vertex_shader, MVPUniformBufferObject},
+    texture::Texture,
+};
 
 #[derive(Default, Debug, Clone)]
 struct SkyboxVertex {
@@ -35,6 +40,7 @@ pub struct SkyboxPass {
     graphics_pipeline: Arc<GraphicsPipeline>,
     vertex_buffer: Arc<ImmutableBuffer<[SkyboxVertex]>>,
     descriptor_set: Arc<PersistentDescriptorSet>,
+    pub uniform_buffer: Arc<CpuAccessibleBuffer<MVPUniformBufferObject>>,
     // texture: Texture,
     pub command_buffer: Arc<SecondaryAutoCommandBuffer>,
 }
@@ -48,7 +54,10 @@ impl SkyboxPass {
 
         let texture = Self::load_skybox_texture(context);
 
-        let descriptor_set = Self::create_descriptor_set(&graphics_pipeline, &texture);
+        let uniform_buffer = Self::create_uniform_buffer(context);
+
+        let descriptor_set =
+            Self::create_descriptor_set(context, &graphics_pipeline, &uniform_buffer, &texture);
 
         let command_buffer = Self::create_command_buffer(
             context,
@@ -58,6 +67,7 @@ impl SkyboxPass {
         );
 
         SkyboxPass {
+            uniform_buffer,
             graphics_pipeline,
             vertex_buffer,
             descriptor_set,
@@ -73,6 +83,28 @@ impl SkyboxPass {
             &self.descriptor_set,
             &self.vertex_buffer,
         );
+    }
+
+    fn create_uniform_buffer(
+        context: &Context,
+    ) -> Arc<CpuAccessibleBuffer<MVPUniformBufferObject>> {
+        let identity = Mat4::IDENTITY.to_cols_array_2d();
+
+        let uniform_buffer_data = MVPUniformBufferObject {
+            view: identity,
+            proj: identity,
+            model: identity,
+        };
+
+        let buffer = CpuAccessibleBuffer::from_data(
+            context.device.clone(),
+            BufferUsage::uniform_buffer_transfer_destination(),
+            false,
+            uniform_buffer_data,
+        )
+        .unwrap();
+
+        buffer
     }
 
     fn create_command_buffer(
@@ -153,12 +185,7 @@ impl SkyboxPass {
                 // .depth_stencil(DepthStencil::simple_depth_test())
                 .viewports_dynamic_scissors_irrelevant(1)
                 .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                // .build(context.device.clone())
-                .with_auto_layout(context.device.clone(), |set_descs| {
-                    // Modify the auto-generated layout by setting an immutable sampler to
-                    // set 0 binding 0.
-                    set_descs[0].set_immutable_samplers(0, [context.image_sampler.clone()]);
-                })
+                .build(context.device.clone())
                 .unwrap(),
         );
 
@@ -166,7 +193,9 @@ impl SkyboxPass {
     }
 
     fn create_descriptor_set(
+        context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
+        uniform_buffer: &Arc<CpuAccessibleBuffer<MVPUniformBufferObject>>,
         texture: &Texture,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
@@ -179,8 +208,11 @@ impl SkyboxPass {
 
         let image = texture.image.clone();
 
-        // NOTE: this works because we're setting immutable sampler when creating GraphicsPipeline
-        set_builder.add_image(image).unwrap();
+        set_builder.add_buffer(uniform_buffer.clone()).unwrap();
+
+        set_builder
+            .add_sampled_image(image, context.image_sampler.clone())
+            .unwrap();
 
         Arc::new(set_builder.build().unwrap())
     }

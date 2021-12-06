@@ -376,6 +376,13 @@ impl Application {
         let dimensions_u32 = self.context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
+        builder
+            .update_buffer(
+                self.skybox.uniform_buffer.clone(),
+                Arc::new(self.camera.get_mvp_ubo(dimensions)),
+            )
+            .unwrap();
+
         for model in &self.scene.models {
             let data = Arc::new(model.transform.get_mvp_ubo(&self.camera, dimensions));
 

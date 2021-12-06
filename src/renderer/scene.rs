@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use glam::{Mat4, Quat, Vec3};
 use gltf::Semantic;

@@ -186,11 +186,17 @@ pub mod skybox_vertex_shader {
 
 			layout(location = 0) in vec3 position;
 
+			layout(binding = 0) uniform MVPUniformBufferObject {
+				mat4 view;
+				mat4 proj;
+				mat4 model;
+		 } mvp_ubo;
+
 			layout(location = 0) out vec2 outUV;
 			
 			void main() {
 				outUV = position.xy;
-				gl_Position = vec4(position, 1.0);
+				gl_Position = mvp_ubo.proj * mvp_ubo.view * vec4(position, 1.0);
 			}									
 "
     }
@@ -202,7 +208,7 @@ pub mod skybox_fragment_shader {
                     src: "
 	#version 450
 
-	layout (set = 0, binding = 0) uniform sampler2D skybox_texture;
+	layout (binding = 1) uniform sampler2D skybox_texture;
 	
 	layout (location = 0) in vec2 inUV;
 	
