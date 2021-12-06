@@ -2,20 +2,52 @@ use std::{fs, io, path::Path, sync::Arc};
 
 use gltf::{buffer::Data, image::Source};
 use image::{DynamicImage, GenericImageView, ImageFormat};
+use ktx::KtxInfo;
 use vulkano::{
-    device::Queue,
     format::Format,
     image::{view::ImageView, ImageDimensions, ImmutableImage, MipmapsCount},
     sync::GpuFuture,
 };
+
+use super::context::Context;
 
 pub struct Texture {
     pub image: Arc<ImageView<Arc<ImmutableImage>>>,
 }
 
 impl Texture {
+    pub fn from_ktx(context: &Context, image: &ktx::Ktx<&[u8]>) -> Texture {
+        let width = image.pixel_width();
+        let height = image.pixel_height();
+
+        let image_rgba = image.texture_level(0).to_vec();
+
+        let dimensions = ImageDimensions::Dim2d {
+            width,
+            height,
+            // TODO: what are array_layers?
+            array_layers: 1,
+        };
+
+        let (image, future) = ImmutableImage::from_iter(
+            image_rgba,
+            dimensions,
+            // vulkano already supports mipmap generation so we don't need to do this by hand
+            MipmapsCount::Log2,
+            Format::R8G8B8A8_SRGB,
+            context.graphics_queue.clone(),
+        )
+        .unwrap();
+
+        future.flush().unwrap();
+
+        Texture {
+            image: ImageView::new(image).unwrap(),
+        }
+    }
+
     pub fn from_gltf_texture(
-        graphics_queue: &Arc<Queue>,
+        context: &Context,
         base_path: &str,
         image: &gltf::Texture,
         buffers: &Vec<Data>,
@@ -100,20 +132,20 @@ impl Texture {
         }
         .unwrap();
 
-        let image = Self::create_image_view(graphics_queue, &image);
+        let image = Self::create_image_view(context, &image);
 
         Texture { image }
     }
 
-    pub fn empty(graphics_queue: &Arc<Queue>) -> Texture {
+    pub fn empty(context: &Context) -> Texture {
         let image = DynamicImage::new_rgb8(1, 1);
-        let view = Self::create_image_view(graphics_queue, &image);
+        let view = Self::create_image_view(context, &image);
 
         Texture { image: view }
     }
 
     fn create_image_view(
-        graphics_queue: &Arc<Queue>,
+        context: &Context,
         image: &DynamicImage,
     ) -> Arc<ImageView<Arc<ImmutableImage>>> {
         let width = image.width();
@@ -134,7 +166,7 @@ impl Texture {
             // vulkano already supports mipmap generation so we don't need to do this by hand
             MipmapsCount::Log2,
             Format::R8G8B8A8_SRGB,
-            graphics_queue.clone(),
+            context.graphics_queue.clone(),
         )
         .unwrap();
 

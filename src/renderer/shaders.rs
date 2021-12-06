@@ -177,3 +177,40 @@ pub mod screen_fragment_shader {
 	"
     }
 }
+
+pub mod skybox_vertex_shader {
+    vulkano_shaders::shader! {
+                                                                    ty: "vertex",
+                                                                    src: "
+			#version 450
+
+			layout(location = 0) in vec3 position;
+
+			layout(location = 0) out vec2 outUV;
+			
+			void main() {
+				outUV = position.xy;
+				gl_Position = vec4(position, 1.0);
+			}									
+"
+    }
+}
+
+pub mod skybox_fragment_shader {
+    vulkano_shaders::shader! {
+                    ty: "fragment",
+                    src: "
+	#version 450
+
+	layout (set = 0, binding = 0) uniform sampler2D skybox_texture;
+	
+	layout (location = 0) in vec2 inUV;
+	
+	layout (location = 0) out vec4 outFragColor;
+
+	void main() {
+		outFragColor = texture(skybox_texture, inUV);
+	}
+"
+    }
+}

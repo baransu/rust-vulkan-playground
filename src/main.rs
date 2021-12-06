@@ -4,7 +4,8 @@ use std::{collections::HashMap, f32::consts::PI, sync::Arc, time::Instant};
 
 use glam::Vec3;
 use renderer::{
-    camera::Camera, context::Context, scene::Scene, screen_frame::ScreenFrame, vertex::Vertex,
+    camera::Camera, context::Context, scene::Scene, screen_frame::ScreenFrame,
+    skybox_pass::SkyboxPass, vertex::Vertex,
 };
 use vulkano::{
     command_buffer::{
@@ -26,65 +27,6 @@ use winit::{
     event_loop::ControlFlow,
 };
 
-#[derive(Default, Debug, Clone)]
-struct SkyboxVertex {
-    position: [f32; 3],
-    // later we'll remove that
-    uv: [f32; 2],
-}
-
-impl SkyboxVertex {
-    fn new(pos_x: f32, pos_y: f32, pos_z: f32, uv_x: f32, uv_y: f32) -> SkyboxVertex {
-        SkyboxVertex {
-            position: [pos_x, pos_y, pos_z],
-            uv: [uv_x, uv_y],
-        }
-    }
-}
-
-vulkano::impl_vertex!(SkyboxVertex, position, uv);
-
-fn cube_vertices() -> [SkyboxVertex; 36] {
-    [
-        SkyboxVertex::new(-0.5, -0.5, -0.5, 0.0, 0.0),
-        SkyboxVertex::new(0.5, -0.5, -0.5, 1.0, 0.0),
-        SkyboxVertex::new(0.5, 0.5, -0.5, 1.0, 1.0),
-        SkyboxVertex::new(0.5, 0.5, -0.5, 1.0, 1.0),
-        SkyboxVertex::new(-0.5, 0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(-0.5, -0.5, -0.5, 0.0, 0.0),
-        SkyboxVertex::new(-0.5, -0.5, 0.5, 0.0, 0.0),
-        SkyboxVertex::new(0.5, -0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(0.5, 0.5, 0.5, 1.0, 1.0),
-        SkyboxVertex::new(0.5, 0.5, 0.5, 1.0, 1.0),
-        SkyboxVertex::new(-0.5, 0.5, 0.5, 0.0, 1.0),
-        SkyboxVertex::new(-0.5, -0.5, 0.5, 0.0, 0.0),
-        SkyboxVertex::new(-0.5, 0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(-0.5, 0.5, -0.5, 1.0, 1.0),
-        SkyboxVertex::new(-0.5, -0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(-0.5, -0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(-0.5, -0.5, 0.5, 0.0, 0.0),
-        SkyboxVertex::new(-0.5, 0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(0.5, 0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(0.5, 0.5, -0.5, 1.0, 1.0),
-        SkyboxVertex::new(0.5, -0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(0.5, -0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(0.5, -0.5, 0.5, 0.0, 0.0),
-        SkyboxVertex::new(0.5, 0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(-0.5, -0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(0.5, -0.5, -0.5, 1.0, 1.0),
-        SkyboxVertex::new(0.5, -0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(0.5, -0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(-0.5, -0.5, 0.5, 0.0, 0.0),
-        SkyboxVertex::new(-0.5, -0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(-0.5, 0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(0.5, 0.5, -0.5, 1.0, 1.0),
-        SkyboxVertex::new(0.5, 0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(0.5, 0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(-0.5, 0.5, 0.5, 0.0, 0.0),
-        SkyboxVertex::new(-0.5, 0.5, -0.5, 0.0, 1.0),
-    ]
-}
-
 const MODEL_PATH: &str = "res/damaged_helmet/scene.gltf";
 
 pub struct OffscreenFramebuffer {
@@ -100,6 +42,8 @@ struct Application {
     scene_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
 
     screen_frame: ScreenFrame,
+
+    skybox: SkyboxPass,
 
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     recreate_swap_chain: bool,
@@ -129,10 +73,14 @@ impl Application {
 
         let screen_frame = ScreenFrame::initialize(&context, &scene_framebuffers);
 
+        let skybox = SkyboxPass::initialize(&context, &scene_render_pass);
+
         let mut app = Self {
             context,
 
             screen_frame,
+
+            skybox,
 
             scene_graphics_pipeline,
             scene_framebuffers,
@@ -359,9 +307,9 @@ impl Application {
             )
             .unwrap();
 
-            builder
-                .set_viewport(0, [viewport.clone()])
-                .bind_pipeline_graphics(self.scene_graphics_pipeline.clone());
+            builder.set_viewport(0, [viewport.clone()]);
+
+            builder.bind_pipeline_graphics(self.scene_graphics_pipeline.clone());
 
             for model in self.scene.models.iter() {
                 builder
@@ -446,6 +394,8 @@ impl Application {
                     ClearValue::None,
                 ],
             )
+            .unwrap()
+            .execute_commands(self.skybox.command_buffer.clone())
             .unwrap()
             .execute_commands(offscreen_command_buffer)
             .unwrap()
