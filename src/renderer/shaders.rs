@@ -66,7 +66,7 @@ pub mod model_fragment_shader {
 
 pub type MVPUniformBufferObject = model_vertex_shader::ty::MVPUniformBufferObject;
 
-pub mod post_vertex_shader {
+pub mod screen_vertex_shader {
     vulkano_shaders::shader! {
                                     ty: "vertex",
                                     src: "
@@ -85,7 +85,7 @@ pub mod post_vertex_shader {
     }
 }
 
-pub mod post_fragment_shader {
+pub mod screen_fragment_shader {
     vulkano_shaders::shader! {
                                     ty: "fragment",
                                     src: "
@@ -167,7 +167,7 @@ pub mod post_fragment_shader {
 		}
 
 		void main() {
-			// outFragColor = no_effect()	
+			// outFragColor = no_effect();	
 			// outFragColor = negative_effect();
 			// outFragColor = grayscale_effect();
 			// outFragColor = sharpen_effect();
