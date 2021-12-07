@@ -28,6 +28,9 @@ use winit::{
 };
 
 const MODEL_PATH: &str = "res/damaged_helmet/scene.gltf";
+// const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/gcanyon_cube.ktx";
+// const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/pisa_cube.ktx";
+const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/uffizi_cube.ktx";
 
 pub struct OffscreenFramebuffer {
     framebuffer: Arc<dyn FramebufferAbstract + Send + Sync>,
@@ -73,7 +76,7 @@ impl Application {
 
         let screen_frame = ScreenFrame::initialize(&context, &scene_framebuffers);
 
-        let skybox = SkyboxPass::initialize(&context, &scene_render_pass);
+        let skybox = SkyboxPass::initialize(&context, &scene_render_pass, SKYBOX_PATH);
 
         let mut app = Self {
             context,
@@ -379,7 +382,7 @@ impl Application {
         builder
             .update_buffer(
                 self.skybox.uniform_buffer.clone(),
-                Arc::new(self.camera.get_mvp_ubo(dimensions)),
+                Arc::new(self.camera.get_skybox_mvp_ubo(dimensions)),
             )
             .unwrap();
 

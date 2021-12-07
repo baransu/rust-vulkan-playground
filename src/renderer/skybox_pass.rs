@@ -1,22 +1,17 @@
-use std::sync::Arc;
+use std::{fs::File, io::BufReader, sync::Arc};
 
 use glam::Mat4;
-use ktx::include_ktx;
+use ktx::Decoder;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
-    descriptor_set::{self, PersistentDescriptorSet},
+    descriptor_set::PersistentDescriptorSet,
     pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
-    render_pass::{self, RenderPass, Subpass},
-    single_pass_renderpass,
+    render_pass::{RenderPass, Subpass},
     sync::GpuFuture,
 };
 
-use super::{
-    context::Context,
-    shaders::{skybox_vertex_shader, MVPUniformBufferObject},
-    texture::Texture,
-};
+use super::{context::Context, shaders::MVPUniformBufferObject, texture::Texture};
 
 #[derive(Default, Debug, Clone)]
 struct SkyboxVertex {
@@ -26,10 +21,9 @@ struct SkyboxVertex {
 }
 
 impl SkyboxVertex {
-    fn new(pos_x: f32, pos_y: f32, pos_z: f32, _uv_x: f32, _uv_y: f32) -> SkyboxVertex {
+    fn new(pos_x: f32, pos_y: f32, pos_z: f32) -> SkyboxVertex {
         SkyboxVertex {
             position: [pos_x, pos_y, pos_z],
-            // uv: [uv_x, uv_y],
         }
     }
 }
@@ -46,13 +40,16 @@ pub struct SkyboxPass {
 }
 
 impl SkyboxPass {
-    pub fn initialize(context: &Context, render_pass: &Arc<RenderPass>) -> SkyboxPass {
-        // let render_pass = Self::create_render_pass(context);
+    pub fn initialize(
+        context: &Context,
+        render_pass: &Arc<RenderPass>,
+        skybox_path: &str,
+    ) -> SkyboxPass {
         let graphics_pipeline = Self::create_graphics_pipeline(context, &render_pass);
 
         let vertex_buffer = Self::create_vertex_buffer(context);
 
-        let texture = Self::load_skybox_texture(context);
+        let texture = Self::load_skybox_texture(context, skybox_path);
 
         let uniform_buffer = Self::create_uniform_buffer(context);
 
@@ -179,7 +176,7 @@ impl SkyboxPass {
                 .polygon_mode_fill() // = default
                 .line_width(1.0) // = default
                 .cull_mode_back()
-                .front_face_clockwise()
+                .front_face_counter_clockwise()
                 // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
                 .blend_pass_through()
                 // .depth_stencil(DepthStencil::simple_depth_test())
@@ -217,28 +214,6 @@ impl SkyboxPass {
         Arc::new(set_builder.build().unwrap())
     }
 
-    // fn create_render_pass(context: &Context) -> Arc<RenderPass> {
-    //     let color_format = context.swap_chain.format();
-
-    //     Arc::new(
-    //         single_pass_renderpass!(context.device.clone(),
-    //                         attachments: {
-    //                                 color: {
-    //                                         load: Clear,
-    //                                         store: Store,
-    //                                         format: color_format,
-    //                                         samples: 1,
-    //                                 }
-    //                         },
-    //                         pass: {
-    //                                 color: [color],
-    //                                 depth_stencil: {}
-    //                         }
-    //         )
-    //         .unwrap(),
-    //     )
-    // }
-
     fn create_vertex_buffer(context: &Context) -> Arc<ImmutableBuffer<[SkyboxVertex]>> {
         let (vertex_buffer, future) = ImmutableBuffer::from_iter(
             skybox_vertices().clone(),
@@ -253,51 +228,51 @@ impl SkyboxPass {
         vertex_buffer
     }
 
-    fn load_skybox_texture(context: &Context) -> Texture {
-        let image: ktx::Ktx<&[u8]> =
-            include_ktx!("../../vulkan_asset_pack_gltf/textures/hdr/uffizi_cube.ktx");
+    fn load_skybox_texture(context: &Context, path: &str) -> Texture {
+        let ktx_file = BufReader::new(File::open(path).unwrap());
+        let ktx: Decoder<BufReader<File>> = ktx::Decoder::new(ktx_file).unwrap();
 
-        Texture::from_ktx(context, &image)
+        Texture::from_ktx(context, ktx)
     }
 }
 
 fn skybox_vertices() -> [SkyboxVertex; 36] {
     [
-        SkyboxVertex::new(-0.5, -0.5, -0.5, 0.0, 0.0),
-        SkyboxVertex::new(0.5, -0.5, -0.5, 1.0, 0.0),
-        SkyboxVertex::new(0.5, 0.5, -0.5, 1.0, 1.0),
-        SkyboxVertex::new(0.5, 0.5, -0.5, 1.0, 1.0),
-        SkyboxVertex::new(-0.5, 0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(-0.5, -0.5, -0.5, 0.0, 0.0),
-        SkyboxVertex::new(-0.5, -0.5, 0.5, 0.0, 0.0),
-        SkyboxVertex::new(0.5, -0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(0.5, 0.5, 0.5, 1.0, 1.0),
-        SkyboxVertex::new(0.5, 0.5, 0.5, 1.0, 1.0),
-        SkyboxVertex::new(-0.5, 0.5, 0.5, 0.0, 1.0),
-        SkyboxVertex::new(-0.5, -0.5, 0.5, 0.0, 0.0),
-        SkyboxVertex::new(-0.5, 0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(-0.5, 0.5, -0.5, 1.0, 1.0),
-        SkyboxVertex::new(-0.5, -0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(-0.5, -0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(-0.5, -0.5, 0.5, 0.0, 0.0),
-        SkyboxVertex::new(-0.5, 0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(0.5, 0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(0.5, 0.5, -0.5, 1.0, 1.0),
-        SkyboxVertex::new(0.5, -0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(0.5, -0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(0.5, -0.5, 0.5, 0.0, 0.0),
-        SkyboxVertex::new(0.5, 0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(-0.5, -0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(0.5, -0.5, -0.5, 1.0, 1.0),
-        SkyboxVertex::new(0.5, -0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(0.5, -0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(-0.5, -0.5, 0.5, 0.0, 0.0),
-        SkyboxVertex::new(-0.5, -0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(-0.5, 0.5, -0.5, 0.0, 1.0),
-        SkyboxVertex::new(0.5, 0.5, -0.5, 1.0, 1.0),
-        SkyboxVertex::new(0.5, 0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(0.5, 0.5, 0.5, 1.0, 0.0),
-        SkyboxVertex::new(-0.5, 0.5, 0.5, 0.0, 0.0),
-        SkyboxVertex::new(-0.5, 0.5, -0.5, 0.0, 1.0),
+        SkyboxVertex::new(-1.0, 1.0, -1.0),
+        SkyboxVertex::new(-1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
+        SkyboxVertex::new(-1.0, 1.0, -1.0),
+        SkyboxVertex::new(-1.0, -1.0, 1.0),
+        SkyboxVertex::new(-1.0, -1.0, -1.0),
+        SkyboxVertex::new(-1.0, 1.0, -1.0),
+        SkyboxVertex::new(-1.0, 1.0, -1.0),
+        SkyboxVertex::new(-1.0, 1.0, 1.0),
+        SkyboxVertex::new(-1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
+        SkyboxVertex::new(1.0, -1.0, -1.0),
+        SkyboxVertex::new(-1.0, -1.0, 1.0),
+        SkyboxVertex::new(-1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, -1.0, 1.0),
+        SkyboxVertex::new(-1.0, -1.0, 1.0),
+        SkyboxVertex::new(-1.0, 1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(-1.0, 1.0, 1.0),
+        SkyboxVertex::new(-1.0, 1.0, -1.0),
+        SkyboxVertex::new(-1.0, -1.0, -1.0),
+        SkyboxVertex::new(-1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, -1.0, -1.0),
+        SkyboxVertex::new(-1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, -1.0, 1.0),
     ]
 }

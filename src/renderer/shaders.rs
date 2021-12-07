@@ -167,12 +167,12 @@ pub mod screen_fragment_shader {
 		}
 
 		void main() {
-			// outFragColor = no_effect();	
+			outFragColor = no_effect();	
 			// outFragColor = negative_effect();
 			// outFragColor = grayscale_effect();
 			// outFragColor = sharpen_effect();
 			// outFragColor = blur_effect();
-			outFragColor = edge_detection_effect();
+			// outFragColor = edge_detection_effect();
 		}
 	"
     }
@@ -192,10 +192,10 @@ pub mod skybox_vertex_shader {
 				mat4 model;
 		 } mvp_ubo;
 
-			layout(location = 0) out vec2 outUV;
+			layout(location = 0) out vec3 outUV;
 			
 			void main() {
-				outUV = position.xy;
+				outUV = position;
 				gl_Position = mvp_ubo.proj * mvp_ubo.view * vec4(position, 1.0);
 			}									
 "
@@ -208,14 +208,15 @@ pub mod skybox_fragment_shader {
                     src: "
 	#version 450
 
-	layout (binding = 1) uniform sampler2D skybox_texture;
+	layout (binding = 1) uniform samplerCube skybox_texture;
 	
-	layout (location = 0) in vec2 inUV;
+	layout (location = 0) in vec3 inUV;
 	
 	layout (location = 0) out vec4 outFragColor;
 
 	void main() {
-		outFragColor = texture(skybox_texture, inUV);
+		vec3 uv = vec3(inUV.x, -inUV.y, inUV.z);
+		outFragColor = texture(skybox_texture, uv);
 	}
 "
     }
