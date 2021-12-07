@@ -1,21 +1,142 @@
-use std::{fs, io, path::Path, sync::Arc};
+use std::{
+    fs::{self, File},
+    io::{self, BufReader},
+    path::Path,
+    sync::Arc,
+};
 
 use gltf::{buffer::Data, image::Source};
 use image::{DynamicImage, GenericImageView, ImageFormat};
+use ktx::{Decoder, KtxInfo};
 use vulkano::{
-    device::Queue,
+    buffer::{BufferUsage, CpuAccessibleBuffer},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer},
     format::Format,
-    image::{view::ImageView, ImageDimensions, ImmutableImage, MipmapsCount},
+    image::{
+        immutable::SubImage,
+        view::{ImageView, ImageViewType},
+        ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, ImmutableImage, MipmapsCount,
+    },
     sync::GpuFuture,
 };
+
+use super::context::Context;
 
 pub struct Texture {
     pub image: Arc<ImageView<Arc<ImmutableImage>>>,
 }
 
 impl Texture {
+    pub fn from_ktx(context: &Context, image: Decoder<BufReader<File>>) -> Texture {
+        let width = image.pixel_width();
+        let height = image.pixel_height();
+
+        let image_rgba = image.read_textures().next().unwrap().to_vec();
+
+        let dimensions = ImageDimensions::Dim2d {
+            width,
+            height,
+            // TODO: what are array_layers?
+            array_layers: 6,
+        };
+
+        let format = Format::R16G16B16A16_SFLOAT;
+
+        // Most of this logic is copied from vulkano immutable.rs from_buffer method
+        let (image, future) = {
+            let usage = ImageUsage {
+                transfer_destination: true,
+                transfer_source: false,
+
+                sampled: true,
+                ..ImageUsage::none()
+            };
+
+            let flags = ImageCreateFlags {
+                cube_compatible: true,
+                ..ImageCreateFlags::none()
+            };
+
+            let layout = ImageLayout::ShaderReadOnlyOptimal;
+
+            let source = CpuAccessibleBuffer::from_iter(
+                context.device.clone(),
+                BufferUsage::transfer_source(),
+                false,
+                image_rgba,
+            )
+            .unwrap();
+
+            let (image, initializer) = ImmutableImage::uninitialized(
+                context.device.clone(),
+                dimensions,
+                format,
+                MipmapsCount::One,
+                usage,
+                flags,
+                layout,
+                context.device.active_queue_families(),
+            )
+            .unwrap();
+
+            let init = SubImage::new(
+                Arc::new(initializer),
+                0,
+                1,
+                0,
+                1,
+                ImageLayout::ShaderReadOnlyOptimal,
+            );
+
+            let mut cbb = AutoCommandBufferBuilder::primary(
+                context.device.clone(),
+                context.graphics_queue.family(),
+                CommandBufferUsage::MultipleSubmit,
+            )
+            .unwrap();
+
+            cbb.copy_buffer_to_image_dimensions(
+                source,
+                init,
+                [0, 0, 0],
+                dimensions.width_height_depth(),
+                0,
+                dimensions.array_layers(),
+                0,
+            )
+            .unwrap();
+
+            let cb = cbb.build().unwrap();
+
+            let future = cb.execute(context.graphics_queue.clone()).unwrap();
+
+            // image.initialized.store(true, Ordering::Relaxed);
+
+            (image, future)
+        };
+
+        // ImmutableImage::from_iter(
+        //     image_rgba,
+        //     dimensions,
+        //     // vulkano already supports mipmap generation so we don't need to do this by hand
+        //     MipmapsCount::Log2,
+        //     Format::R16G16B16A16_SFLOAT,
+        //     context.graphics_queue.clone(),
+        // )
+        // .unwrap();
+
+        future.flush().unwrap();
+
+        Texture {
+            image: ImageView::start(image)
+                .with_type(ImageViewType::Cube)
+                .build()
+                .unwrap(),
+        }
+    }
+
     pub fn from_gltf_texture(
-        graphics_queue: &Arc<Queue>,
+        context: &Context,
         base_path: &str,
         image: &gltf::Texture,
         buffers: &Vec<Data>,
@@ -100,20 +221,20 @@ impl Texture {
         }
         .unwrap();
 
-        let image = Self::create_image_view(graphics_queue, &image);
+        let image = Self::create_image_view(context, &image);
 
         Texture { image }
     }
 
-    pub fn empty(graphics_queue: &Arc<Queue>) -> Texture {
+    pub fn empty(context: &Context) -> Texture {
         let image = DynamicImage::new_rgb8(1, 1);
-        let view = Self::create_image_view(graphics_queue, &image);
+        let view = Self::create_image_view(context, &image);
 
         Texture { image: view }
     }
 
     fn create_image_view(
-        graphics_queue: &Arc<Queue>,
+        context: &Context,
         image: &DynamicImage,
     ) -> Arc<ImageView<Arc<ImmutableImage>>> {
         let width = image.width();
@@ -134,7 +255,7 @@ impl Texture {
             // vulkano already supports mipmap generation so we don't need to do this by hand
             MipmapsCount::Log2,
             Format::R8G8B8A8_SRGB,
-            graphics_queue.clone(),
+            context.graphics_queue.clone(),
         )
         .unwrap();
 

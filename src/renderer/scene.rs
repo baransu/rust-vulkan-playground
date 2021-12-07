@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use glam::{Mat4, Quat, Vec3};
 use gltf::Semantic;
@@ -59,7 +59,7 @@ impl Scene {
                         .base_color_texture()
                         .map(|color_info| {
                             let texture = Texture::from_gltf_texture(
-                                &context.graphics_queue,
+                                &context,
                                 path,
                                 &color_info.texture(),
                                 &buffers,
@@ -69,7 +69,7 @@ impl Scene {
                         })
                         .unwrap_or_else(|| {
                             // just a fillter image to make descriptor set happy
-                            (Texture::empty(&context.graphics_queue), 0)
+                            (Texture::empty(&context), 0)
                         });
 
                     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));

@@ -66,7 +66,7 @@ pub mod model_fragment_shader {
 
 pub type MVPUniformBufferObject = model_vertex_shader::ty::MVPUniformBufferObject;
 
-pub mod post_vertex_shader {
+pub mod screen_vertex_shader {
     vulkano_shaders::shader! {
                                     ty: "vertex",
                                     src: "
@@ -85,7 +85,7 @@ pub mod post_vertex_shader {
     }
 }
 
-pub mod post_fragment_shader {
+pub mod screen_fragment_shader {
     vulkano_shaders::shader! {
                                     ty: "fragment",
                                     src: "
@@ -167,13 +167,57 @@ pub mod post_fragment_shader {
 		}
 
 		void main() {
-			// outFragColor = no_effect()	
+			outFragColor = no_effect();	
 			// outFragColor = negative_effect();
 			// outFragColor = grayscale_effect();
 			// outFragColor = sharpen_effect();
 			// outFragColor = blur_effect();
-			outFragColor = edge_detection_effect();
+			// outFragColor = edge_detection_effect();
 		}
 	"
+    }
+}
+
+pub mod skybox_vertex_shader {
+    vulkano_shaders::shader! {
+                                                                    ty: "vertex",
+                                                                    src: "
+			#version 450
+
+			layout(location = 0) in vec3 position;
+
+			layout(binding = 0) uniform MVPUniformBufferObject {
+				mat4 view;
+				mat4 proj;
+				mat4 model;
+		 } mvp_ubo;
+
+			layout(location = 0) out vec3 outUV;
+			
+			void main() {
+				outUV = position;
+				gl_Position = mvp_ubo.proj * mvp_ubo.view * vec4(position, 1.0);
+			}									
+"
+    }
+}
+
+pub mod skybox_fragment_shader {
+    vulkano_shaders::shader! {
+                    ty: "fragment",
+                    src: "
+	#version 450
+
+	layout (binding = 1) uniform samplerCube skybox_texture;
+	
+	layout (location = 0) in vec3 inUV;
+	
+	layout (location = 0) out vec4 outFragColor;
+
+	void main() {
+		vec3 uv = vec3(inUV.x, -inUV.y, inUV.z);
+		outFragColor = texture(skybox_texture, uv);
+	}
+"
     }
 }
