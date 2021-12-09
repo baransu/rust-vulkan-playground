@@ -11,13 +11,11 @@ use vulkano::{
     sync::GpuFuture,
 };
 
-use super::{context::Context, shaders::MVPUniformBufferObject, texture::Texture};
+use super::{context::Context, shaders::SceneUniformBufferObject, texture::Texture};
 
 #[derive(Default, Debug, Clone)]
 struct SkyboxVertex {
     position: [f32; 3],
-    // later we'll remove that
-    // uv: [f32; 2],
 }
 
 impl SkyboxVertex {
@@ -34,7 +32,7 @@ pub struct SkyboxPass {
     graphics_pipeline: Arc<GraphicsPipeline>,
     vertex_buffer: Arc<ImmutableBuffer<[SkyboxVertex]>>,
     descriptor_set: Arc<PersistentDescriptorSet>,
-    pub uniform_buffer: Arc<CpuAccessibleBuffer<MVPUniformBufferObject>>,
+    pub uniform_buffer: Arc<CpuAccessibleBuffer<SceneUniformBufferObject>>,
     // texture: Texture,
     pub command_buffer: Arc<SecondaryAutoCommandBuffer>,
 }
@@ -84,13 +82,12 @@ impl SkyboxPass {
 
     fn create_uniform_buffer(
         context: &Context,
-    ) -> Arc<CpuAccessibleBuffer<MVPUniformBufferObject>> {
+    ) -> Arc<CpuAccessibleBuffer<SceneUniformBufferObject>> {
         let identity = Mat4::IDENTITY.to_cols_array_2d();
 
-        let uniform_buffer_data = MVPUniformBufferObject {
+        let uniform_buffer_data = SceneUniformBufferObject {
             view: identity,
             proj: identity,
-            model: identity,
         };
 
         let buffer = CpuAccessibleBuffer::from_data(
@@ -192,7 +189,7 @@ impl SkyboxPass {
     fn create_descriptor_set(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        uniform_buffer: &Arc<CpuAccessibleBuffer<MVPUniformBufferObject>>,
+        uniform_buffer: &Arc<CpuAccessibleBuffer<SceneUniformBufferObject>>,
         texture: &Texture,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline

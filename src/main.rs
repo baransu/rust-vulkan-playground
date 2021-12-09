@@ -8,6 +8,7 @@ use renderer::{
     skybox_pass::SkyboxPass, vertex::Vertex,
 };
 use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer, SubpassContents,
     },
@@ -15,7 +16,8 @@ use vulkano::{
     format::ClearValue,
     image::{view::ImageView, AttachmentImage, ImageUsage},
     pipeline::{
-        depth_stencil::DepthStencil, viewport::Viewport, GraphicsPipeline, PipelineBindPoint,
+        depth_stencil::DepthStencil, vertex::BuffersDefinition, viewport::Viewport,
+        GraphicsPipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass},
     single_pass_renderpass,
@@ -31,6 +33,13 @@ const MODEL_PATH: &str = "res/damaged_helmet/scene.gltf";
 // const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/gcanyon_cube.ktx";
 // const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/pisa_cube.ktx";
 const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/uffizi_cube.ktx";
+
+#[derive(Default, Copy, Clone)]
+struct InstanceData {
+    model: [[f32; 4]; 4],
+}
+
+vulkano::impl_vertex!(InstanceData, model);
 
 pub struct OffscreenFramebuffer {
     framebuffer: Arc<dyn FramebufferAbstract + Send + Sync>,
@@ -215,7 +224,11 @@ impl Application {
 
         let pipeline = Arc::new(
             GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vertex>()
+                .vertex_input(
+                    BuffersDefinition::new()
+                        .vertex::<Vertex>()
+                        .instance::<InstanceData>(),
+                )
                 .vertex_shader(vert_shader_module.main_entry_point(), ())
                 .triangle_list()
                 .primitive_restart(false)
@@ -299,6 +312,32 @@ impl Application {
             depth_range: 0.0..1.0,
         };
 
+        let mut instance_data = Vec::new();
+        let model = self.scene.models.get(0).unwrap();
+
+        let count = 25;
+        let start = -(count / 2);
+        let end = count / 2;
+
+        for x in start..end {
+            for y in start..end {
+                let position = Vec3::new(x as f32 * 2.0, y as f32 * 2.0, 1.5);
+                let model = model.transform.get_model_matrix(position);
+
+                instance_data.push(InstanceData {
+                    model: model.to_cols_array_2d(),
+                })
+            }
+        }
+
+        let instance_data_buffer = CpuAccessibleBuffer::from_iter(
+            self.context.device.clone(),
+            BufferUsage::all(),
+            false,
+            instance_data.iter().cloned(),
+        )
+        .unwrap();
+
         let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
 
         for _i in 0..self.context.swap_chain.num_images() {
@@ -322,9 +361,18 @@ impl Application {
                         0,
                         model.descriptor_set.clone(),
                     )
-                    .bind_vertex_buffers(0, model.vertex_buffer.clone())
+                    .bind_vertex_buffers(
+                        0,
+                        (model.vertex_buffer.clone(), instance_data_buffer.clone()),
+                    )
                     .bind_index_buffer(model.index_buffer.clone())
-                    .draw_indexed(model.index_count, 1, 0, 0, 0)
+                    .draw_indexed(
+                        model.index_count,
+                        instance_data_buffer.len() as u32,
+                        0,
+                        0,
+                        0,
+                    )
                     .unwrap();
             }
 
@@ -382,15 +430,16 @@ impl Application {
         builder
             .update_buffer(
                 self.skybox.uniform_buffer.clone(),
-                Arc::new(self.camera.get_skybox_mvp_ubo(dimensions)),
+                Arc::new(self.camera.get_skybox_uniform_data(dimensions)),
             )
             .unwrap();
 
+        // TODO: we don't need uniform buffer for each model - just one will be ok
         for model in &self.scene.models {
-            let data = Arc::new(model.transform.get_mvp_ubo(&self.camera, dimensions));
+            let model_uniform_data = Arc::new(self.camera.get_model_uniform_data(dimensions));
 
             builder
-                .update_buffer(model.uniform_buffer.clone(), data)
+                .update_buffer(model.uniform_buffer.clone(), model_uniform_data)
                 .unwrap();
         }
 

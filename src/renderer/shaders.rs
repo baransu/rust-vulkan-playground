@@ -4,16 +4,19 @@ pub mod model_vertex_shader {
                     src: "
 				#version 450
 
-				layout(binding = 0) uniform MVPUniformBufferObject {
+				layout(binding = 0) uniform SceneUniformBufferObject {
 						mat4 view;
 						mat4 proj;
-						mat4 model;
-				} mvp_ubo;
+				} scene;
 
+				// per vertex
 				layout(location = 0) in vec3 position;
 				layout(location = 1) in vec3 normal;
 				layout(location = 2) in vec2 uv;
 				layout(location = 3) in vec4 color;
+
+				// per instance
+				layout(location = 4) in mat4 model;
 
 				layout(location = 0) out vec2 f_uv;
 				layout(location = 1) out vec3 f_normal;
@@ -24,10 +27,10 @@ pub mod model_vertex_shader {
 				};
 
 				void main() {
-						gl_Position = mvp_ubo.proj * mvp_ubo.view * mvp_ubo.model * vec4(position, 1.0);
-						f_position = vec3(mvp_ubo.model * vec4(position, 1.0));
+						gl_Position = scene.proj * scene.view * model * vec4(position, 1.0);
+						f_position = vec3(model * vec4(position, 1.0));
 						f_uv = uv;
-						f_normal = mat3(transpose(inverse(mvp_ubo.model))) * normal;  
+						f_normal = mat3(transpose(inverse(model))) * normal;  
 				}
 		"
     }
@@ -64,7 +67,7 @@ pub mod model_fragment_shader {
     }
 }
 
-pub type MVPUniformBufferObject = model_vertex_shader::ty::MVPUniformBufferObject;
+pub type SceneUniformBufferObject = model_vertex_shader::ty::SceneUniformBufferObject;
 
 pub mod screen_vertex_shader {
     vulkano_shaders::shader! {
@@ -186,17 +189,16 @@ pub mod skybox_vertex_shader {
 
 			layout(location = 0) in vec3 position;
 
-			layout(binding = 0) uniform MVPUniformBufferObject {
+			layout(binding = 0) uniform SceneUniformBufferObject {
 				mat4 view;
 				mat4 proj;
-				mat4 model;
-		 } mvp_ubo;
+		 } scene;
 
 			layout(location = 0) out vec3 outUV;
 			
 			void main() {
 				outUV = position;
-				gl_Position = mvp_ubo.proj * mvp_ubo.view * vec4(position, 1.0);
+				gl_Position = scene.proj * scene.view * vec4(position, 1.0);
 			}									
 "
     }

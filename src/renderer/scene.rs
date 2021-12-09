@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
 
 use glam::{Mat4, Quat, Vec3};
 use gltf::Semantic;
@@ -13,7 +13,7 @@ use vulkano::{
 
 use crate::renderer::{model::Transform, texture::Texture};
 
-use super::{context::Context, model::Model, shaders::MVPUniformBufferObject, vertex::Vertex};
+use super::{context::Context, model::Model, shaders::SceneUniformBufferObject, vertex::Vertex};
 
 pub struct Scene {
     pub models: Vec<Model>,
@@ -190,13 +190,12 @@ impl Scene {
 
     fn create_uniform_buffer(
         context: &Context,
-    ) -> Arc<CpuAccessibleBuffer<MVPUniformBufferObject>> {
+    ) -> Arc<CpuAccessibleBuffer<SceneUniformBufferObject>> {
         let identity = Mat4::IDENTITY.to_cols_array_2d();
 
-        let uniform_buffer_data = MVPUniformBufferObject {
+        let uniform_buffer_data = SceneUniformBufferObject {
             view: identity,
             proj: identity,
-            model: identity,
         };
 
         let buffer = CpuAccessibleBuffer::from_data(
@@ -212,7 +211,7 @@ impl Scene {
 
     fn create_descriptor_set(
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        uniform_buffer: &Arc<CpuAccessibleBuffer<MVPUniformBufferObject>>,
+        uniform_buffer: &Arc<CpuAccessibleBuffer<SceneUniformBufferObject>>,
         texture: &Texture,
         image_sampler: &Arc<Sampler>,
     ) -> Arc<PersistentDescriptorSet> {

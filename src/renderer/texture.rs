@@ -115,16 +115,6 @@ impl Texture {
             (image, future)
         };
 
-        // ImmutableImage::from_iter(
-        //     image_rgba,
-        //     dimensions,
-        //     // vulkano already supports mipmap generation so we don't need to do this by hand
-        //     MipmapsCount::Log2,
-        //     Format::R16G16B16A16_SFLOAT,
-        //     context.graphics_queue.clone(),
-        // )
-        // .unwrap();
-
         future.flush().unwrap();
 
         Texture {
