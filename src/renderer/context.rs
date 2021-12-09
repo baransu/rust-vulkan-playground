@@ -50,7 +50,7 @@ pub struct Context {
     pub event_loop: Option<EventLoop<()>>,
     #[allow(dead_code)]
     debug_callback: Option<DebugCallback>,
-    surface: Arc<Surface<Window>>,
+    pub surface: Arc<Surface<Window>>,
     #[allow(dead_code)]
     physical_device_index: usize, // can't store PhysicalDevice directly (lifetime issues)
     pub device: Arc<Device>,

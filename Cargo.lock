@@ -122,6 +122,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "chlorine"
+version = "1.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75476fe966a8af7c0ceae2a3e514afa87d4451741fcdfab8bfaa07ad301842ec"
+
+[[package]]
 name = "cmake"
 version = "0.1.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -594,6 +600,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "imgui"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4edc4023dc7b1161e25ec9bcee478173f97d6f618a1d04eced2d559ce03119b4"
+dependencies = [
+ "bitflags",
+ "imgui-sys",
+ "parking_lot",
+]
+
+[[package]]
+name = "imgui-sys"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0914d5ebaec1086300b970defc7ed71edc2cf102bdc3dd75fd51179549d4455b"
+dependencies = [
+ "cc",
+ "chlorine",
+]
+
+[[package]]
+name = "imgui-winit-support"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86a8c368182829141da5d22c352684d01e64359daa1a4550df4a2976836aa8e3"
+dependencies = [
+ "imgui",
+ "winit",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -786,9 +823,9 @@ dependencies = [
 
 [[package]]
 name = "mio-misc"
-version = "1.2.1"
+version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ddf05411bb159cdb5801bb10002afb66cb4572be656044315e363460ce69dc2"
+checksum = "b47412f3a52115b936ff2a229b803498c7b4d332adeb87c2f1498c9da54c398c"
 dependencies = [
  "crossbeam",
  "crossbeam-queue",
@@ -1165,6 +1202,8 @@ dependencies = [
  "glam",
  "gltf",
  "image",
+ "imgui",
+ "imgui-winit-support",
  "ktx",
  "vulkano",
  "vulkano-shaders",

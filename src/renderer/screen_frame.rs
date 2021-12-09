@@ -4,7 +4,7 @@ use vulkano::{
     buffer::{BufferUsage, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
-    image::view::ImageView,
+    image::{view::ImageView, AttachmentImage},
     pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
     render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass},
     single_pass_renderpass,
@@ -83,6 +83,7 @@ impl ScreenFrame {
     pub fn initialize(
         context: &Context,
         offscreen_framebuffers: &Vec<OffscreenFramebuffer>,
+        ui_frame: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> ScreenFrame {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
 
@@ -91,8 +92,12 @@ impl ScreenFrame {
 
         let framebuffers = Self::create_framebuffers_from_swap_chain_images(context, &render_pass);
 
-        let descriptor_sets =
-            Self::create_descriptor_sets(context, &graphics_pipeline, &offscreen_framebuffers);
+        let descriptor_sets = Self::create_descriptor_sets(
+            context,
+            &graphics_pipeline,
+            &offscreen_framebuffers,
+            ui_frame,
+        );
 
         let command_buffers = Self::create_command_buffers(
             context,
@@ -176,6 +181,7 @@ impl ScreenFrame {
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         offscreen_framebuffers: &Vec<OffscreenFramebuffer>,
+        ui_frame: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> Vec<Arc<PersistentDescriptorSet>> {
         let mut descriptor_sets = Vec::new();
 
@@ -188,10 +194,11 @@ impl ScreenFrame {
         for i in 0..context.swap_chain.num_images() as usize {
             let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-            let image = offscreen_framebuffers[i].resolve_image.clone();
+            let scene_frame = offscreen_framebuffers[i].resolve_image.clone();
 
             // NOTE: this works because we're setting immutable sampler when creating GraphicsPipeline
-            set_builder.add_image(image).unwrap();
+            set_builder.add_image(scene_frame).unwrap();
+            set_builder.add_image(ui_frame.clone()).unwrap();
 
             descriptor_sets.push(Arc::new(set_builder.build().unwrap()));
         }
@@ -270,6 +277,8 @@ impl ScreenFrame {
                     // Modify the auto-generated layout by setting an immutable sampler to
                     // set 0 binding 0.
                     set_descs[0].set_immutable_samplers(0, [context.image_sampler.clone()]);
+                    // set 0 binding 1.
+                    set_descs[0].set_immutable_samplers(1, [context.image_sampler.clone()]);
                 })
                 .unwrap(),
         );
