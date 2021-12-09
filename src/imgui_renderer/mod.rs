@@ -9,7 +9,6 @@ use vulkano::{
     buffer::{BufferAccess, BufferUsage, CpuBufferPool},
     command_buffer::{PrimaryAutoCommandBuffer, SubpassContents},
     image::{view::ImageView, ImageDimensions, ImageViewAbstract},
-    render_pass::RenderPass,
 };
 
 use vulkano::format::Format;
@@ -33,7 +32,6 @@ struct Vertex {
     pub pos: [f32; 2],
     pub uv: [f32; 2],
     pub col: u32,
-    // pub col: [u8; 4],
 }
 
 vulkano::impl_vertex!(Vertex, pos, uv, col);
@@ -68,7 +66,6 @@ impl std::error::Error for RendererError {}
 pub type Texture = (Arc<dyn ImageViewAbstract + Send + Sync>, Arc<Sampler>);
 
 pub struct Renderer {
-    render_pass: Arc<RenderPass>,
     pipeline: Arc<GraphicsPipeline>,
     font_texture: Texture,
     textures: Textures<Texture>,
@@ -147,8 +144,6 @@ impl Renderer {
             context.graphics_queue.clone(),
         )?;
 
-        // ctx.set_renderer_name("imgui-renderer");
-
         let vrt_buffer_pool = CpuBufferPool::new(
             context.device.clone(),
             BufferUsage::vertex_buffer_transfer_destination(),
@@ -181,7 +176,6 @@ impl Renderer {
         );
 
         Ok(Renderer {
-            render_pass,
             pipeline,
             font_texture,
             textures,
@@ -310,11 +304,15 @@ impl Renderer {
                                 ],
                             };
 
-                            let tex = self.lookup_texture(texture_id)?;
+                            let (texture_image, texture_sampler) =
+                                self.lookup_texture(texture_id)?;
 
                             let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-                            set_builder.add_sampled_image(tex.0.clone(), tex.1.clone())?;
+                            set_builder.add_sampled_image(
+                                texture_image.clone(),
+                                texture_sampler.clone(),
+                            )?;
 
                             let set = Arc::new(set_builder.build()?);
 
