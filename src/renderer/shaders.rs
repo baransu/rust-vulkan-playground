@@ -95,6 +95,7 @@ pub mod screen_fragment_shader {
 		#version 450
 
 		layout (set = 0, binding = 0) uniform sampler2D screen_texture;
+		layout (set = 0, binding = 1) uniform sampler2D ui_texture;
 		
 		layout (location = 0) in vec2 inUV;
 		
@@ -170,12 +171,15 @@ pub mod screen_fragment_shader {
 		}
 
 		void main() {
-			outFragColor = no_effect();	
-			// outFragColor = negative_effect();
-			// outFragColor = grayscale_effect();
-			// outFragColor = sharpen_effect();
-			// outFragColor = blur_effect();
-			// outFragColor = edge_detection_effect();
+			// vec4 color = negative_effect();
+			// vec4 color = grayscale_effect();
+			// vec4 color = sharpen_effect();
+			// vec4 color = blur_effect();
+			// vec4 color = edge_detection_effect();
+			vec4 color = no_effect();
+
+			vec4 ui = texture(ui_texture, inUV);
+			outFragColor = mix(color, ui, ui.a);
 		}
 	"
     }

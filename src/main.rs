@@ -1,8 +1,11 @@
+pub mod imgui_renderer;
 pub mod renderer;
 
 use std::{collections::HashMap, f32::consts::PI, sync::Arc, time::Instant};
 
 use glam::Vec3;
+use imgui_renderer::Renderer;
+use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
     camera::Camera, context::Context, scene::Scene, screen_frame::ScreenFrame,
     skybox_pass::SkyboxPass, vertex::Vertex,
@@ -65,6 +68,10 @@ struct Application {
     scene: Scene,
 
     camera: Camera,
+
+    imgui: imgui::Context,
+    imgui_renderer: Renderer,
+    platform: WinitPlatform,
 }
 
 impl Application {
@@ -83,9 +90,41 @@ impl Application {
 
         let camera = Default::default();
 
-        let screen_frame = ScreenFrame::initialize(&context, &scene_framebuffers);
-
         let skybox = SkyboxPass::initialize(&context, &scene_render_pass, SKYBOX_PATH);
+
+        let mut imgui = imgui::Context::create();
+        imgui.set_ini_filename(None);
+
+        imgui.io_mut().display_size = [
+            context.swap_chain.dimensions()[0] as f32,
+            context.swap_chain.dimensions()[1] as f32,
+        ];
+
+        let mut platform = WinitPlatform::init(&mut imgui);
+        platform.attach_window(
+            imgui.io_mut(),
+            &context.surface.window(),
+            HiDpiMode::Rounded,
+        );
+
+        let hidpi_factor = platform.hidpi_factor();
+        let font_size = (13.0 * hidpi_factor) as f32;
+
+        imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
+
+        imgui
+            .fonts()
+            .add_font(&[imgui::FontSource::DefaultFontData {
+                config: Some(imgui::FontConfig {
+                    size_pixels: font_size,
+                    ..imgui::FontConfig::default()
+                }),
+            }]);
+
+        let imgui_renderer = Renderer::init(&context, &mut imgui).unwrap();
+
+        let screen_frame =
+            ScreenFrame::initialize(&context, &scene_framebuffers, &imgui_renderer.target);
 
         let mut app = Self {
             context,
@@ -93,6 +132,10 @@ impl Application {
             screen_frame,
 
             skybox,
+
+            imgui,
+            imgui_renderer,
+            platform,
 
             scene_graphics_pipeline,
             scene_framebuffers,
@@ -461,6 +504,15 @@ impl Application {
             .end_render_pass()
             .unwrap();
 
+        let ui = self.imgui.frame();
+        let mut value = true;
+        ui.show_demo_window(&mut value);
+
+        let draw_data = ui.render();
+        self.imgui_renderer
+            .draw_commands(&mut builder, draw_data)
+            .unwrap();
+
         builder
             .begin_render_pass(
                 framebuffer.clone(),
@@ -510,12 +562,18 @@ impl Application {
     fn main_loop(mut self) {
         let mut mouse_buttons: HashMap<MouseButton, ElementState> = HashMap::new();
 
+        let mut last_frame = Instant::now();
+
         self.context
             .event_loop
             .take()
             .unwrap()
             .run(move |event, _, control_flow| {
                 *control_flow = ControlFlow::Poll;
+
+                let imgui_io = self.imgui.io_mut();
+                self.platform
+                    .handle_event(imgui_io, self.context.surface.window(), &event);
 
                 match event {
                     Event::WindowEvent {
@@ -535,25 +593,10 @@ impl Application {
                     Event::WindowEvent {
                         event: WindowEvent::MouseInput { state, button, .. },
                         ..
-                    } => {
+                    } if !imgui_io.want_capture_mouse => {
                         mouse_buttons.insert(button, state);
                     }
 
-                    // // on key press
-                    // Event::WindowEvent {
-                    //     event:
-                    //         WindowEvent::KeyboardInput {
-                    //             input:
-                    //                 KeyboardInput {
-                    //                     virtual_keycode,
-                    //                     state: ElementState::Pressed,
-                    //                     ..
-                    //                 },
-                    //             ..
-                    //         },
-                    //     ..
-                    // } => {
-                    // }
                     Event::WindowEvent {
                         event:
                             WindowEvent::MouseWheel {
@@ -561,7 +604,7 @@ impl Application {
                                 ..
                             },
                         ..
-                    } => {
+                    } if !imgui_io.want_capture_mouse => {
                         let y = position.y as f32;
 
                         for model in self.scene.models.iter_mut() {
@@ -574,7 +617,7 @@ impl Application {
                     Event::DeviceEvent {
                         event: DeviceEvent::MouseMotion { delta, .. },
                         ..
-                    } => {
+                    } if !imgui_io.want_capture_mouse => {
                         match mouse_buttons.get(&MouseButton::Left) {
                             Some(&ElementState::Pressed) => {
                                 let screen_width = self.context.swap_chain.dimensions()[0] as f32;
@@ -593,7 +636,20 @@ impl Application {
                         };
                     }
 
-                    Event::MainEventsCleared { .. } => {
+                    Event::NewEvents(_) => {
+                        let now = Instant::now();
+                        self.imgui.io_mut().update_delta_time(now - last_frame);
+                        last_frame = now;
+                    }
+
+                    Event::MainEventsCleared => {
+                        self.platform
+                            .prepare_frame(self.imgui.io_mut(), &self.context.surface.window())
+                            .expect("Failed to prepare frame");
+                        self.context.surface.window().request_redraw();
+                    }
+
+                    Event::RedrawRequested { .. } => {
                         let now = Instant::now();
                         let delta_time = now.duration_since(self.last_time).as_secs_f32();
 
