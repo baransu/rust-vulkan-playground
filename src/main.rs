@@ -563,24 +563,22 @@ impl Application {
     }
 
     fn update(&mut self, keys: &HashMap<VirtualKeyCode, ElementState>, dt: f32) {
-        let camera_speed = 2.0 * dt;
+        let camera_speed = 5.0 * dt;
 
         if is_pressed(keys, VirtualKeyCode::A) {
-            self.camera.position = self.camera.position
-                - Vec3::cross(self.camera.forward, self.camera.up).normalize() * camera_speed
+            self.camera.position += self.camera.right() * camera_speed
         }
 
         if is_pressed(keys, VirtualKeyCode::D) {
-            self.camera.position = self.camera.position
-                + Vec3::cross(self.camera.forward, self.camera.up).normalize() * camera_speed
+            self.camera.position -= self.camera.right() * camera_speed
         }
 
         if is_pressed(keys, VirtualKeyCode::W) {
-            self.camera.position = self.camera.position + self.camera.forward * camera_speed;
+            self.camera.position += self.camera.forward() * camera_speed;
         }
 
         if is_pressed(keys, VirtualKeyCode::S) {
-            self.camera.position = self.camera.position - self.camera.forward * camera_speed;
+            self.camera.position -= self.camera.forward() * camera_speed;
         }
     }
 
