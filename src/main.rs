@@ -28,7 +28,10 @@ use vulkano::{
     sync::{self, GpuFuture},
 };
 use winit::{
-    event::{DeviceEvent, ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent},
+    event::{
+        DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta,
+        VirtualKeyCode, WindowEvent,
+    },
     event_loop::ControlFlow,
 };
 
@@ -559,8 +562,31 @@ impl Application {
         }
     }
 
+    fn update(&mut self, keys: &HashMap<VirtualKeyCode, ElementState>, dt: f32) {
+        let camera_speed = 2.0 * dt;
+
+        if is_pressed(keys, VirtualKeyCode::A) {
+            self.camera.position = self.camera.position
+                - Vec3::cross(self.camera.forward, self.camera.up).normalize() * camera_speed
+        }
+
+        if is_pressed(keys, VirtualKeyCode::D) {
+            self.camera.position = self.camera.position
+                + Vec3::cross(self.camera.forward, self.camera.up).normalize() * camera_speed
+        }
+
+        if is_pressed(keys, VirtualKeyCode::W) {
+            self.camera.position = self.camera.position + self.camera.forward * camera_speed;
+        }
+
+        if is_pressed(keys, VirtualKeyCode::S) {
+            self.camera.position = self.camera.position - self.camera.forward * camera_speed;
+        }
+    }
+
     fn main_loop(mut self) {
         let mut mouse_buttons: HashMap<MouseButton, ElementState> = HashMap::new();
+        let mut keyboard_buttons: HashMap<VirtualKeyCode, ElementState> = HashMap::new();
 
         let mut last_frame = Instant::now();
 
@@ -614,22 +640,39 @@ impl Application {
                         }
                     }
 
+                    Event::WindowEvent {
+                        event:
+                            WindowEvent::KeyboardInput {
+                                input:
+                                    KeyboardInput {
+                                        state,
+                                        virtual_keycode: Some(virtual_keycode),
+                                        ..
+                                    },
+                                ..
+                            },
+                        ..
+                    } if !imgui_io.want_capture_keyboard => {
+                        keyboard_buttons.insert(virtual_keycode, state);
+                    }
+
                     Event::DeviceEvent {
                         event: DeviceEvent::MouseMotion { delta, .. },
                         ..
                     } if !imgui_io.want_capture_mouse => {
                         match mouse_buttons.get(&MouseButton::Left) {
                             Some(&ElementState::Pressed) => {
-                                let screen_width = self.context.swap_chain.dimensions()[0] as f32;
-                                let screen_height = self.context.swap_chain.dimensions()[1] as f32;
+                                let sensitivity = 0.1;
+                                let (x, y) = delta;
 
-                                let theta = 2.0 * PI * (delta.0 as f32) / screen_width;
-                                let phi = 2.0 * PI * (delta.1 as f32) / screen_height;
+                                self.camera.rotation.z += (x as f32) * sensitivity;
+                                self.camera.rotation.y -= (y as f32) * sensitivity;
 
-                                self.camera.theta -= theta;
-
-                                self.camera.phi = (self.camera.phi - phi)
-                                    .clamp(10.0_f32.to_radians(), 170.0_f32.to_radians());
+                                if self.camera.rotation.y > 89.0 {
+                                    self.camera.rotation.y = 89.0;
+                                } else if self.camera.rotation.y < -89.0 {
+                                    self.camera.rotation.y = -89.0;
+                                }
                             }
 
                             _ => {}
@@ -646,6 +689,7 @@ impl Application {
                         self.platform
                             .prepare_frame(self.imgui.io_mut(), &self.context.surface.window())
                             .expect("Failed to prepare frame");
+
                         self.context.surface.window().request_redraw();
                     }
 
@@ -659,6 +703,8 @@ impl Application {
 
                         self.last_time = now;
 
+                        self.update(&keyboard_buttons, delta_time);
+
                         self.draw_frame();
                     }
 
@@ -671,4 +717,11 @@ impl Application {
 fn main() {
     let app = Application::initialize();
     app.main_loop();
+}
+
+fn is_pressed(keys: &HashMap<VirtualKeyCode, ElementState>, key: VirtualKeyCode) -> bool {
+    match keys.get(&key) {
+        Some(&ElementState::Pressed) => true,
+        _ => false,
+    }
 }
