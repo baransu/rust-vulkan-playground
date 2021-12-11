@@ -3,13 +3,13 @@ pub mod renderer;
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
-use glam::{Quat, Vec3};
+use glam::{EulerRot, Quat, Vec3};
 use imgui_renderer::Renderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
     camera::Camera,
     context::Context,
-    mesh::{GameObject, Transform},
+    mesh::{GameObject, InstanceData, Transform},
     scene::Scene,
     screen_frame::ScreenFrame,
     skybox_pass::SkyboxPass,
@@ -39,17 +39,16 @@ use winit::{
     event_loop::ControlFlow,
 };
 
-const MODEL_PATH: &str = "res/models/damaged_helmet/scene.gltf";
-// const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/gcanyon_cube.ktx";
-// const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/pisa_cube.ktx";
+const MODEL_PATHS: [&str; 2] = [
+    "res/models/damaged_helmet/scene.gltf",
+    "res/models/plane/plane.gltf",
+];
+
 const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
+// const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
+// const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
-#[derive(Default, Copy, Clone)]
-struct InstanceData {
-    model: [[f32; 4]; 4],
-}
-
-vulkano::impl_vertex!(InstanceData, model);
+const RENDER_SKYBOX: bool = false;
 
 pub struct OffscreenFramebuffer {
     framebuffer: Arc<dyn FramebufferAbstract + Send + Sync>,
@@ -90,22 +89,37 @@ impl Application {
         let scene_graphics_pipeline =
             Self::create_scene_graphics_pipeline(&context, &scene_render_pass);
 
-        let mut scene = Scene::initialize(&context, vec![MODEL_PATH], &scene_graphics_pipeline);
+        let mut scene = Scene::initialize(&context, MODEL_PATHS.to_vec(), &scene_graphics_pipeline);
 
-        let count = 25;
+        let count = 10;
         let start = -(count / 2);
         let end = count / 2;
 
         for x in start..end {
-            for y in start..end {
-                let translation = Vec3::new(x as f32 * 2.0, y as f32 * 2.0, 1.5);
+            for z in start..end {
+                let translation = Vec3::new(x as f32 * 2.0, 2.0, z as f32 * 2.0);
 
-                let game_object =
-                    GameObject::new("damaged_helmet", Transform::from_translation(translation));
+                let game_object = GameObject::new(
+                    "damaged_helmet",
+                    Transform {
+                        translation,
+                        rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
+                        scale: Vec3::ONE,
+                    },
+                );
 
                 scene.add_game_object(game_object);
             }
         }
+
+        scene.add_game_object(GameObject::new(
+            "Plane",
+            Transform {
+                rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+                scale: Vec3::ONE * 25.0,
+                translation: Vec3::new(0.0, 0.0, -1.0),
+            },
+        ));
 
         let previous_frame_end = Some(Self::create_sync_objects(&context.device));
 
@@ -302,7 +316,8 @@ impl Application {
                 // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
                 .polygon_mode_fill() // = default
                 .line_width(1.0) // = default
-                .cull_mode_back()
+                // TODO: just to make developing easier we render both faces of models
+                // .cull_mode_back()
                 .front_face_counter_clockwise()
                 // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
                 .blend_pass_through()
@@ -516,17 +531,23 @@ impl Application {
                     ClearValue::None,
                 ],
             )
-            .unwrap()
-            .execute_commands(self.skybox.command_buffer.clone())
-            .unwrap()
+            .unwrap();
+
+        if RENDER_SKYBOX {
+            builder
+                .execute_commands(self.skybox.command_buffer.clone())
+                .unwrap();
+        }
+
+        builder
             .execute_commands(offscreen_command_buffer)
             .unwrap()
             .end_render_pass()
             .unwrap();
 
         let ui = self.imgui.frame();
-        let mut value = true;
-        ui.show_demo_window(&mut value);
+        // let mut value = true;
+        // ui.show_demo_window(&mut value);
 
         let draw_data = ui.render();
         self.imgui_renderer
@@ -582,8 +603,12 @@ impl Application {
     fn update(&mut self, keys: &HashMap<VirtualKeyCode, ElementState>, dt: f64) {
         let camera_speed = (10.0 * dt) as f32;
 
-        if is_pressed(keys, VirtualKeyCode::Space) {
+        if is_pressed(keys, VirtualKeyCode::Q) {
             self.camera.position += Vec3::Y * camera_speed;
+        }
+
+        if is_pressed(keys, VirtualKeyCode::E) {
+            self.camera.position -= Vec3::Y * camera_speed;
         }
 
         if is_pressed(keys, VirtualKeyCode::A) {

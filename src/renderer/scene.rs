@@ -64,6 +64,7 @@ impl Scene {
     ) -> Vec<Mesh> {
         let mut meshes = Vec::new();
 
+        println!("Loading {}", path);
         let (document, buffers, _images) = gltf::import(path).unwrap();
 
         // let transforms = document

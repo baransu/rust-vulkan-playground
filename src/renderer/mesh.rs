@@ -35,6 +35,13 @@ impl GameObject {
     }
 }
 
+#[derive(Default, Copy, Clone)]
+pub struct InstanceData {
+    pub model: [[f32; 4]; 4],
+}
+
+vulkano::impl_vertex!(InstanceData, model);
+
 #[derive(Clone)]
 pub struct Transform {
     pub translation: Vec3,
@@ -47,13 +54,11 @@ impl Transform {
         Transform {
             translation,
             rotation: Quat::IDENTITY,
-            scale: Vec3::new(1.0, 1.0, 1.0),
+            scale: Vec3::ONE,
         }
     }
 
     pub fn get_model_matrix(&self) -> Mat4 {
-        // this is needed to fix model rotation
-        Mat4::from_rotation_x((90.0_f32).to_radians())
-            * Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation)
+        Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation)
     }
 }
