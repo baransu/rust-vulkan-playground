@@ -1,6 +1,6 @@
 use std::{fs::File, io::BufReader, sync::Arc};
 
-use glam::Mat4;
+use glam::{Mat4, Vec3};
 use ktx::Decoder;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
@@ -11,7 +11,7 @@ use vulkano::{
     sync::GpuFuture,
 };
 
-use super::{context::Context, shaders::SceneUniformBufferObject, texture::Texture};
+use super::{context::Context, shaders::CameraUniformBufferObject, texture::Texture};
 
 #[derive(Default, Debug, Clone)]
 struct SkyboxVertex {
@@ -32,7 +32,7 @@ pub struct SkyboxPass {
     graphics_pipeline: Arc<GraphicsPipeline>,
     vertex_buffer: Arc<ImmutableBuffer<[SkyboxVertex]>>,
     descriptor_set: Arc<PersistentDescriptorSet>,
-    pub uniform_buffer: Arc<CpuAccessibleBuffer<SceneUniformBufferObject>>,
+    pub uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     // texture: Texture,
     pub command_buffer: Arc<SecondaryAutoCommandBuffer>,
 }
@@ -82,12 +82,13 @@ impl SkyboxPass {
 
     fn create_uniform_buffer(
         context: &Context,
-    ) -> Arc<CpuAccessibleBuffer<SceneUniformBufferObject>> {
+    ) -> Arc<CpuAccessibleBuffer<CameraUniformBufferObject>> {
         let identity = Mat4::IDENTITY.to_cols_array_2d();
 
-        let uniform_buffer_data = SceneUniformBufferObject {
+        let uniform_buffer_data = CameraUniformBufferObject {
             view: identity,
             proj: identity,
+            position: Vec3::ONE.to_array(),
         };
 
         let buffer = CpuAccessibleBuffer::from_data(
@@ -189,7 +190,7 @@ impl SkyboxPass {
     fn create_descriptor_set(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        uniform_buffer: &Arc<CpuAccessibleBuffer<SceneUniformBufferObject>>,
+        uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         texture: &Texture,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline

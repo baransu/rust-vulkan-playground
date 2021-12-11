@@ -1,22 +1,34 @@
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 
 use glam::{Mat4, Quat, Vec3};
-use vulkano::{
-    buffer::{CpuAccessibleBuffer, ImmutableBuffer},
-    descriptor_set::PersistentDescriptorSet,
-};
+use vulkano::{buffer::ImmutableBuffer, descriptor_set::PersistentDescriptorSet};
 
-use super::{shaders::SceneUniformBufferObject, vertex::Vertex};
+use super::vertex::Vertex;
 
 pub struct Mesh {
     pub id: String,
     pub index_count: u32,
     pub vertex_buffer: Arc<ImmutableBuffer<[Vertex]>>,
     pub index_buffer: Arc<ImmutableBuffer<[u32]>>,
-
-    // TODO: this should be per scene not per mesh
-    pub uniform_buffer: Arc<CpuAccessibleBuffer<SceneUniformBufferObject>>,
     pub descriptor_set: Arc<PersistentDescriptorSet>,
+}
+
+pub struct Material {
+    pub ambient: Vec3,
+    pub diffuse: Vec3,
+    pub specular: Vec3,
+    pub shininess: f32,
+}
+
+impl Default for Material {
+    fn default() -> Self {
+        Material {
+            ambient: Vec3::ONE,
+            diffuse: Vec3::ONE,
+            specular: Vec3::ONE,
+            shininess: 32.0,
+        }
+    }
 }
 
 pub struct GameObject {
@@ -24,13 +36,15 @@ pub struct GameObject {
     pub mesh_id: String,
 
     pub transform: Transform,
+    pub material: Material,
 }
 
 impl GameObject {
-    pub fn new(mesh_id: &str, transform: Transform) -> GameObject {
+    pub fn new(mesh_id: &str, transform: Transform, material: Material) -> GameObject {
         GameObject {
-            mesh_id: String::from_str(mesh_id).unwrap(),
+            mesh_id: mesh_id.to_string(),
             transform,
+            material,
         }
     }
 }
@@ -38,9 +52,20 @@ impl GameObject {
 #[derive(Default, Copy, Clone)]
 pub struct InstanceData {
     pub model: [[f32; 4]; 4],
+    pub material_ambient: [f32; 3],
+    pub material_diffuse: [f32; 3],
+    pub material_specular: [f32; 3],
+    pub material_shininess: f32,
 }
 
-vulkano::impl_vertex!(InstanceData, model);
+vulkano::impl_vertex!(
+    InstanceData,
+    model,
+    material_ambient,
+    material_diffuse,
+    material_specular,
+    material_shininess
+);
 
 #[derive(Clone)]
 pub struct Transform {
