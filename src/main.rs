@@ -1,14 +1,19 @@
 pub mod imgui_renderer;
 pub mod renderer;
 
-use std::{collections::HashMap, f32::consts::PI, sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
-use glam::{EulerRot, Quat, Vec3};
+use glam::{Quat, Vec3};
 use imgui_renderer::Renderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
-    camera::Camera, context::Context, scene::Scene, screen_frame::ScreenFrame,
-    skybox_pass::SkyboxPass, vertex::Vertex,
+    camera::Camera,
+    context::Context,
+    mesh::{GameObject, Transform},
+    scene::Scene,
+    screen_frame::ScreenFrame,
+    skybox_pass::SkyboxPass,
+    vertex::Vertex,
 };
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
@@ -29,16 +34,15 @@ use vulkano::{
 };
 use winit::{
     event::{
-        DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta,
-        VirtualKeyCode, WindowEvent,
+        DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
     },
     event_loop::ControlFlow,
 };
 
-const MODEL_PATH: &str = "res/damaged_helmet/scene.gltf";
+const MODEL_PATH: &str = "res/models/damaged_helmet/scene.gltf";
 // const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/gcanyon_cube.ktx";
 // const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/pisa_cube.ktx";
-const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/uffizi_cube.ktx";
+const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
 
 #[derive(Default, Copy, Clone)]
 struct InstanceData {
@@ -81,29 +85,27 @@ impl Application {
     pub fn initialize() -> Self {
         let context = Context::initialize();
 
-        // let model = self.scene.meshes.get(0).unwrap();
-
-        // let count = 25;
-        // let start = -(count / 2);
-        // let end = count / 2;
-
-        // for x in start..end {
-        //     for y in start..end {
-        //         let position = Vec3::new(x as f32 * 2.0, y as f32 * 2.0, 1.5);
-        //         let model = model.transform.get_model_matrix(position);
-
-        //         instance_data.push(InstanceData {
-        //             model: model.to_cols_array_2d(),
-        //         })
-        //     }
-        // }
-
         let scene_render_pass = Self::create_scene_render_pass(&context);
         let scene_framebuffers = Self::create_scene_framebuffers(&context, &scene_render_pass);
         let scene_graphics_pipeline =
             Self::create_scene_graphics_pipeline(&context, &scene_render_pass);
 
-        let scene = Scene::initialize(&context, vec![MODEL_PATH], &scene_graphics_pipeline);
+        let mut scene = Scene::initialize(&context, vec![MODEL_PATH], &scene_graphics_pipeline);
+
+        let count = 25;
+        let start = -(count / 2);
+        let end = count / 2;
+
+        for x in start..end {
+            for y in start..end {
+                let translation = Vec3::new(x as f32 * 2.0, y as f32 * 2.0, 1.5);
+
+                let game_object =
+                    GameObject::new("damaged_helmet", Transform::from_translation(translation));
+
+                scene.add_game_object(game_object);
+            }
+        }
 
         let previous_frame_end = Some(Self::create_sync_objects(&context.device));
 
