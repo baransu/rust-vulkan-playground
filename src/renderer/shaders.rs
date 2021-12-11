@@ -1,97 +1,20 @@
 pub mod model_vertex_shader {
     vulkano_shaders::shader! {
-                    ty: "vertex",
-                    src: "
-				#version 450
-
-				layout(binding = 0) uniform CameraUniformBufferObject {
-						mat4 view;
-						mat4 proj;
-						vec3 position;
-				} camera;
-
-				// per vertex
-				layout(location = 0) in vec3 position;
-				layout(location = 1) in vec3 normal;
-				layout(location = 2) in vec2 uv;
-				layout(location = 3) in vec4 color;
-
-				// per instance
-				layout(location = 4) in mat4 model;
-
-				layout(location = 0) out vec2 f_uv;
-				layout(location = 1) out vec3 f_normal;
-				layout(location = 2) out vec3 f_position;
-
-				out gl_PerVertex {
-						vec4 gl_Position;
-				};
-
-				void main() {
-						gl_Position = camera.proj * camera.view * model * vec4(position, 1.0);
-						f_position = vec3(model * vec4(position, 1.0));
-						f_uv = uv;
-						f_normal = mat3(transpose(inverse(model))) * normal;  
-				}
-		"
+                ty: "vertex",
+                path: "src/renderer/shaders/model.vert"
     }
 }
 
 pub mod model_fragment_shader {
     vulkano_shaders::shader! {
-                    ty: "fragment",
-                    src: "
-				#version 450
-
-				layout(binding = 0) uniform CameraUniformBufferObject {
-					mat4 view;
-					mat4 proj;
-					vec3 position;
-				} camera;
-
-				layout(binding = 1) uniform LightUniformBufferObject { 
-					vec3 position;
-					vec3 ambient;
-					vec3 diffuse;
-					vec3 specular;
-				} light;
-
-				layout(binding = 2) uniform sampler2D tex_sampler;
-
-				layout(location = 0) in vec2 f_uv;
-				layout(location = 1) in vec3 f_normal;
-				layout(location = 2) in vec3 f_position;
-
-				layout(location = 0) out vec4 out_color;
-
-				void main() {
-						float specular_strength = 0.5;
-
-						vec3 norm = normalize(f_normal);
-						vec3 light_dir = normalize(light.position - f_position);  
-
-						// diffuse light
-						float diff = max(dot(norm, light_dir), 0.0);
-						vec3 diffuse = diff * light.diffuse;
-
-						// specular light
-						vec4 camera_position = vec4(camera.position, 1.0);
-						vec3 view_dir = normalize(camera_position.xyz - f_position);
-						vec3 reflect_dir = reflect(-light_dir, norm);  
-
-						float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 256);
-						vec3 specular = specular_strength * spec * light.specular;  
-
-						// diff + specular + ambient
-						vec3 result = (light.ambient + diffuse + specular) * texture(tex_sampler, f_uv).xyz;
-						out_color = vec4(result,  1.0);
-				}
-		"
+                ty: "fragment",
+                path: "src/renderer/shaders/model.frag"
     }
 }
 
 pub type CameraUniformBufferObject = model_vertex_shader::ty::CameraUniformBufferObject;
-pub type LightUniformBufferObject = model_fragment_shader::ty::LightUniformBufferObject;
+pub type DirectionLightUniformBufferObject =
+    model_fragment_shader::ty::DirectionLightUniformBufferObject;
 
 pub mod screen_vertex_shader {
     vulkano_shaders::shader! {

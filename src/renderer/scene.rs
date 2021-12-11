@@ -18,7 +18,7 @@ use super::{
     camera::Camera,
     context::Context,
     mesh::{GameObject, Mesh},
-    shaders::{CameraUniformBufferObject, LightUniformBufferObject},
+    shaders::{CameraUniformBufferObject, DirectionLightUniformBufferObject},
     vertex::Vertex,
 };
 
@@ -27,7 +27,7 @@ pub struct Scene {
     pub game_objects: Vec<GameObject>,
 
     camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-    light_uniform_buffer: Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
+    light_uniform_buffer: Arc<CpuAccessibleBuffer<DirectionLightUniformBufferObject>>,
 }
 
 impl Scene {
@@ -78,7 +78,7 @@ impl Scene {
         path: &str,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
+        light_uniform_buffer: &Arc<CpuAccessibleBuffer<DirectionLightUniformBufferObject>>,
     ) -> Vec<Mesh> {
         let mut meshes = Vec::new();
 
@@ -187,7 +187,6 @@ impl Scene {
                             vertex_buffer,
                             index_buffer,
                             index_count: indices.len() as u32,
-
                             descriptor_set,
                         };
 
@@ -236,7 +235,7 @@ impl Scene {
     fn create_descriptor_set(
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
+        light_uniform_buffer: &Arc<CpuAccessibleBuffer<DirectionLightUniformBufferObject>>,
         texture: &Texture,
         image_sampler: &Arc<Sampler>,
     ) -> Arc<PersistentDescriptorSet> {
@@ -253,11 +252,11 @@ impl Scene {
             .unwrap();
 
         set_builder
-            .add_buffer(light_uniform_buffer.clone())
+            .add_sampled_image(texture.image.clone(), image_sampler.clone())
             .unwrap();
 
         set_builder
-            .add_sampled_image(texture.image.clone(), image_sampler.clone())
+            .add_buffer(light_uniform_buffer.clone())
             .unwrap();
 
         Arc::new(set_builder.build().unwrap())
@@ -287,9 +286,9 @@ impl Scene {
 
     fn create_light_uniform_buffer(
         context: &Context,
-    ) -> Arc<CpuAccessibleBuffer<LightUniformBufferObject>> {
-        let uniform_buffer_data = LightUniformBufferObject {
-            position: Vec3::new(1.2, 3.0, 2.0).to_array(),
+    ) -> Arc<CpuAccessibleBuffer<DirectionLightUniformBufferObject>> {
+        let uniform_buffer_data = DirectionLightUniformBufferObject {
+            direction: Vec3::new(-0.2, -1.0, -0.3).to_array(),
             _dummy0: [0, 0, 0, 0],
             ambient: Vec3::new(0.1, 0.1, 0.1).to_array(),
             _dummy1: [0, 0, 0, 0],

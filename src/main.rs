@@ -6,10 +6,11 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 use glam::{EulerRot, Quat, Vec3};
 use imgui_renderer::Renderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
+use rand::Rng;
 use renderer::{
     camera::Camera,
     context::Context,
-    mesh::{GameObject, InstanceData, Transform},
+    mesh::{GameObject, InstanceData, Material, Transform},
     scene::Scene,
     screen_frame::ScreenFrame,
     skybox_pass::SkyboxPass,
@@ -83,6 +84,7 @@ struct Application {
 
 impl Application {
     pub fn initialize() -> Self {
+        let mut rng = rand::thread_rng();
         let context = Context::initialize();
 
         let scene_render_pass = Self::create_scene_render_pass(&context);
@@ -100,6 +102,14 @@ impl Application {
         for x in start..end {
             for z in start..end {
                 let translation = Vec3::new(x as f32 * 2.0, 2.0, z as f32 * 2.0);
+                let material = Material {
+                    diffuse: Vec3::new(
+                        rng.gen_range(0.0..1.0),
+                        rng.gen_range(0.0..1.0),
+                        rng.gen_range(0.0..1.0),
+                    ),
+                    ..Default::default()
+                };
 
                 let game_object = GameObject::new(
                     "damaged_helmet",
@@ -108,6 +118,7 @@ impl Application {
                         rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
                         scale: Vec3::ONE,
                     },
+                    material,
                 );
 
                 scene.add_game_object(game_object);
@@ -122,17 +133,19 @@ impl Application {
                 scale: Vec3::ONE * 25.0,
                 translation: Vec3::new(0.0, 0.0, -1.0),
             },
+            Default::default(),
         ));
 
-        // light cube for reference
-        scene.add_game_object(GameObject::new(
-            "Cube",
-            Transform {
-                rotation: Quat::IDENTITY,
-                scale: Vec3::ONE * 0.2,
-                translation: Vec3::new(1.2, 3.0, 2.0),
-            },
-        ));
+        // // light cube for reference
+        // scene.add_game_object(GameObject::new(
+        //     "Cube",
+        //     Transform {
+        //         rotation: Quat::IDENTITY,
+        //         scale: Vec3::ONE * 0.2,
+        //         translation: Vec3::new(1.2, 3.0, 2.0),
+        //     },
+        //     Default::default(),
+        // ));
 
         let previous_frame_end = Some(Self::create_sync_objects(&context.device));
 
@@ -415,6 +428,10 @@ impl Application {
 
             (*instances).push(InstanceData {
                 model: model.to_cols_array_2d(),
+                material_ambient: game_object.material.ambient.to_array(),
+                material_diffuse: game_object.material.diffuse.to_array(),
+                material_specular: game_object.material.specular.to_array(),
+                material_shininess: game_object.material.shininess,
             });
         }
 
