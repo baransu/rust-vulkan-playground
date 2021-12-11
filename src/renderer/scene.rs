@@ -1,9 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
 use glam::{Mat4, Vec3};
 use gltf::Semantic;
+use rand::Rng;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
+    buffer::{BufferUsage, BufferView, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     device::Queue,
@@ -18,16 +19,18 @@ use super::{
     camera::Camera,
     context::Context,
     mesh::{GameObject, Mesh},
-    shaders::{CameraUniformBufferObject, DirectionLightUniformBufferObject},
+    shaders::{CameraUniformBufferObject, DirectionalLight, LightUniformBufferObject, PointLight},
     vertex::Vertex,
 };
+
+const NR_POINT_LIGHTS: usize = 4;
 
 pub struct Scene {
     pub meshes: HashMap<String, Mesh>,
     pub game_objects: Vec<GameObject>,
 
     camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-    light_uniform_buffer: Arc<CpuAccessibleBuffer<DirectionLightUniformBufferObject>>,
+    light_uniform_buffer: Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
 }
 
 impl Scene {
@@ -78,7 +81,7 @@ impl Scene {
         path: &str,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        light_uniform_buffer: &Arc<CpuAccessibleBuffer<DirectionLightUniformBufferObject>>,
+        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
     ) -> Vec<Mesh> {
         let mut meshes = Vec::new();
 
@@ -235,7 +238,7 @@ impl Scene {
     fn create_descriptor_set(
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        light_uniform_buffer: &Arc<CpuAccessibleBuffer<DirectionLightUniformBufferObject>>,
+        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
         texture: &Texture,
         image_sampler: &Arc<Sampler>,
     ) -> Arc<PersistentDescriptorSet> {
@@ -284,24 +287,68 @@ impl Scene {
         buffer
     }
 
+    pub fn light_positions() -> [Vec3; NR_POINT_LIGHTS] {
+        [
+            Vec3::new(0.7, 5.0, 2.0),
+            Vec3::new(2.3, 5.0, -4.0),
+            Vec3::new(-4.0, 5.0, -12.0),
+            Vec3::new(0.0, 5.0, -3.0),
+        ]
+    }
+
+    pub fn light_colors() -> [Vec3; NR_POINT_LIGHTS] {
+        [
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(0.5, 0.5, 1.0),
+        ]
+    }
+
     fn create_light_uniform_buffer(
         context: &Context,
-    ) -> Arc<CpuAccessibleBuffer<DirectionLightUniformBufferObject>> {
-        let uniform_buffer_data = DirectionLightUniformBufferObject {
+    ) -> Arc<CpuAccessibleBuffer<LightUniformBufferObject>> {
+        let mut point_lights = Vec::new();
+        let colors = Self::light_colors();
+
+        for (index, position) in Self::light_positions().iter().enumerate() {
+            let color = colors.get(index).unwrap().clone();
+
+            point_lights.push(PointLight {
+                position: position.to_array(),
+                _dummy0: [0, 0, 0, 0],
+                ambient: (color * 0.1).to_array(),
+                _dummy1: [0, 0, 0, 0],
+                diffuse: color.to_array(),
+                _dummy2: [0, 0, 0, 0],
+                specular: color.to_array(),
+                _dummy3: [0, 0, 0, 0, 0, 0, 0, 0],
+                constant_: 1.0,
+                linear: 0.09,
+                quadratic: 0.032,
+            })
+        }
+
+        let dir_light = DirectionalLight {
             direction: Vec3::new(-0.2, -1.0, -0.3).to_array(),
             _dummy0: [0, 0, 0, 0],
-            ambient: Vec3::new(0.1, 0.1, 0.1).to_array(),
+            ambient: Vec3::ZERO.to_array(),
             _dummy1: [0, 0, 0, 0],
-            diffuse: Vec3::new(1.0, 1.0, 1.0).to_array(),
+            diffuse: Vec3::ZERO.to_array(),
             _dummy2: [0, 0, 0, 0],
-            specular: Vec3::new(1.0, 1.0, 1.0).to_array(),
+            specular: Vec3::ZERO.to_array(),
+        };
+
+        let buffer_data = LightUniformBufferObject {
+            point_lights: point_lights.as_slice().try_into().unwrap(),
+            dir_light,
         };
 
         let buffer = CpuAccessibleBuffer::from_data(
             context.device.clone(),
             BufferUsage::uniform_buffer_transfer_destination(),
             false,
-            uniform_buffer_data,
+            buffer_data,
         )
         .unwrap();
 

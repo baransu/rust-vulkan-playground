@@ -84,7 +84,7 @@ struct Application {
 
 impl Application {
     pub fn initialize() -> Self {
-        let mut rng = rand::thread_rng();
+        // let mut rng = rand::thread_rng();
         let context = Context::initialize();
 
         let scene_render_pass = Self::create_scene_render_pass(&context);
@@ -103,11 +103,11 @@ impl Application {
             for z in start..end {
                 let translation = Vec3::new(x as f32 * 2.0, 2.0, z as f32 * 2.0);
                 let material = Material {
-                    diffuse: Vec3::new(
-                        rng.gen_range(0.0..1.0),
-                        rng.gen_range(0.0..1.0),
-                        rng.gen_range(0.0..1.0),
-                    ),
+                    // diffuse: Vec3::new(
+                    //     rng.gen_range(0.0..1.0),
+                    //     rng.gen_range(0.0..1.0),
+                    //     rng.gen_range(0.0..1.0),
+                    // ),
                     ..Default::default()
                 };
 
@@ -136,16 +136,22 @@ impl Application {
             Default::default(),
         ));
 
-        // // light cube for reference
-        // scene.add_game_object(GameObject::new(
-        //     "Cube",
-        //     Transform {
-        //         rotation: Quat::IDENTITY,
-        //         scale: Vec3::ONE * 0.2,
-        //         translation: Vec3::new(1.2, 3.0, 2.0),
-        //     },
-        //     Default::default(),
-        // ));
+        let light_colors = Scene::light_colors();
+        // point light cubes for reference
+        for (index, position) in Scene::light_positions().iter().enumerate() {
+            scene.add_game_object(GameObject::new(
+                "Cube",
+                Transform {
+                    rotation: Quat::IDENTITY,
+                    scale: Vec3::ONE * 0.2,
+                    translation: position.clone(),
+                },
+                Material {
+                    diffuse: light_colors.get(index).unwrap().clone(),
+                    ..Default::default()
+                },
+            ));
+        }
 
         let previous_frame_end = Some(Self::create_sync_objects(&context.device));
 

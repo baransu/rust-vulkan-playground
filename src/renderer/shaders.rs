@@ -13,8 +13,9 @@ pub mod model_fragment_shader {
 }
 
 pub type CameraUniformBufferObject = model_vertex_shader::ty::CameraUniformBufferObject;
-pub type DirectionLightUniformBufferObject =
-    model_fragment_shader::ty::DirectionLightUniformBufferObject;
+pub type LightUniformBufferObject = model_fragment_shader::ty::LightUniformBufferObject;
+pub type PointLight = model_fragment_shader::ty::PointLight;
+pub type DirectionalLight = model_fragment_shader::ty::DirectionalLight;
 
 pub mod screen_vertex_shader {
     vulkano_shaders::shader! {
