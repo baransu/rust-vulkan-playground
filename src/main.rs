@@ -3,7 +3,7 @@ pub mod renderer;
 
 use std::{collections::HashMap, f32::consts::PI, sync::Arc, time::Instant};
 
-use glam::Vec3;
+use glam::{EulerRot, Quat, Vec3};
 use imgui_renderer::Renderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
@@ -562,15 +562,19 @@ impl Application {
         }
     }
 
-    fn update(&mut self, keys: &HashMap<VirtualKeyCode, ElementState>, dt: f32) {
-        let camera_speed = 5.0 * dt;
+    fn update(&mut self, keys: &HashMap<VirtualKeyCode, ElementState>, dt: f64) {
+        let camera_speed = (10.0 * dt) as f32;
+
+        if is_pressed(keys, VirtualKeyCode::Space) {
+            self.camera.position += Vec3::Y * camera_speed;
+        }
 
         if is_pressed(keys, VirtualKeyCode::A) {
-            self.camera.position += self.camera.right() * camera_speed
+            self.camera.position -= self.camera.right() * camera_speed
         }
 
         if is_pressed(keys, VirtualKeyCode::D) {
-            self.camera.position -= self.camera.right() * camera_speed
+            self.camera.position += self.camera.right() * camera_speed
         }
 
         if is_pressed(keys, VirtualKeyCode::W) {
@@ -587,6 +591,12 @@ impl Application {
         let mut keyboard_buttons: HashMap<VirtualKeyCode, ElementState> = HashMap::new();
 
         let mut last_frame = Instant::now();
+        let mut delta_time = 0.0;
+
+        let mut rotation_x = 0.0;
+        let mut rotation_y = 0.0;
+
+        let original_rotation = self.camera.rotation;
 
         self.context
             .event_loop
@@ -660,17 +670,16 @@ impl Application {
                     } if !imgui_io.want_capture_mouse => {
                         match mouse_buttons.get(&MouseButton::Left) {
                             Some(&ElementState::Pressed) => {
-                                let sensitivity = 0.1;
+                                let sensitivity = 0.5 * delta_time;
                                 let (x, y) = delta;
 
-                                self.camera.rotation.z += (x as f32) * sensitivity;
-                                self.camera.rotation.y -= (y as f32) * sensitivity;
+                                rotation_x += (x * sensitivity) as f32;
+                                rotation_y += (y * sensitivity) as f32;
 
-                                if self.camera.rotation.y > 89.0 {
-                                    self.camera.rotation.y = 89.0;
-                                } else if self.camera.rotation.y < -89.0 {
-                                    self.camera.rotation.y = -89.0;
-                                }
+                                let y_quat = Quat::from_axis_angle(Vec3::X, -rotation_y);
+                                let x_quat = Quat::from_axis_angle(Vec3::Y, -rotation_x);
+
+                                self.camera.rotation = original_rotation * x_quat * y_quat;
                             }
 
                             _ => {}
@@ -693,11 +702,11 @@ impl Application {
 
                     Event::RedrawRequested { .. } => {
                         let now = Instant::now();
-                        let delta_time = now.duration_since(self.last_time).as_secs_f32();
+                        delta_time = now.duration_since(self.last_time).as_secs_f64();
 
-                        let fps = 1.0 / delta_time;
+                        // let fps = 1.0 / delta_time;
 
-                        println!("fps: {}", fps);
+                        // println!("fps: {}", fps);
 
                         self.last_time = now;
 

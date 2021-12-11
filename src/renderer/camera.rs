@@ -1,10 +1,10 @@
-use glam::{Mat3, Mat4, Vec3};
+use glam::{EulerRot, Mat3, Mat4, Quat, Vec3};
 
 use super::shaders::SceneUniformBufferObject;
 
 pub struct Camera {
     pub position: Vec3,
-    pub rotation: Vec3,
+    pub rotation: Quat,
 }
 
 impl Camera {
@@ -13,25 +13,15 @@ impl Camera {
     }
 
     pub fn forward(&self) -> Vec3 {
-        let pitch = self.rotation.y.to_radians();
-        let yaw = self.rotation.z.to_radians();
-
-        let x = pitch.cos() * yaw.cos();
-        let y = pitch.sin();
-        let z = pitch.cos() * yaw.sin();
-
-        Vec3::new(x, y, z).normalize()
+        (self.rotation * -Vec3::Z).normalize()
     }
 
     pub fn right(&self) -> Vec3 {
-        let forward = self.forward();
-        Vec3::new(forward.z, forward.y, -forward.x).normalize()
+        (self.rotation * Vec3::X).normalize()
     }
 
     pub fn up(&self) -> Vec3 {
-        let forward = self.forward().normalize();
-        let right = self.right();
-        Vec3::cross(-right, forward).normalize()
+        (self.rotation * Vec3::Y).normalize()
     }
 
     pub fn get_skybox_uniform_data(&self, dimensions: [f32; 2]) -> SceneUniformBufferObject {
@@ -75,8 +65,8 @@ impl Camera {
 impl Default for Camera {
     fn default() -> Self {
         Camera {
-            position: Vec3::new(0.0, 0.0, 20.0),
-            rotation: Vec3::new(0.0, 0.0, -90.0),
+            position: Vec3::new(0.0, 0.0, 0.0),
+            rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
         }
     }
 }
