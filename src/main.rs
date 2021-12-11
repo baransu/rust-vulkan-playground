@@ -39,9 +39,10 @@ use winit::{
     event_loop::ControlFlow,
 };
 
-const MODEL_PATHS: [&str; 2] = [
+const MODEL_PATHS: [&str; 3] = [
     "res/models/damaged_helmet/scene.gltf",
     "res/models/plane/plane.gltf",
+    "res/models/cube/cube.gltf",
 ];
 
 const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
@@ -95,6 +96,7 @@ impl Application {
         let start = -(count / 2);
         let end = count / 2;
 
+        // Helmets
         for x in start..end {
             for z in start..end {
                 let translation = Vec3::new(x as f32 * 2.0, 2.0, z as f32 * 2.0);
@@ -112,12 +114,23 @@ impl Application {
             }
         }
 
+        // Plane
         scene.add_game_object(GameObject::new(
             "Plane",
             Transform {
                 rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
                 scale: Vec3::ONE * 25.0,
                 translation: Vec3::new(0.0, 0.0, -1.0),
+            },
+        ));
+
+        // light cube for reference
+        scene.add_game_object(GameObject::new(
+            "Cube",
+            Transform {
+                rotation: Quat::IDENTITY,
+                scale: Vec3::ONE * 0.2,
+                translation: Vec3::new(1.2, 3.0, 2.0),
             },
         ));
 
@@ -513,13 +526,8 @@ impl Application {
             )
             .unwrap();
 
-        for mesh in self.scene.meshes.values() {
-            let data = Arc::new(self.camera.get_model_uniform_data(dimensions));
-
-            builder
-                .update_buffer(mesh.uniform_buffer.clone(), data)
-                .unwrap();
-        }
+        self.scene
+            .update_uniform_buffers(&mut builder, &self.camera, dimensions);
 
         builder
             .begin_render_pass(
@@ -673,22 +681,6 @@ impl Application {
                         mouse_buttons.insert(button, state);
                     }
 
-                    // Event::WindowEvent {
-                    //     event:
-                    //         WindowEvent::MouseWheel {
-                    //             delta: MouseScrollDelta::PixelDelta(position),
-                    //             ..
-                    //         },
-                    //     ..
-                    // } if !imgui_io.want_capture_mouse => {
-                    //     let y = position.y as f32;
-
-                    //     for model in self.scene.meshes.iter_mut() {
-                    //         model.transform.scale += y / 100.0;
-                    //         model.transform.scale =
-                    //             model.transform.scale.max(Vec3::new(0.1, 0.1, 0.1));
-                    //     }
-                    // }
                     Event::WindowEvent {
                         event:
                             WindowEvent::KeyboardInput {

@@ -1,9 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
-use glam::Mat4;
+use glam::{Mat4, Vec3};
 use gltf::Semantic;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
+    command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     device::Queue,
     pipeline::GraphicsPipeline,
@@ -14,15 +15,19 @@ use vulkano::{
 use crate::renderer::texture::Texture;
 
 use super::{
+    camera::Camera,
     context::Context,
     mesh::{GameObject, Mesh},
-    shaders::SceneUniformBufferObject,
+    shaders::{CameraUniformBufferObject, LightUniformBufferObject},
     vertex::Vertex,
 };
 
 pub struct Scene {
     pub meshes: HashMap<String, Mesh>,
     pub game_objects: Vec<GameObject>,
+
+    camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
+    light_uniform_buffer: Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
 }
 
 impl Scene {
@@ -31,10 +36,19 @@ impl Scene {
         mesh_paths: Vec<&str>,
         graphics_pipeline: &Arc<GraphicsPipeline>,
     ) -> Self {
+        let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
+        let light_uniform_buffer = Self::create_light_uniform_buffer(context);
+
         let mut meshes = HashMap::new();
 
         for path in mesh_paths {
-            let meshes_vec = Self::load_gltf(context, path, graphics_pipeline);
+            let meshes_vec = Self::load_gltf(
+                context,
+                path,
+                graphics_pipeline,
+                &camera_uniform_buffer,
+                &light_uniform_buffer,
+            );
 
             for mesh in meshes_vec {
                 meshes.insert(mesh.id.clone(), mesh);
@@ -48,6 +62,8 @@ impl Scene {
         Scene {
             meshes,
             game_objects: vec![],
+            camera_uniform_buffer,
+            light_uniform_buffer,
         }
     }
 
@@ -61,6 +77,8 @@ impl Scene {
         context: &Context,
         path: &str,
         graphics_pipeline: &Arc<GraphicsPipeline>,
+        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
+        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
     ) -> Vec<Mesh> {
         let mut meshes = Vec::new();
 
@@ -156,11 +174,10 @@ impl Scene {
                         let index_buffer =
                             Self::create_index_buffer(&context.graphics_queue, &indices);
 
-                        let uniform_buffer = Self::create_uniform_buffer(&context);
-
                         let descriptor_set = Self::create_descriptor_set(
                             &graphics_pipeline,
-                            &uniform_buffer,
+                            &camera_uniform_buffer,
+                            &light_uniform_buffer,
                             &texture,
                             &context.image_sampler,
                         );
@@ -170,7 +187,7 @@ impl Scene {
                             vertex_buffer,
                             index_buffer,
                             index_count: indices.len() as u32,
-                            uniform_buffer,
+
                             descriptor_set,
                         };
 
@@ -216,14 +233,45 @@ impl Scene {
         buffer
     }
 
-    fn create_uniform_buffer(
+    fn create_descriptor_set(
+        graphics_pipeline: &Arc<GraphicsPipeline>,
+        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
+        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
+        texture: &Texture,
+        image_sampler: &Arc<Sampler>,
+    ) -> Arc<PersistentDescriptorSet> {
+        let layout = graphics_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(0)
+            .unwrap();
+
+        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        set_builder
+            .add_buffer(camera_uniform_buffer.clone())
+            .unwrap();
+
+        set_builder
+            .add_buffer(light_uniform_buffer.clone())
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(texture.image.clone(), image_sampler.clone())
+            .unwrap();
+
+        Arc::new(set_builder.build().unwrap())
+    }
+
+    fn create_camera_uniform_buffer(
         context: &Context,
-    ) -> Arc<CpuAccessibleBuffer<SceneUniformBufferObject>> {
+    ) -> Arc<CpuAccessibleBuffer<CameraUniformBufferObject>> {
         let identity = Mat4::IDENTITY.to_cols_array_2d();
 
-        let uniform_buffer_data = SceneUniformBufferObject {
+        let uniform_buffer_data = CameraUniformBufferObject {
             view: identity,
             proj: identity,
+            position: Vec3::ZERO.to_array(),
         };
 
         let buffer = CpuAccessibleBuffer::from_data(
@@ -237,26 +285,56 @@ impl Scene {
         buffer
     }
 
-    fn create_descriptor_set(
-        graphics_pipeline: &Arc<GraphicsPipeline>,
-        uniform_buffer: &Arc<CpuAccessibleBuffer<SceneUniformBufferObject>>,
-        texture: &Texture,
-        image_sampler: &Arc<Sampler>,
-    ) -> Arc<PersistentDescriptorSet> {
-        let layout = graphics_pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(0)
+    fn create_light_uniform_buffer(
+        context: &Context,
+    ) -> Arc<CpuAccessibleBuffer<LightUniformBufferObject>> {
+        let uniform_buffer_data = LightUniformBufferObject {
+            position: Vec3::new(1.2, 3.0, 2.0).to_array(),
+            _dummy0: [0, 0, 0, 0],
+            ambient: Vec3::new(0.1, 0.1, 0.1).to_array(),
+            _dummy1: [0, 0, 0, 0],
+            diffuse: Vec3::new(1.0, 1.0, 1.0).to_array(),
+            _dummy2: [0, 0, 0, 0],
+            specular: Vec3::new(1.0, 1.0, 1.0).to_array(),
+        };
+
+        let buffer = CpuAccessibleBuffer::from_data(
+            context.device.clone(),
+            BufferUsage::uniform_buffer_transfer_destination(),
+            false,
+            uniform_buffer_data,
+        )
+        .unwrap();
+
+        buffer
+    }
+
+    fn get_camera_uniform_buffer_data(
+        &self,
+        camera: &Camera,
+        dimensions: [f32; 2],
+    ) -> Arc<CameraUniformBufferObject> {
+        let view = camera.get_look_at_matrix();
+        let proj = camera.get_projection(dimensions);
+
+        Arc::new(CameraUniformBufferObject {
+            view: view.to_cols_array_2d(),
+            proj: proj.to_cols_array_2d(),
+            position: camera.position.to_array(),
+        })
+    }
+
+    pub fn update_uniform_buffers(
+        &self,
+        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        camera: &Camera,
+        dimensions: [f32; 2],
+    ) {
+        builder
+            .update_buffer(
+                self.camera_uniform_buffer.clone(),
+                self.get_camera_uniform_buffer_data(&camera, dimensions),
+            )
             .unwrap();
-
-        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-        set_builder.add_buffer(uniform_buffer.clone()).unwrap();
-
-        set_builder
-            .add_sampled_image(texture.image.clone(), image_sampler.clone())
-            .unwrap();
-
-        Arc::new(set_builder.build().unwrap())
     }
 }

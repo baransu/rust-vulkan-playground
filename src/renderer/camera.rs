@@ -1,6 +1,6 @@
 use glam::{EulerRot, Mat3, Mat4, Quat, Vec3};
 
-use super::shaders::SceneUniformBufferObject;
+use super::shaders::CameraUniformBufferObject;
 
 pub struct Camera {
     pub position: Vec3,
@@ -24,31 +24,21 @@ impl Camera {
         (self.rotation * Vec3::Y).normalize()
     }
 
-    pub fn get_skybox_uniform_data(&self, dimensions: [f32; 2]) -> SceneUniformBufferObject {
+    pub fn get_skybox_uniform_data(&self, dimensions: [f32; 2]) -> CameraUniformBufferObject {
         // NOTE: this strips translation from the view matrix which makes
         // the skybox static and around scene no matter what the camera is doing
         let view = Mat4::from_mat3(Mat3::from_mat4(self.get_look_at_matrix()));
 
-        let proj = Self::get_projection(dimensions);
+        let proj = self.get_projection(dimensions);
 
-        SceneUniformBufferObject {
+        CameraUniformBufferObject {
             view: view.to_cols_array_2d(),
             proj: proj.to_cols_array_2d(),
+            position: self.position.to_array(),
         }
     }
 
-    pub fn get_model_uniform_data(&self, dimensions: [f32; 2]) -> SceneUniformBufferObject {
-        let view = self.get_look_at_matrix();
-
-        let proj = Self::get_projection(dimensions);
-
-        SceneUniformBufferObject {
-            view: view.to_cols_array_2d(),
-            proj: proj.to_cols_array_2d(),
-        }
-    }
-
-    fn get_projection(dimensions: [f32; 2]) -> Mat4 {
+    pub fn get_projection(&self, dimensions: [f32; 2]) -> Mat4 {
         let mut proj = Mat4::perspective_rh(
             (45.0_f32).to_radians(),
             dimensions[0] as f32 / dimensions[1] as f32,

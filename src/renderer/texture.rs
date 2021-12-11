@@ -140,11 +140,11 @@ impl Texture {
                 match mime_type {
                     "image/jpeg" => image::load_from_memory_with_format(data, ImageFormat::Jpeg),
                     "image/png" => image::load_from_memory_with_format(data, ImageFormat::Png),
-                    _ => panic!(format!(
+                    _ => panic!(
                         "unsupported image type (image: {}, mime_type: {})",
                         image.index(),
                         mime_type
-                    )),
+                    ),
                 }
             }
             Source::Uri { uri, mime_type } => {
@@ -172,11 +172,11 @@ impl Texture {
                             image::load_from_memory_with_format(&data, ImageFormat::Jpeg)
                         }
                         "image/png" => image::load_from_memory_with_format(&data, ImageFormat::Png),
-                        _ => panic!(format!(
+                        _ => panic!(
                             "unsupported image type (image: {}, mime_type: {})",
                             image.index(),
                             mime_type
-                        )),
+                        ),
                     }
                 } else if let Some(mime_type) = mime_type {
                     let path = base_path
@@ -191,11 +191,11 @@ impl Texture {
                     match mime_type {
                         "image/jpeg" => image::load(reader, ImageFormat::Jpeg),
                         "image/png" => image::load(reader, ImageFormat::Png),
-                        _ => panic!(format!(
+                        _ => panic!(
                             "unsupported image type (image: {}, mime_type: {})",
                             image.index(),
                             mime_type
-                        )),
+                        ),
                     }
                 } else {
                     let path = base_path

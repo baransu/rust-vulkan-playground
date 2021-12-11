@@ -1,21 +1,15 @@
 use std::{str::FromStr, sync::Arc};
 
 use glam::{Mat4, Quat, Vec3};
-use vulkano::{
-    buffer::{CpuAccessibleBuffer, ImmutableBuffer},
-    descriptor_set::PersistentDescriptorSet,
-};
+use vulkano::{buffer::ImmutableBuffer, descriptor_set::PersistentDescriptorSet};
 
-use super::{shaders::SceneUniformBufferObject, vertex::Vertex};
+use super::vertex::Vertex;
 
 pub struct Mesh {
     pub id: String,
     pub index_count: u32,
     pub vertex_buffer: Arc<ImmutableBuffer<[Vertex]>>,
     pub index_buffer: Arc<ImmutableBuffer<[u32]>>,
-
-    // TODO: this should be per scene not per mesh
-    pub uniform_buffer: Arc<CpuAccessibleBuffer<SceneUniformBufferObject>>,
     pub descriptor_set: Arc<PersistentDescriptorSet>,
 }
 
