@@ -1,14 +1,19 @@
 pub mod imgui_renderer;
 pub mod renderer;
 
-use std::{collections::HashMap, f32::consts::PI, sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use glam::{EulerRot, Quat, Vec3};
 use imgui_renderer::Renderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
-    camera::Camera, context::Context, scene::Scene, screen_frame::ScreenFrame,
-    skybox_pass::SkyboxPass, vertex::Vertex,
+    camera::Camera,
+    context::Context,
+    mesh::{GameObject, InstanceData, Transform},
+    scene::Scene,
+    screen_frame::ScreenFrame,
+    skybox_pass::SkyboxPass,
+    vertex::Vertex,
 };
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
@@ -29,23 +34,21 @@ use vulkano::{
 };
 use winit::{
     event::{
-        DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta,
-        VirtualKeyCode, WindowEvent,
+        DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
     },
     event_loop::ControlFlow,
 };
 
-const MODEL_PATH: &str = "res/damaged_helmet/scene.gltf";
-// const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/gcanyon_cube.ktx";
-// const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/pisa_cube.ktx";
-const SKYBOX_PATH: &str = "vulkan_asset_pack_gltf/textures/hdr/uffizi_cube.ktx";
+const MODEL_PATHS: [&str; 2] = [
+    "res/models/damaged_helmet/scene.gltf",
+    "res/models/plane/plane.gltf",
+];
 
-#[derive(Default, Copy, Clone)]
-struct InstanceData {
-    model: [[f32; 4]; 4],
-}
+const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
+// const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
+// const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
-vulkano::impl_vertex!(InstanceData, model);
+const RENDER_SKYBOX: bool = false;
 
 pub struct OffscreenFramebuffer {
     framebuffer: Arc<dyn FramebufferAbstract + Send + Sync>,
@@ -86,8 +89,37 @@ impl Application {
         let scene_graphics_pipeline =
             Self::create_scene_graphics_pipeline(&context, &scene_render_pass);
 
-        // TODO: we should load models without use of graphics_pipeline
-        let scene = Scene::load(&context, MODEL_PATH, &scene_graphics_pipeline);
+        let mut scene = Scene::initialize(&context, MODEL_PATHS.to_vec(), &scene_graphics_pipeline);
+
+        let count = 10;
+        let start = -(count / 2);
+        let end = count / 2;
+
+        for x in start..end {
+            for z in start..end {
+                let translation = Vec3::new(x as f32 * 2.0, 2.0, z as f32 * 2.0);
+
+                let game_object = GameObject::new(
+                    "damaged_helmet",
+                    Transform {
+                        translation,
+                        rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
+                        scale: Vec3::ONE,
+                    },
+                );
+
+                scene.add_game_object(game_object);
+            }
+        }
+
+        scene.add_game_object(GameObject::new(
+            "Plane",
+            Transform {
+                rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+                scale: Vec3::ONE * 25.0,
+                translation: Vec3::new(0.0, 0.0, -1.0),
+            },
+        ));
 
         let previous_frame_end = Some(Self::create_sync_objects(&context.device));
 
@@ -284,7 +316,8 @@ impl Application {
                 // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
                 .polygon_mode_fill() // = default
                 .line_width(1.0) // = default
-                .cull_mode_back()
+                // TODO: just to make developing easier we render both faces of models
+                // .cull_mode_back()
                 .front_face_counter_clockwise()
                 // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
                 .blend_pass_through()
@@ -358,31 +391,34 @@ impl Application {
             depth_range: 0.0..1.0,
         };
 
-        let mut instance_data = Vec::new();
-        let model = self.scene.models.get(0).unwrap();
+        let mut instance_data: HashMap<String, Vec<InstanceData>> = HashMap::new();
 
-        let count = 25;
-        let start = -(count / 2);
-        let end = count / 2;
+        for game_object in self.scene.game_objects.iter() {
+            let model = game_object.transform.get_model_matrix();
 
-        for x in start..end {
-            for y in start..end {
-                let position = Vec3::new(x as f32 * 2.0, y as f32 * 2.0, 1.5);
-                let model = model.transform.get_model_matrix(position);
+            let instances = instance_data
+                .entry(game_object.mesh_id.clone())
+                .or_insert(Vec::new());
 
-                instance_data.push(InstanceData {
-                    model: model.to_cols_array_2d(),
-                })
-            }
+            (*instances).push(InstanceData {
+                model: model.to_cols_array_2d(),
+            });
         }
 
-        let instance_data_buffer = CpuAccessibleBuffer::from_iter(
-            self.context.device.clone(),
-            BufferUsage::all(),
-            false,
-            instance_data.iter().cloned(),
-        )
-        .unwrap();
+        let mut instance_data_buffers: HashMap<String, Arc<CpuAccessibleBuffer<[InstanceData]>>> =
+            HashMap::new();
+
+        instance_data.iter().for_each(|(mesh_id, instances)| {
+            let buffer = CpuAccessibleBuffer::from_iter(
+                self.context.device.clone(),
+                BufferUsage::all(),
+                false,
+                instances.iter().cloned(),
+            )
+            .unwrap();
+
+            instance_data_buffers.insert(mesh_id.clone(), buffer);
+        });
 
         let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
 
@@ -399,27 +435,24 @@ impl Application {
 
             builder.bind_pipeline_graphics(self.scene_graphics_pipeline.clone());
 
-            for model in self.scene.models.iter() {
-                builder
-                    .bind_descriptor_sets(
-                        PipelineBindPoint::Graphics,
-                        self.scene_graphics_pipeline.layout().clone(),
-                        0,
-                        model.descriptor_set.clone(),
-                    )
-                    .bind_vertex_buffers(
-                        0,
-                        (model.vertex_buffer.clone(), instance_data_buffer.clone()),
-                    )
-                    .bind_index_buffer(model.index_buffer.clone())
-                    .draw_indexed(
-                        model.index_count,
-                        instance_data_buffer.len() as u32,
-                        0,
-                        0,
-                        0,
-                    )
-                    .unwrap();
+            for mesh in self.scene.meshes.values() {
+                // if there is no instance_data_buffer it means we have 0 instances for this mesh
+                if let Some(instance_data_buffer) = instance_data_buffers.get(&mesh.id) {
+                    builder
+                        .bind_descriptor_sets(
+                            PipelineBindPoint::Graphics,
+                            self.scene_graphics_pipeline.layout().clone(),
+                            0,
+                            mesh.descriptor_set.clone(),
+                        )
+                        .bind_vertex_buffers(
+                            0,
+                            (mesh.vertex_buffer.clone(), instance_data_buffer.clone()),
+                        )
+                        .bind_index_buffer(mesh.index_buffer.clone())
+                        .draw_indexed(mesh.index_count, instance_data_buffer.len() as u32, 0, 0, 0)
+                        .unwrap();
+                }
             }
 
             let command_buffer = Arc::new(builder.build().unwrap());
@@ -480,12 +513,11 @@ impl Application {
             )
             .unwrap();
 
-        // TODO: we don't need uniform buffer for each model - just one will be ok
-        for model in &self.scene.models {
-            let model_uniform_data = Arc::new(self.camera.get_model_uniform_data(dimensions));
+        for mesh in self.scene.meshes.values() {
+            let data = Arc::new(self.camera.get_model_uniform_data(dimensions));
 
             builder
-                .update_buffer(model.uniform_buffer.clone(), model_uniform_data)
+                .update_buffer(mesh.uniform_buffer.clone(), data)
                 .unwrap();
         }
 
@@ -499,17 +531,23 @@ impl Application {
                     ClearValue::None,
                 ],
             )
-            .unwrap()
-            .execute_commands(self.skybox.command_buffer.clone())
-            .unwrap()
+            .unwrap();
+
+        if RENDER_SKYBOX {
+            builder
+                .execute_commands(self.skybox.command_buffer.clone())
+                .unwrap();
+        }
+
+        builder
             .execute_commands(offscreen_command_buffer)
             .unwrap()
             .end_render_pass()
             .unwrap();
 
         let ui = self.imgui.frame();
-        let mut value = true;
-        ui.show_demo_window(&mut value);
+        // let mut value = true;
+        // ui.show_demo_window(&mut value);
 
         let draw_data = ui.render();
         self.imgui_renderer
@@ -565,8 +603,12 @@ impl Application {
     fn update(&mut self, keys: &HashMap<VirtualKeyCode, ElementState>, dt: f64) {
         let camera_speed = (10.0 * dt) as f32;
 
-        if is_pressed(keys, VirtualKeyCode::Space) {
+        if is_pressed(keys, VirtualKeyCode::Q) {
             self.camera.position += Vec3::Y * camera_speed;
+        }
+
+        if is_pressed(keys, VirtualKeyCode::E) {
+            self.camera.position -= Vec3::Y * camera_speed;
         }
 
         if is_pressed(keys, VirtualKeyCode::A) {
@@ -631,23 +673,22 @@ impl Application {
                         mouse_buttons.insert(button, state);
                     }
 
-                    Event::WindowEvent {
-                        event:
-                            WindowEvent::MouseWheel {
-                                delta: MouseScrollDelta::PixelDelta(position),
-                                ..
-                            },
-                        ..
-                    } if !imgui_io.want_capture_mouse => {
-                        let y = position.y as f32;
+                    // Event::WindowEvent {
+                    //     event:
+                    //         WindowEvent::MouseWheel {
+                    //             delta: MouseScrollDelta::PixelDelta(position),
+                    //             ..
+                    //         },
+                    //     ..
+                    // } if !imgui_io.want_capture_mouse => {
+                    //     let y = position.y as f32;
 
-                        for model in self.scene.models.iter_mut() {
-                            model.transform.scale += y / 100.0;
-                            model.transform.scale =
-                                model.transform.scale.max(Vec3::new(0.1, 0.1, 0.1));
-                        }
-                    }
-
+                    //     for model in self.scene.meshes.iter_mut() {
+                    //         model.transform.scale += y / 100.0;
+                    //         model.transform.scale =
+                    //             model.transform.scale.max(Vec3::new(0.1, 0.1, 0.1));
+                    //     }
+                    // }
                     Event::WindowEvent {
                         event:
                             WindowEvent::KeyboardInput {

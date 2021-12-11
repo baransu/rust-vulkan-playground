@@ -1,6 +1,6 @@
 pub mod camera;
 pub mod context;
-pub mod model;
+pub mod mesh;
 pub mod scene;
 pub mod screen_frame;
 pub mod shaders;
