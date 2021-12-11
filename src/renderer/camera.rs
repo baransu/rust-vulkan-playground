@@ -1,35 +1,33 @@
-use glam::{Mat3, Mat4, Vec3};
+use glam::{EulerRot, Mat3, Mat4, Quat, Vec3};
 
 use super::shaders::SceneUniformBufferObject;
 
 pub struct Camera {
-    pub theta: f32,
-    pub phi: f32,
-    pub r: f32,
-    target: Vec3,
+    pub position: Vec3,
+    pub rotation: Quat,
 }
 
 impl Camera {
-    pub fn position(&self) -> Vec3 {
-        Vec3::new(
-            self.target[0] + self.r * self.phi.sin() * self.theta.sin(),
-            self.target[1] + self.r * self.phi.cos(),
-            self.target[2] + self.r * self.phi.sin() * self.theta.cos(),
-        )
+    pub fn get_look_at_matrix(&self) -> Mat4 {
+        Mat4::look_at_rh(self.position, self.position + self.forward(), self.up())
     }
 
-    pub fn target(&self) -> Vec3 {
-        self.target
+    pub fn forward(&self) -> Vec3 {
+        (self.rotation * -Vec3::Z).normalize()
+    }
+
+    pub fn right(&self) -> Vec3 {
+        (self.rotation * Vec3::X).normalize()
+    }
+
+    pub fn up(&self) -> Vec3 {
+        (self.rotation * Vec3::Y).normalize()
     }
 
     pub fn get_skybox_uniform_data(&self, dimensions: [f32; 2]) -> SceneUniformBufferObject {
         // NOTE: this strips translation from the view matrix which makes
         // the skybox static and around scene no matter what the camera is doing
-        let view = Mat4::from_mat3(Mat3::from_mat4(Mat4::look_at_rh(
-            self.position(),
-            self.target(),
-            Vec3::Y,
-        )));
+        let view = Mat4::from_mat3(Mat3::from_mat4(self.get_look_at_matrix()));
 
         let proj = Self::get_projection(dimensions);
 
@@ -40,7 +38,7 @@ impl Camera {
     }
 
     pub fn get_model_uniform_data(&self, dimensions: [f32; 2]) -> SceneUniformBufferObject {
-        let view = Mat4::look_at_rh(self.position(), self.target(), Vec3::Y);
+        let view = self.get_look_at_matrix();
 
         let proj = Self::get_projection(dimensions);
 
@@ -67,10 +65,8 @@ impl Camera {
 impl Default for Camera {
     fn default() -> Self {
         Camera {
-            theta: 0.0_f32.to_radians(),
-            phi: 90.0_f32.to_radians(),
-            r: 5.0,
-            target: Vec3::new(0.0, 0.0, 0.0),
+            position: Vec3::new(0.0, 0.0, 0.0),
+            rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
         }
     }
 }

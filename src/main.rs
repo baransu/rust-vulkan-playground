@@ -3,7 +3,7 @@ pub mod renderer;
 
 use std::{collections::HashMap, f32::consts::PI, sync::Arc, time::Instant};
 
-use glam::Vec3;
+use glam::{EulerRot, Quat, Vec3};
 use imgui_renderer::Renderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
@@ -28,7 +28,10 @@ use vulkano::{
     sync::{self, GpuFuture},
 };
 use winit::{
-    event::{DeviceEvent, ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent},
+    event::{
+        DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta,
+        VirtualKeyCode, WindowEvent,
+    },
     event_loop::ControlFlow,
 };
 
@@ -559,10 +562,41 @@ impl Application {
         }
     }
 
+    fn update(&mut self, keys: &HashMap<VirtualKeyCode, ElementState>, dt: f64) {
+        let camera_speed = (10.0 * dt) as f32;
+
+        if is_pressed(keys, VirtualKeyCode::Space) {
+            self.camera.position += Vec3::Y * camera_speed;
+        }
+
+        if is_pressed(keys, VirtualKeyCode::A) {
+            self.camera.position -= self.camera.right() * camera_speed
+        }
+
+        if is_pressed(keys, VirtualKeyCode::D) {
+            self.camera.position += self.camera.right() * camera_speed
+        }
+
+        if is_pressed(keys, VirtualKeyCode::W) {
+            self.camera.position += self.camera.forward() * camera_speed;
+        }
+
+        if is_pressed(keys, VirtualKeyCode::S) {
+            self.camera.position -= self.camera.forward() * camera_speed;
+        }
+    }
+
     fn main_loop(mut self) {
         let mut mouse_buttons: HashMap<MouseButton, ElementState> = HashMap::new();
+        let mut keyboard_buttons: HashMap<VirtualKeyCode, ElementState> = HashMap::new();
 
         let mut last_frame = Instant::now();
+        let mut delta_time = 0.0;
+
+        let mut rotation_x = 0.0;
+        let mut rotation_y = 0.0;
+
+        let original_rotation = self.camera.rotation;
 
         self.context
             .event_loop
@@ -614,22 +648,38 @@ impl Application {
                         }
                     }
 
+                    Event::WindowEvent {
+                        event:
+                            WindowEvent::KeyboardInput {
+                                input:
+                                    KeyboardInput {
+                                        state,
+                                        virtual_keycode: Some(virtual_keycode),
+                                        ..
+                                    },
+                                ..
+                            },
+                        ..
+                    } if !imgui_io.want_capture_keyboard => {
+                        keyboard_buttons.insert(virtual_keycode, state);
+                    }
+
                     Event::DeviceEvent {
                         event: DeviceEvent::MouseMotion { delta, .. },
                         ..
                     } if !imgui_io.want_capture_mouse => {
                         match mouse_buttons.get(&MouseButton::Left) {
                             Some(&ElementState::Pressed) => {
-                                let screen_width = self.context.swap_chain.dimensions()[0] as f32;
-                                let screen_height = self.context.swap_chain.dimensions()[1] as f32;
+                                let sensitivity = 0.5 * delta_time;
+                                let (x, y) = delta;
 
-                                let theta = 2.0 * PI * (delta.0 as f32) / screen_width;
-                                let phi = 2.0 * PI * (delta.1 as f32) / screen_height;
+                                rotation_x += (x * sensitivity) as f32;
+                                rotation_y += (y * sensitivity) as f32;
 
-                                self.camera.theta -= theta;
+                                let y_quat = Quat::from_axis_angle(Vec3::X, -rotation_y);
+                                let x_quat = Quat::from_axis_angle(Vec3::Y, -rotation_x);
 
-                                self.camera.phi = (self.camera.phi - phi)
-                                    .clamp(10.0_f32.to_radians(), 170.0_f32.to_radians());
+                                self.camera.rotation = original_rotation * x_quat * y_quat;
                             }
 
                             _ => {}
@@ -646,18 +696,21 @@ impl Application {
                         self.platform
                             .prepare_frame(self.imgui.io_mut(), &self.context.surface.window())
                             .expect("Failed to prepare frame");
+
                         self.context.surface.window().request_redraw();
                     }
 
                     Event::RedrawRequested { .. } => {
                         let now = Instant::now();
-                        let delta_time = now.duration_since(self.last_time).as_secs_f32();
+                        delta_time = now.duration_since(self.last_time).as_secs_f64();
 
-                        let fps = 1.0 / delta_time;
+                        // let fps = 1.0 / delta_time;
 
-                        println!("fps: {}", fps);
+                        // println!("fps: {}", fps);
 
                         self.last_time = now;
+
+                        self.update(&keyboard_buttons, delta_time);
 
                         self.draw_frame();
                     }
@@ -671,4 +724,11 @@ impl Application {
 fn main() {
     let app = Application::initialize();
     app.main_loop();
+}
+
+fn is_pressed(keys: &HashMap<VirtualKeyCode, ElementState>, key: VirtualKeyCode) -> bool {
+    match keys.get(&key) {
+        Some(&ElementState::Pressed) => true,
+        _ => false,
+    }
 }
