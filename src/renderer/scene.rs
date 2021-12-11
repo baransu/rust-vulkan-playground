@@ -1,6 +1,6 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
-use glam::{Mat4, Quat, Vec3};
+use glam::Mat4;
 use gltf::Semantic;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
@@ -11,42 +11,73 @@ use vulkano::{
     sync::GpuFuture,
 };
 
-use crate::renderer::{model::Transform, texture::Texture};
+use crate::renderer::texture::Texture;
 
-use super::{context::Context, model::Model, shaders::SceneUniformBufferObject, vertex::Vertex};
+use super::{
+    context::Context,
+    mesh::{GameObject, Mesh},
+    shaders::SceneUniformBufferObject,
+    vertex::Vertex,
+};
 
 pub struct Scene {
-    pub models: Vec<Model>,
+    pub meshes: HashMap<String, Mesh>,
+    pub game_objects: Vec<GameObject>,
 }
 
 impl Scene {
-    pub fn load(context: &Context, path: &str, graphics_pipeline: &Arc<GraphicsPipeline>) -> Self {
-        let models = Self::load_models(context, path, graphics_pipeline);
+    pub fn initialize(
+        context: &Context,
+        mesh_paths: Vec<&str>,
+        graphics_pipeline: &Arc<GraphicsPipeline>,
+    ) -> Self {
+        let mut meshes = HashMap::new();
 
-        Scene { models }
+        for path in mesh_paths {
+            let meshes_vec = Self::load_gltf(context, path, graphics_pipeline);
+
+            for mesh in meshes_vec {
+                meshes.insert(mesh.id.clone(), mesh);
+            }
+        }
+
+        for mesh in meshes.values() {
+            println!("Loaded {} mesh", mesh.id);
+        }
+
+        Scene {
+            meshes,
+            game_objects: vec![],
+        }
     }
 
-    fn load_models(
+    pub fn add_game_object(&mut self, game_object: GameObject) -> &mut Self {
+        self.game_objects.push(game_object);
+
+        self
+    }
+
+    fn load_gltf(
         context: &Context,
         path: &str,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-    ) -> Vec<Model> {
-        let mut models = Vec::new();
+    ) -> Vec<Mesh> {
+        let mut meshes = Vec::new();
 
         let (document, buffers, _images) = gltf::import(path).unwrap();
 
-        let transforms = document
-            .nodes()
-            .map(|node| {
-                let (translation, rotation, scale) = node.transform().decomposed();
+        // let transforms = document
+        //     .nodes()
+        //     .map(|node| {
+        //         let (translation, rotation, scale) = node.transform().decomposed();
 
-                Transform {
-                    scale: Vec3::new(scale[0], scale[1], scale[2]),
-                    rotation: Quat::from_xyzw(rotation[0], rotation[1], rotation[2], rotation[3]),
-                    translation: Vec3::new(translation[0], translation[1], translation[2]),
-                }
-            })
-            .collect::<Vec<_>>();
+        //         Transform {
+        //             scale: Vec3::new(scale[0], scale[1], scale[2]),
+        //             rotation: Quat::from_xyzw(rotation[0], rotation[1], rotation[2], rotation[3]),
+        //             translation: Vec3::new(translation[0], translation[1], translation[2]),
+        //         }
+        //     })
+        //     .collect::<Vec<_>>();
 
         for node in document.nodes() {
             if let Some(mesh) = node.mesh() {
@@ -55,7 +86,7 @@ impl Scene {
 
                     // let base_color_factor = pbr.base_color_factor();
 
-                    let (texture_image, tex_coord) = pbr
+                    let (texture, tex_coord) = pbr
                         .base_color_texture()
                         .map(|color_info| {
                             let texture = Texture::from_gltf_texture(
@@ -124,19 +155,17 @@ impl Scene {
                         let index_buffer =
                             Self::create_index_buffer(&context.graphics_queue, &indices);
 
-                        let transform = transforms.get(node.index()).unwrap();
-
                         let uniform_buffer = Self::create_uniform_buffer(&context);
 
                         let descriptor_set = Self::create_descriptor_set(
                             &graphics_pipeline,
                             &uniform_buffer,
-                            &texture_image,
+                            &texture,
                             &context.image_sampler,
                         );
 
-                        let model = Model {
-                            transform: transform.clone(),
+                        let mesh = Mesh {
+                            id: node.name().unwrap().to_string(),
                             vertex_buffer,
                             index_buffer,
                             index_count: indices.len() as u32,
@@ -144,15 +173,13 @@ impl Scene {
                             descriptor_set,
                         };
 
-                        models.push(model);
+                        meshes.push(mesh);
                     }
                 }
             }
         }
 
-        println!("Loaded {} models", models.len());
-
-        models
+        meshes
     }
 
     fn create_vertex_buffer(

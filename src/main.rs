@@ -81,13 +81,29 @@ impl Application {
     pub fn initialize() -> Self {
         let context = Context::initialize();
 
+        // let model = self.scene.meshes.get(0).unwrap();
+
+        // let count = 25;
+        // let start = -(count / 2);
+        // let end = count / 2;
+
+        // for x in start..end {
+        //     for y in start..end {
+        //         let position = Vec3::new(x as f32 * 2.0, y as f32 * 2.0, 1.5);
+        //         let model = model.transform.get_model_matrix(position);
+
+        //         instance_data.push(InstanceData {
+        //             model: model.to_cols_array_2d(),
+        //         })
+        //     }
+        // }
+
         let scene_render_pass = Self::create_scene_render_pass(&context);
         let scene_framebuffers = Self::create_scene_framebuffers(&context, &scene_render_pass);
         let scene_graphics_pipeline =
             Self::create_scene_graphics_pipeline(&context, &scene_render_pass);
 
-        // TODO: we should load models without use of graphics_pipeline
-        let scene = Scene::load(&context, MODEL_PATH, &scene_graphics_pipeline);
+        let scene = Scene::initialize(&context, vec![MODEL_PATH], &scene_graphics_pipeline);
 
         let previous_frame_end = Some(Self::create_sync_objects(&context.device));
 
@@ -358,31 +374,34 @@ impl Application {
             depth_range: 0.0..1.0,
         };
 
-        let mut instance_data = Vec::new();
-        let model = self.scene.models.get(0).unwrap();
+        let mut instance_data: HashMap<String, Vec<InstanceData>> = HashMap::new();
 
-        let count = 25;
-        let start = -(count / 2);
-        let end = count / 2;
+        for game_object in self.scene.game_objects.iter() {
+            let model = game_object.transform.get_model_matrix();
 
-        for x in start..end {
-            for y in start..end {
-                let position = Vec3::new(x as f32 * 2.0, y as f32 * 2.0, 1.5);
-                let model = model.transform.get_model_matrix(position);
+            let instances = instance_data
+                .entry(game_object.mesh_id.clone())
+                .or_insert(Vec::new());
 
-                instance_data.push(InstanceData {
-                    model: model.to_cols_array_2d(),
-                })
-            }
+            (*instances).push(InstanceData {
+                model: model.to_cols_array_2d(),
+            });
         }
 
-        let instance_data_buffer = CpuAccessibleBuffer::from_iter(
-            self.context.device.clone(),
-            BufferUsage::all(),
-            false,
-            instance_data.iter().cloned(),
-        )
-        .unwrap();
+        let mut instance_data_buffers: HashMap<String, Arc<CpuAccessibleBuffer<[InstanceData]>>> =
+            HashMap::new();
+
+        instance_data.iter().for_each(|(mesh_id, instances)| {
+            let buffer = CpuAccessibleBuffer::from_iter(
+                self.context.device.clone(),
+                BufferUsage::all(),
+                false,
+                instances.iter().cloned(),
+            )
+            .unwrap();
+
+            instance_data_buffers.insert(mesh_id.clone(), buffer);
+        });
 
         let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
 
@@ -399,27 +418,24 @@ impl Application {
 
             builder.bind_pipeline_graphics(self.scene_graphics_pipeline.clone());
 
-            for model in self.scene.models.iter() {
-                builder
-                    .bind_descriptor_sets(
-                        PipelineBindPoint::Graphics,
-                        self.scene_graphics_pipeline.layout().clone(),
-                        0,
-                        model.descriptor_set.clone(),
-                    )
-                    .bind_vertex_buffers(
-                        0,
-                        (model.vertex_buffer.clone(), instance_data_buffer.clone()),
-                    )
-                    .bind_index_buffer(model.index_buffer.clone())
-                    .draw_indexed(
-                        model.index_count,
-                        instance_data_buffer.len() as u32,
-                        0,
-                        0,
-                        0,
-                    )
-                    .unwrap();
+            for mesh in self.scene.meshes.values() {
+                // if there is no instance_data_buffer it means we have 0 instances for this mesh
+                if let Some(instance_data_buffer) = instance_data_buffers.get(&mesh.id) {
+                    builder
+                        .bind_descriptor_sets(
+                            PipelineBindPoint::Graphics,
+                            self.scene_graphics_pipeline.layout().clone(),
+                            0,
+                            mesh.descriptor_set.clone(),
+                        )
+                        .bind_vertex_buffers(
+                            0,
+                            (mesh.vertex_buffer.clone(), instance_data_buffer.clone()),
+                        )
+                        .bind_index_buffer(mesh.index_buffer.clone())
+                        .draw_indexed(mesh.index_count, instance_data_buffer.len() as u32, 0, 0, 0)
+                        .unwrap();
+                }
             }
 
             let command_buffer = Arc::new(builder.build().unwrap());
@@ -480,12 +496,11 @@ impl Application {
             )
             .unwrap();
 
-        // TODO: we don't need uniform buffer for each model - just one will be ok
-        for model in &self.scene.models {
-            let model_uniform_data = Arc::new(self.camera.get_model_uniform_data(dimensions));
+        for mesh in self.scene.meshes.values() {
+            let data = Arc::new(self.camera.get_model_uniform_data(dimensions));
 
             builder
-                .update_buffer(model.uniform_buffer.clone(), model_uniform_data)
+                .update_buffer(mesh.uniform_buffer.clone(), data)
                 .unwrap();
         }
 
@@ -631,23 +646,22 @@ impl Application {
                         mouse_buttons.insert(button, state);
                     }
 
-                    Event::WindowEvent {
-                        event:
-                            WindowEvent::MouseWheel {
-                                delta: MouseScrollDelta::PixelDelta(position),
-                                ..
-                            },
-                        ..
-                    } if !imgui_io.want_capture_mouse => {
-                        let y = position.y as f32;
+                    // Event::WindowEvent {
+                    //     event:
+                    //         WindowEvent::MouseWheel {
+                    //             delta: MouseScrollDelta::PixelDelta(position),
+                    //             ..
+                    //         },
+                    //     ..
+                    // } if !imgui_io.want_capture_mouse => {
+                    //     let y = position.y as f32;
 
-                        for model in self.scene.models.iter_mut() {
-                            model.transform.scale += y / 100.0;
-                            model.transform.scale =
-                                model.transform.scale.max(Vec3::new(0.1, 0.1, 0.1));
-                        }
-                    }
-
+                    //     for model in self.scene.meshes.iter_mut() {
+                    //         model.transform.scale += y / 100.0;
+                    //         model.transform.scale =
+                    //             model.transform.scale.max(Vec3::new(0.1, 0.1, 0.1));
+                    //     }
+                    // }
                     Event::WindowEvent {
                         event:
                             WindowEvent::KeyboardInput {

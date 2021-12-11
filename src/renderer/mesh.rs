@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 use glam::{Mat4, Quat, Vec3};
 use vulkano::{
@@ -8,14 +8,31 @@ use vulkano::{
 
 use super::{shaders::SceneUniformBufferObject, vertex::Vertex};
 
-pub struct Model {
+pub struct Mesh {
+    pub id: String,
     pub index_count: u32,
     pub vertex_buffer: Arc<ImmutableBuffer<[Vertex]>>,
     pub index_buffer: Arc<ImmutableBuffer<[u32]>>,
+
+    // TODO: this should be per scene not per mesh
     pub uniform_buffer: Arc<CpuAccessibleBuffer<SceneUniformBufferObject>>,
     pub descriptor_set: Arc<PersistentDescriptorSet>,
+}
+
+pub struct GameObject {
+    // it's string for convenience
+    pub mesh_id: String,
 
     pub transform: Transform,
+}
+
+impl GameObject {
+    pub fn new(mesh_id: &str, transform: &Transform) -> GameObject {
+        GameObject {
+            mesh_id: String::from_str(mesh_id).unwrap(),
+            transform: transform.clone(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -26,10 +43,9 @@ pub struct Transform {
 }
 
 impl Transform {
-    pub fn get_model_matrix(&self, translation: Vec3) -> Mat4 {
+    pub fn get_model_matrix(&self) -> Mat4 {
         // this is needed to fix model rotation
         Mat4::from_rotation_x((90.0_f32).to_radians())
             * Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation)
-            * Mat4::from_translation(translation)
     }
 }
