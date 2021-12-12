@@ -10,7 +10,9 @@ pub struct Mesh {
     pub index_count: u32,
     pub vertex_buffer: Arc<ImmutableBuffer<[Vertex]>>,
     pub index_buffer: Arc<ImmutableBuffer<[u32]>>,
+
     pub descriptor_set: Arc<PersistentDescriptorSet>,
+    pub shadow_descriptor_set: Arc<PersistentDescriptorSet>,
 }
 
 pub struct Material {

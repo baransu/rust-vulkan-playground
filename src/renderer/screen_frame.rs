@@ -11,7 +11,7 @@ use vulkano::{
     sync::GpuFuture,
 };
 
-use crate::OffscreenFramebuffer;
+use crate::FramebufferWithAttachment;
 
 use super::context::Context;
 
@@ -82,7 +82,8 @@ pub struct ScreenFrame {
 impl ScreenFrame {
     pub fn initialize(
         context: &Context,
-        offscreen_framebuffers: &Vec<OffscreenFramebuffer>,
+        offscreen_framebuffers: &Vec<FramebufferWithAttachment>,
+        shadow_framebuffer: &FramebufferWithAttachment,
         ui_frame: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> ScreenFrame {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
@@ -96,6 +97,7 @@ impl ScreenFrame {
             context,
             &graphics_pipeline,
             &offscreen_framebuffers,
+            &shadow_framebuffer,
             ui_frame,
         );
 
@@ -180,7 +182,8 @@ impl ScreenFrame {
     fn create_descriptor_sets(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        offscreen_framebuffers: &Vec<OffscreenFramebuffer>,
+        offscreen_framebuffers: &Vec<FramebufferWithAttachment>,
+        shadow_framebuffer: &FramebufferWithAttachment,
         ui_frame: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> Vec<Arc<PersistentDescriptorSet>> {
         let mut descriptor_sets = Vec::new();
@@ -194,11 +197,14 @@ impl ScreenFrame {
         for i in 0..context.swap_chain.num_images() as usize {
             let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-            let scene_frame = offscreen_framebuffers[i].resolve_image.clone();
+            let scene_frame = offscreen_framebuffers[i].attachment.clone();
 
             // NOTE: this works because we're setting immutable sampler when creating GraphicsPipeline
             set_builder.add_image(scene_frame).unwrap();
             set_builder.add_image(ui_frame.clone()).unwrap();
+            set_builder
+                .add_image(shadow_framebuffer.attachment.clone())
+                .unwrap();
 
             descriptor_sets.push(Arc::new(set_builder.build().unwrap()));
         }
@@ -279,6 +285,8 @@ impl ScreenFrame {
                     set_descs[0].set_immutable_samplers(0, [context.image_sampler.clone()]);
                     // set 0 binding 1.
                     set_descs[0].set_immutable_samplers(1, [context.image_sampler.clone()]);
+                    // set 0 binding 2.
+                    set_descs[0].set_immutable_samplers(2, [context.depth_sampler.clone()]);
                 })
                 .unwrap(),
         );

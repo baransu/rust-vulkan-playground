@@ -16,6 +16,42 @@ pub type CameraUniformBufferObject = model_vertex_shader::ty::CameraUniformBuffe
 pub type LightUniformBufferObject = model_fragment_shader::ty::LightUniformBufferObject;
 pub type PointLight = model_fragment_shader::ty::PointLight;
 pub type DirectionalLight = model_fragment_shader::ty::DirectionalLight;
+pub type LightSpaceUniformBufferObject = shadow_vertex_shader::ty::LightSpaceUniformBufferObject;
+
+pub mod shadow_vertex_shader {
+    vulkano_shaders::shader! {
+                                                                    ty: "vertex",
+                                                                    src: "
+			#version 450
+
+			layout(binding = 0) uniform LightSpaceUniformBufferObject {
+				mat4 matrix;
+			} light_space;
+
+			// per vertex
+			layout(location = 1) in vec3 position;
+
+			// per instance
+			layout(location = 4) in mat4 model; 
+
+			void main() {
+				gl_Position = light_space.matrix * model * vec4(position, 1.0);
+			}									
+"
+    }
+}
+
+pub mod shadow_fragment_shader {
+    vulkano_shaders::shader! {
+                                    ty: "fragment",
+                                    src: "
+			#version 450
+
+			void main() {
+			}
+"
+    }
+}
 
 pub mod screen_vertex_shader {
     vulkano_shaders::shader! {
@@ -44,12 +80,17 @@ pub mod screen_fragment_shader {
 
 		layout (set = 0, binding = 0) uniform sampler2D screen_texture;
 		layout (set = 0, binding = 1) uniform sampler2D ui_texture;
+		layout (set = 0, binding = 2) uniform sampler2D shadow_texture;
 		
 		layout (location = 0) in vec2 inUV;
 		
 		layout (location = 0) out vec4 outFragColor;
 
 		vec4 no_effect() {
+			// for shadow map testing
+			// float depthValue = texture(shadow_texture, inUV).r;
+			// return vec4(vec3(depthValue), 1.0);
+	
 			return texture(screen_texture, inUV);	
 		}
 
