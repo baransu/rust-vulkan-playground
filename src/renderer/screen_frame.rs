@@ -82,7 +82,7 @@ pub struct ScreenFrame {
 impl ScreenFrame {
     pub fn initialize(
         context: &Context,
-        offscreen_framebuffers: &Vec<FramebufferWithAttachment>,
+        scene_frame: &Arc<ImageView<Arc<AttachmentImage>>>,
         shadow_framebuffer: &FramebufferWithAttachment,
         ui_frame: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> ScreenFrame {
@@ -96,7 +96,7 @@ impl ScreenFrame {
         let descriptor_sets = Self::create_descriptor_sets(
             context,
             &graphics_pipeline,
-            &offscreen_framebuffers,
+            &scene_frame,
             &shadow_framebuffer,
             ui_frame,
         );
@@ -182,7 +182,7 @@ impl ScreenFrame {
     fn create_descriptor_sets(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        offscreen_framebuffers: &Vec<FramebufferWithAttachment>,
+        scene_frame: &Arc<ImageView<Arc<AttachmentImage>>>,
         shadow_framebuffer: &FramebufferWithAttachment,
         ui_frame: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> Vec<Arc<PersistentDescriptorSet>> {
@@ -194,13 +194,11 @@ impl ScreenFrame {
             .get(0)
             .unwrap();
 
-        for i in 0..context.swap_chain.num_images() as usize {
+        for _i in 0..context.swap_chain.num_images() as usize {
             let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-            let scene_frame = offscreen_framebuffers[i].attachment.clone();
-
             // NOTE: this works because we're setting immutable sampler when creating GraphicsPipeline
-            set_builder.add_image(scene_frame).unwrap();
+            set_builder.add_image(scene_frame.clone()).unwrap();
             set_builder.add_image(ui_frame.clone()).unwrap();
             set_builder
                 .add_image(shadow_framebuffer.attachment.clone())

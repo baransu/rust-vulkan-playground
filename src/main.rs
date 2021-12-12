@@ -10,6 +10,7 @@ use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
     camera::Camera,
     context::Context,
+    gbuffer::GBuffer,
     mesh::{GameObject, InstanceData, Material, Transform},
     scene::Scene,
     screen_frame::ScreenFrame,
@@ -55,7 +56,7 @@ const RENDER_SKYBOX: bool = false;
 
 const SHADOW_MAP_DIM: f32 = 2048.0;
 
-type FramebufferT = dyn FramebufferAbstract + Send + Sync;
+pub type FramebufferT = dyn FramebufferAbstract + Send + Sync;
 
 pub struct FramebufferWithAttachment {
     framebuffer: Arc<FramebufferT>,
@@ -65,10 +66,11 @@ pub struct FramebufferWithAttachment {
 struct Application {
     context: Context,
 
-    scene_graphics_pipeline: Arc<GraphicsPipeline>,
-    scene_framebuffers: Vec<FramebufferWithAttachment>,
+    gbuffer: GBuffer,
     scene_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
 
+    // scene_graphics_pipeline: Arc<GraphicsPipeline>,
+    // scene_framebuffers: Vec<FramebufferWithAttachment>,
     shadow_graphics_pipeline: Arc<GraphicsPipeline>,
     shadow_framebuffer: FramebufferWithAttachment,
     shadow_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
@@ -98,20 +100,18 @@ impl Application {
         // let mut rng = rand::thread_rng();
         let context = Context::initialize();
 
-        let scene_render_pass = Self::create_scene_render_pass(&context);
-        let scene_framebuffers = Self::create_scene_framebuffers(&context, &scene_render_pass);
-        let scene_graphics_pipeline =
-            Self::create_scene_graphics_pipeline(&context, &scene_render_pass);
-
         let shadow_render_pass = Self::create_shadow_render_pass(&context);
         let shadow_framebuffer = Self::create_shadow_framebuffer(&context, &shadow_render_pass);
         let shadow_graphics_pipeline =
             Self::create_shadow_graphics_pipeline(&context, &shadow_render_pass);
 
+        let gbuffer_target = Self::create_gbuffer_target(&context);
+        let gbuffer = GBuffer::initialize(&context, &gbuffer_target);
+
         let mut scene = Scene::initialize(
             &context,
             MODEL_PATHS.to_vec(),
-            &scene_graphics_pipeline,
+            &gbuffer.pipeline,
             &shadow_graphics_pipeline,
             &shadow_framebuffer,
         );
@@ -192,7 +192,7 @@ impl Application {
 
         let camera = Default::default();
 
-        let skybox = SkyboxPass::initialize(&context, &scene_render_pass, SKYBOX_PATH);
+        let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, SKYBOX_PATH);
 
         let mut imgui = imgui::Context::create();
         imgui.set_ini_filename(None);
@@ -227,7 +227,7 @@ impl Application {
 
         let screen_frame = ScreenFrame::initialize(
             &context,
-            &scene_framebuffers,
+            &gbuffer_target,
             &shadow_framebuffer,
             &imgui_renderer.target,
         );
@@ -251,8 +251,9 @@ impl Application {
             imgui_renderer,
             platform,
 
-            scene_graphics_pipeline,
-            scene_framebuffers,
+            gbuffer,
+            // scene_graphics_pipeline,
+            // scene_framebuffers,
             scene_command_buffers: vec![],
 
             shadow_framebuffer,
@@ -309,14 +310,13 @@ impl Application {
         ImageView::new(image).unwrap()
     }
 
-    fn create_color_image(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
-        let image = AttachmentImage::multisampled_with_usage(
+    fn create_gbuffer_target(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
+        let image = AttachmentImage::with_usage(
             context.device.clone(),
             context.swap_chain.dimensions(),
-            context.sample_count,
             context.swap_chain.format(),
             ImageUsage {
-                transient_attachment: true,
+                sampled: true,
                 ..ImageUsage::none()
             },
         )
@@ -329,44 +329,44 @@ impl Application {
      * Creates render pass which has color and depth attachments.
      * Last attachment is resolve which can be attached to swap chain image used to output to screen.
      */
-    fn create_scene_render_pass(context: &Context) -> Arc<RenderPass> {
-        let color_format = context.swap_chain.format();
-        let depth_format = context.depth_format;
-        let sample_count = context.sample_count;
+    // fn create_scene_render_pass(context: &Context) -> Arc<RenderPass> {
+    //     let color_format = context.swap_chain.format();
+    //     let depth_format = context.depth_format;
+    //     let sample_count = context.sample_count;
 
-        Arc::new(
-            single_pass_renderpass!(context.device.clone(),
-                    attachments: {
-                        multisample_color: {
-                            load: Clear,
-                            store: Store,
-                            format: color_format,
-                            samples: sample_count,
-                        },
-                        multisample_depth: {
-                            load: Clear,
-                            store: DontCare,
-                            format: depth_format,
-                            samples: sample_count,
-                            initial_layout: ImageLayout::Undefined,
-                            final_layout: ImageLayout::DepthStencilAttachmentOptimal,
-                        },
-                        resolve_color: {
-                            load: DontCare,
-                            store: Store,
-                            format: color_format,
-                            samples: 1,
-                        }
-                    },
-                    pass: {
-                        color: [multisample_color],
-                        depth_stencil: {multisample_depth},
-                        resolve: [resolve_color]
-                    }
-            )
-            .unwrap(),
-        )
-    }
+    //     Arc::new(
+    //         single_pass_renderpass!(context.device.clone(),
+    //                 attachments: {
+    //                     multisample_color: {
+    //                         load: Clear,
+    //                         store: Store,
+    //                         format: color_format,
+    //                         samples: sample_count,
+    //                     },
+    //                     multisample_depth: {
+    //                         load: Clear,
+    //                         store: DontCare,
+    //                         format: depth_format,
+    //                         samples: sample_count,
+    //                         initial_layout: ImageLayout::Undefined,
+    //                         final_layout: ImageLayout::DepthStencilAttachmentOptimal,
+    //                     },
+    //                     resolve_color: {
+    //                         load: DontCare,
+    //                         store: Store,
+    //                         format: color_format,
+    //                         samples: 1,
+    //                     }
+    //                 },
+    //                 pass: {
+    //                     color: [multisample_color],
+    //                     depth_stencil: {multisample_depth},
+    //                     resolve: [resolve_color]
+    //                 }
+    //         )
+    //         .unwrap(),
+    //     )
+    // }
 
     fn create_shadow_render_pass(context: &Context) -> Arc<RenderPass> {
         let depth_format = context.depth_format;
@@ -393,11 +393,11 @@ impl Application {
     fn recreate_swap_chain(&mut self) {
         self.context.recreate_swap_chain();
 
-        let offscreen_render_pass = Self::create_scene_render_pass(&self.context);
-        self.scene_framebuffers =
-            Self::create_scene_framebuffers(&self.context, &offscreen_render_pass);
-        self.scene_graphics_pipeline =
-            Self::create_scene_graphics_pipeline(&self.context, &offscreen_render_pass);
+        // let offscreen_render_pass = Self::create_scene_render_pass(&self.context);
+        // self.scene_framebuffers =
+        //     Self::create_scene_framebuffers(&self.context, &offscreen_render_pass);
+        // self.scene_graphics_pipeline =
+        //     Self::create_scene_graphics_pipeline(&self.context, &offscreen_render_pass);
 
         // TODO: recreate shadow framebuffer and graphics pipeline
 
@@ -407,56 +407,56 @@ impl Application {
         self.create_shadow_command_buffers();
     }
 
-    /**
-     * Creates graphics pipeline from the given render pass, and vertex/fragment shaders.
-     */
-    fn create_scene_graphics_pipeline(
-        context: &Context,
-        render_pass: &Arc<RenderPass>,
-    ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module =
-            renderer::shaders::model_vertex_shader::Shader::load(context.device.clone()).unwrap();
-        let frag_shader_module =
-            renderer::shaders::model_fragment_shader::Shader::load(context.device.clone()).unwrap();
+    // /**
+    //  * Creates graphics pipeline from the given render pass, and vertex/fragment shaders.
+    //  */
+    // fn create_scene_graphics_pipeline(
+    //     context: &Context,
+    //     render_pass: &Arc<RenderPass>,
+    // ) -> Arc<GraphicsPipeline> {
+    //     let vert_shader_module =
+    //         renderer::shaders::model_vertex_shader::Shader::load(context.device.clone()).unwrap();
+    //     let frag_shader_module =
+    //         renderer::shaders::model_fragment_shader::Shader::load(context.device.clone()).unwrap();
 
-        let dimensions_u32 = context.swap_chain.dimensions();
-        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions,
-            depth_range: 0.0..1.0,
-        };
+    //     let dimensions_u32 = context.swap_chain.dimensions();
+    //     let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
+    //     let viewport = Viewport {
+    //         origin: [0.0, 0.0],
+    //         dimensions,
+    //         depth_range: 0.0..1.0,
+    //     };
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input(
-                    BuffersDefinition::new()
-                        .vertex::<Vertex>()
-                        .instance::<InstanceData>(),
-                )
-                .vertex_shader(vert_shader_module.main_entry_point(), ())
-                .triangle_list()
-                .primitive_restart(false)
-                .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(frag_shader_module.main_entry_point(), ())
-                .depth_clamp(false)
-                // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
-                .polygon_mode_fill() // = default
-                .line_width(1.0) // = default
-                // TODO: just to make developing easier we render both faces of models
-                .cull_mode_back()
-                .front_face_counter_clockwise()
-                // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
-                .blend_pass_through()
-                .depth_stencil(DepthStencil::simple_depth_test())
-                .viewports_dynamic_scissors_irrelevant(1)
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(context.device.clone())
-                .unwrap(),
-        );
+    //     let pipeline = Arc::new(
+    //         GraphicsPipeline::start()
+    //             .vertex_input(
+    //                 BuffersDefinition::new()
+    //                     .vertex::<Vertex>()
+    //                     .instance::<InstanceData>(),
+    //             )
+    //             .vertex_shader(vert_shader_module.main_entry_point(), ())
+    //             .triangle_list()
+    //             .primitive_restart(false)
+    //             .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+    //             .fragment_shader(frag_shader_module.main_entry_point(), ())
+    //             .depth_clamp(false)
+    //             // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
+    //             .polygon_mode_fill() // = default
+    //             .line_width(1.0) // = default
+    //             // TODO: just to make developing easier we render both faces of models
+    //             .cull_mode_back()
+    //             .front_face_counter_clockwise()
+    //             // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
+    //             .blend_pass_through()
+    //             .depth_stencil(DepthStencil::simple_depth_test())
+    //             .viewports_dynamic_scissors_irrelevant(1)
+    //             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+    //             .build(context.device.clone())
+    //             .unwrap(),
+    //     );
 
-        pipeline
-    }
+    //     pipeline
+    // }
 
     fn create_shadow_graphics_pipeline(
         context: &Context,
@@ -511,50 +511,50 @@ impl Application {
      *
      * It contains 3 attachments (color, depth, resolve) where resolve is swap chain image which is used to output to screen.
      */
-    fn create_scene_framebuffers(
-        context: &Context,
-        render_pass: &Arc<RenderPass>,
-    ) -> Vec<FramebufferWithAttachment> {
-        let depth_image = Self::create_depth_image(&context);
-        let color_image = Self::create_color_image(&context);
+    // fn create_scene_framebuffers(
+    //     context: &Context,
+    //     render_pass: &Arc<RenderPass>,
+    // ) -> Vec<FramebufferWithAttachment> {
+    //     let depth_image = Self::create_depth_image(&context);
+    //     let color_image = Self::create_color_image(&context);
 
-        let mut framebuffers = Vec::new();
+    //     let mut framebuffers = Vec::new();
 
-        for _i in 0..context.swap_chain.num_images() {
-            let resolve_image = ImageView::new(
-                AttachmentImage::with_usage(
-                    context.device.clone(),
-                    context.swap_chain.dimensions(),
-                    context.swap_chain.format(),
-                    ImageUsage {
-                        sampled: true,
-                        ..ImageUsage::none()
-                    },
-                )
-                .unwrap(),
-            )
-            .unwrap();
+    //     for _i in 0..context.swap_chain.num_images() {
+    //         let resolve_image = ImageView::new(
+    //             AttachmentImage::with_usage(
+    //                 context.device.clone(),
+    //                 context.swap_chain.dimensions(),
+    //                 context.swap_chain.format(),
+    //                 ImageUsage {
+    //                     sampled: true,
+    //                     ..ImageUsage::none()
+    //                 },
+    //             )
+    //             .unwrap(),
+    //         )
+    //         .unwrap();
 
-            let framebuffer: Arc<FramebufferT> = Arc::new(
-                Framebuffer::start(render_pass.clone())
-                    .add(color_image.clone())
-                    .unwrap()
-                    .add(depth_image.clone())
-                    .unwrap()
-                    .add(resolve_image.clone())
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-            );
+    //         let framebuffer: Arc<FramebufferT> = Arc::new(
+    //             Framebuffer::start(render_pass.clone())
+    //                 .add(color_image.clone())
+    //                 .unwrap()
+    //                 .add(depth_image.clone())
+    //                 .unwrap()
+    //                 .add(resolve_image.clone())
+    //                 .unwrap()
+    //                 .build()
+    //                 .unwrap(),
+    //         );
 
-            framebuffers.push(FramebufferWithAttachment {
-                framebuffer,
-                attachment: resolve_image,
-            });
-        }
+    //         framebuffers.push(FramebufferWithAttachment {
+    //             framebuffer,
+    //             attachment: resolve_image,
+    //         });
+    //     }
 
-        framebuffers
-    }
+    //     framebuffers
+    // }
 
     fn create_shadow_framebuffer(
         context: &Context,
@@ -634,13 +634,13 @@ impl Application {
                 self.context.device.clone(),
                 self.context.graphics_queue.family(),
                 CommandBufferUsage::SimultaneousUse,
-                self.scene_graphics_pipeline.subpass().clone(),
+                self.gbuffer.pipeline.subpass().clone(),
             )
             .unwrap();
 
             builder.set_viewport(0, [viewport.clone()]);
 
-            builder.bind_pipeline_graphics(self.scene_graphics_pipeline.clone());
+            builder.bind_pipeline_graphics(self.gbuffer.pipeline.clone());
 
             for mesh in self.scene.meshes.values() {
                 // if there is no instance_data_buffer it means we have 0 instances for this mesh
@@ -648,7 +648,7 @@ impl Application {
                     builder
                         .bind_descriptor_sets(
                             PipelineBindPoint::Graphics,
-                            self.scene_graphics_pipeline.layout().clone(),
+                            self.gbuffer.pipeline.layout().clone(),
                             0,
                             mesh.descriptor_set.clone(),
                         )
@@ -787,7 +787,7 @@ impl Application {
         )
         .unwrap();
 
-        let offscreen_framebuffer = self.scene_framebuffers[image_index].framebuffer.clone();
+        let offscreen_framebuffer = self.gbuffer.framebuffer.clone();
         let framebuffer = self.screen_frame.framebuffers[image_index].clone();
 
         let dimensions_u32 = self.context.swap_chain.dimensions();
@@ -820,9 +820,14 @@ impl Application {
                 offscreen_framebuffer.clone(),
                 SubpassContents::SecondaryCommandBuffers,
                 vec![
-                    [0.0, 0.0, 0.0, 1.0].into(),
+                    // color
+                    ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
+                    // diffusee
+                    ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
+                    // normals
+                    ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
+                    // depth
                     ClearValue::Depth(1.0),
-                    ClearValue::None,
                 ],
             )
             .unwrap();
@@ -834,7 +839,11 @@ impl Application {
         }
 
         builder
-            .execute_commands(offscreen_command_buffer)
+            .execute_commands(offscreen_command_buffer.clone())
+            .unwrap()
+            .next_subpass(SubpassContents::SecondaryCommandBuffers)
+            .unwrap()
+            .execute_commands(offscreen_command_buffer.clone())
             .unwrap()
             .end_render_pass()
             .unwrap();
