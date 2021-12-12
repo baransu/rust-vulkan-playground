@@ -152,22 +152,35 @@ impl Application {
             Default::default(),
         ));
 
-        let light_colors = Scene::light_colors();
-        // point light cubes for reference
-        for (index, position) in Scene::light_positions().iter().enumerate() {
-            scene.add_game_object(GameObject::new(
-                "Cube",
-                Transform {
-                    rotation: Quat::IDENTITY,
-                    scale: Vec3::ONE * 0.2,
-                    translation: position.clone(),
-                },
-                Material {
-                    diffuse: light_colors.get(index).unwrap().clone(),
-                    ..Default::default()
-                },
-            ));
-        }
+        // let light_colors = Scene::light_colors();
+        // // point light cubes for reference
+        // for (index, position) in Scene::light_positions().iter().enumerate() {
+        //     scene.add_game_object(GameObject::new(
+        //         "Cube",
+        //         Transform {
+        //             rotation: Quat::IDENTITY,
+        //             scale: Vec3::ONE * 0.2,
+        //             translation: position.clone(),
+        //         },
+        //         Material {
+        //             diffuse: light_colors.get(index).unwrap().clone(),
+        //             ..Default::default()
+        //         },
+        //     ));
+        // }
+
+        // dir light
+        scene.add_game_object(GameObject::new(
+            "Cube",
+            Transform {
+                rotation: Quat::IDENTITY,
+                scale: Vec3::ONE * 0.2,
+                translation: Scene::dir_light_position(),
+            },
+            Material {
+                ..Default::default()
+            },
+        ));
 
         let previous_frame_end = Some(Self::create_sync_objects(&context.device));
 
@@ -429,9 +442,6 @@ impl Application {
         pipeline
     }
 
-    /**
-     * Creates graphics pipeline from the given render pass, and vertex/fragment shaders.
-     */
     fn create_shadow_graphics_pipeline(
         context: &Context,
         render_pass: &Arc<RenderPass>,
@@ -466,8 +476,10 @@ impl Application {
                 // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
                 .polygon_mode_fill() // = default
                 .line_width(1.0) // = default
-                .cull_mode_back()
-                .front_face_counter_clockwise()
+                // NOTE: when we render shadows we render inners of the models (via front_face_clockwise and cull_mode_front)
+                // this is to reduce peter panning as described in learnopengl.com/Advanced-Lighting/Shadows/Shadow-Mapping
+                .cull_mode_front()
+                .front_face_clockwise()
                 // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
                 .blend_pass_through()
                 .depth_stencil(DepthStencil::simple_depth_test())

@@ -45,10 +45,10 @@ pub mod shadow_fragment_shader {
     vulkano_shaders::shader! {
                                     ty: "fragment",
                                     src: "
-#version 450
+			#version 450
 
-void main() {
-}
+			void main() {
+			}
 "
     }
 }

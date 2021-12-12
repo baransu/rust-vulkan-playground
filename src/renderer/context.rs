@@ -11,7 +11,7 @@ use vulkano::{
         debug::{DebugCallback, MessageSeverity, MessageType},
         layers_list, ApplicationInfo, Instance, InstanceExtensions,
     },
-    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
+    sampler::{BorderColor, Filter, MipmapMode, Sampler, SamplerAddressMode},
     swapchain::{
         ColorSpace, CompositeAlpha, PresentMode, SupportedPresentModes, Surface, Swapchain,
     },
@@ -382,7 +382,7 @@ impl Context {
         *available_formats
             .iter()
             .find(|(format, color_space)| {
-                *format == Format::B8G8R8A8_SRGB && *color_space == ColorSpace::SrgbNonLinear
+                *format == Format::R16G16B16A16_UNORM && *color_space == ColorSpace::SrgbNonLinear
             })
             .unwrap_or_else(|| &available_formats[0])
     }
@@ -434,9 +434,9 @@ impl Context {
             Filter::Nearest,
             Filter::Nearest,
             MipmapMode::Linear,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToBorder(BorderColor::FloatOpaqueWhite),
+            SamplerAddressMode::ClampToBorder(BorderColor::FloatOpaqueWhite),
+            SamplerAddressMode::ClampToBorder(BorderColor::FloatOpaqueWhite),
             0.0,
             1.0,
             0.0,

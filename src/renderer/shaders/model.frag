@@ -1,6 +1,6 @@
 #version 450
 
-#define NR_POINT_LIGHTS 1
+#define NR_POINT_LIGHTS 4
 
 struct DirectionalLight { 
 	vec3 direction;
@@ -54,6 +54,38 @@ layout(location = 8) in vec4 f_position_light_space;
 // out
 layout(location = 0) out vec4 out_color;
 
+float shadow_calculation_pcf(vec4 f_position_light_space, vec3 normal, vec3 light_dir) {
+	// perform perspective divide
+	vec3 proj_coords = f_position_light_space.xyz / f_position_light_space.w;
+
+	// transform to [0,1] range
+	proj_coords = proj_coords * 0.5 + 0.5;
+
+	// get depth of current fragment from light's perspective
+	float current_depth = proj_coords.z;
+
+	float bias = max(0.05 * (1.0 - dot(f_normal, light_dir)), 0.005);  
+
+	float shadow = 0.0;
+	vec2 texel_size = 1.0 / textureSize(shadow_sampler, 0);
+	for(int x = -1; x <= 1; ++x)
+	{
+			for(int y = -1; y <= 1; ++y)
+			{
+					float pcf_depth = texture(shadow_sampler, proj_coords.xy + vec2(x, y) * texel_size).r; 
+					shadow += current_depth - bias > pcf_depth ? 1.0 : 0.0;        
+			}    
+	}
+
+	shadow /= 9.0;
+
+	if(proj_coords.z > 1.0) {
+		shadow = 0.0;
+	}
+
+	return shadow;
+}
+
 vec3 calc_dir_light(DirectionalLight light, vec3 normal, vec3 view_dir) {
 	vec3 light_dir = normalize(-light.direction);
 	
@@ -68,28 +100,10 @@ vec3 calc_dir_light(DirectionalLight light, vec3 normal, vec3 view_dir) {
 	vec3 ambient  = light.ambient * f_material_ambient;
 	vec3 diffuse  = light.diffuse * diff * f_material_diffuse;
 	vec3 specular = light.specular * spec * f_material_specular;
-	return ambient + diffuse + specular;
-}
 
-float shadow_calculation(vec4 f_position_light_space) {
-	// perform perspective divide
-	vec3 proj_coords = f_position_light_space.xyz / f_position_light_space.w;
+	float shadow = shadow_calculation_pcf(f_position_light_space, normal, light_dir);       
 
-	// transform to [0,1] range
-	proj_coords = proj_coords * 0.5 + 0.5;
-
-	// get closest depth value from light's perspective (using [0,1] range f_position_light_space as coords)
-	float closest_depth = texture(shadow_sampler, proj_coords.xy).r;   
-
-	// get depth of current fragment from light's perspective
-	float current_depth = proj_coords.z;
-
-	// check whether current frag pos is in shadow
-	if(current_depth > closest_depth) {
-		return 1.0;
-	} else {
-		return 0.0;  
-	}
+	return ambient + (1.0 - shadow) * (diffuse + specular);   
 }
 
 vec3 calc_point_light(PointLight light, vec3 normal, vec3 f_position, vec3 view_dir) {
@@ -115,8 +129,7 @@ vec3 calc_point_light(PointLight light, vec3 normal, vec3 f_position, vec3 view_
 	diffuse *= attenuation;
 	specular *= attenuation;
 
-	float shadow = shadow_calculation(f_position_light_space);       
-	return ambient + (1.0 - shadow) * (diffuse + specular);   
+	return ambient + diffuse + specular;   
 } 
 
 void main() {
@@ -132,6 +145,10 @@ void main() {
     result += calc_point_light(light.point_lights[i], norm, f_position, view_dir);   
 	}
 
-	// phase 4: texture
+	// phase 3: texture
 	out_color = vec4(result,  1.0) * texture(diffuse_sampler, f_uv);
+
+	// phase 4: gamma correction
+	float gamma = 2.2;
+	out_color.rgb = pow(out_color.rgb, vec3(1.0 / gamma));
 }

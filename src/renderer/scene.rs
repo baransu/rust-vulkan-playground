@@ -24,7 +24,7 @@ use super::{
     vertex::Vertex,
 };
 
-const NR_POINT_LIGHTS: usize = 1;
+const NR_POINT_LIGHTS: usize = 4;
 
 pub struct Scene {
     pub meshes: HashMap<String, Mesh>,
@@ -340,14 +340,15 @@ impl Scene {
     fn create_light_space_uniform_buffer(
         context: &Context,
     ) -> Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>> {
-        let position = Self::light_positions().get(0).unwrap().clone();
-
         // NOTE: vulkan has Y flipped from OpenGL so I guess that's why bottom/top has to be reversed
-        let mut light_projection = Mat4::orthographic_rh(-10.0, 10.0, 10.0, -10.0, 0.1, 1000.0);
+        let mut light_projection = Mat4::orthographic_rh(-25.0, 25.0, 25.0, -25.0, 0.1, 1000.0);
 
         light_projection.y_axis.y *= -1.0;
 
-        let light_view = Mat4::look_at_rh(position, Vec3::ZERO, Vec3::Y);
+        let position = Self::dir_light_position();
+        let direction = Vec3::new(-0.2, -1.0, -0.3);
+
+        let light_view = Mat4::look_at_rh(position, direction, Vec3::Y);
 
         let matrix = light_projection * light_view;
 
@@ -369,19 +370,23 @@ impl Scene {
     pub fn light_positions() -> [Vec3; NR_POINT_LIGHTS] {
         [
             Vec3::new(0.7, 5.0, 2.0),
-            // Vec3::new(2.3, 5.0, -4.0),
-            // Vec3::new(-4.0, 5.0, -12.0),
-            // Vec3::new(0.0, 5.0, -3.0),
+            Vec3::new(2.3, 5.0, -4.0),
+            Vec3::new(-4.0, 5.0, -12.0),
+            Vec3::new(0.0, 5.0, -3.0),
         ]
     }
 
     pub fn light_colors() -> [Vec3; NR_POINT_LIGHTS] {
         [
             Vec3::new(1.0, 1.0, 1.0),
-            // Vec3::new(0.0, 1.0, 0.0),
-            // Vec3::new(0.0, 0.0, 1.0),
-            // Vec3::new(0.5, 0.5, 1.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(0.5, 0.5, 1.0),
         ]
+    }
+
+    pub fn dir_light_position() -> Vec3 {
+        Vec3::new(-0.2, -1.0, -0.3) * -10.0
     }
 
     fn create_light_uniform_buffer(
@@ -413,7 +418,7 @@ impl Scene {
             _dummy0: [0, 0, 0, 0],
             ambient: Vec3::ZERO.to_array(),
             _dummy1: [0, 0, 0, 0],
-            diffuse: Vec3::ZERO.to_array(),
+            diffuse: (Vec3::ONE * 0.25).to_array(),
             _dummy2: [0, 0, 0, 0],
             specular: Vec3::ZERO.to_array(),
         };
