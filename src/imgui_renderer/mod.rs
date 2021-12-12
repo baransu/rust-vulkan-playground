@@ -1,8 +1,8 @@
-mod shaders;
+pub mod shaders;
 
+use vulkano::buffer::ImmutableBuffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor_set::PersistentDescriptorSet;
-use vulkano::device::{Device, Queue};
 use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
 use vulkano::sync::GpuFuture;
 use vulkano::{
@@ -25,6 +25,8 @@ use std::sync::Arc;
 use imgui::{internal::RawWrapper, DrawCmd, DrawCmdParams, DrawVert, TextureId, Textures};
 
 use crate::renderer::context::Context;
+
+use self::shaders::TextureUsage;
 
 #[derive(Default, Debug, Clone)]
 #[repr(C)]
@@ -63,7 +65,11 @@ impl fmt::Display for RendererError {
 
 impl std::error::Error for RendererError {}
 
-pub type Texture = (Arc<dyn ImageViewAbstract + Send + Sync>, Arc<Sampler>);
+pub type Texture = (
+    Arc<dyn ImageViewAbstract + 'static>,
+    Arc<Sampler>,
+    Arc<ImmutableBuffer<TextureUsage>>,
+);
 
 pub struct Renderer {
     pipeline: Arc<GraphicsPipeline>,
@@ -138,11 +144,7 @@ impl Renderer {
 
         let textures = Textures::new();
 
-        let font_texture = Self::upload_font_texture(
-            imgui.fonts(),
-            context.device.clone(),
-            context.graphics_queue.clone(),
-        )?;
+        let font_texture = Self::upload_font_texture(context, imgui.fonts())?;
 
         let vrt_buffer_pool = CpuBufferPool::new(
             context.device.clone(),
@@ -304,7 +306,7 @@ impl Renderer {
                                 ],
                             };
 
-                            let (texture_image, texture_sampler) =
+                            let (texture_image, texture_sampler, usage) =
                                 self.lookup_texture(texture_id)?;
 
                             let mut set_builder = PersistentDescriptorSet::start(layout.clone());
@@ -313,6 +315,8 @@ impl Renderer {
                                 texture_image.clone(),
                                 texture_sampler.clone(),
                             )?;
+
+                            set_builder.add_buffer(usage.clone())?;
 
                             let set = Arc::new(set_builder.build()?);
 
@@ -361,11 +365,10 @@ impl Renderer {
     /// `queue`: the Vulkano `Queue` object for the queue the font atlas texture will be created on.
     pub fn reload_font_texture(
         &mut self,
+        context: &Context,
         ctx: &mut imgui::Context,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.font_texture = Self::upload_font_texture(ctx.fonts(), device, queue)?;
+        self.font_texture = Self::upload_font_texture(context, ctx.fonts())?;
         Ok(())
     }
 
@@ -374,10 +377,23 @@ impl Renderer {
         &mut self.textures
     }
 
+    pub fn register_texture(
+        &mut self,
+        context: &Context,
+        image: &Arc<ImageView<Arc<AttachmentImage>>>,
+        usage: TextureUsage,
+    ) -> Result<TextureId, Box<dyn std::error::Error>> {
+        let sampler = Sampler::simple_repeat_linear_no_mipmap(context.device.clone());
+
+        let usage = Self::create_texture_usage_buffer(context, usage);
+        let texture_id = self.textures.insert((image.clone(), sampler, usage));
+
+        Ok(texture_id)
+    }
+
     fn upload_font_texture(
+        context: &Context,
         mut fonts: imgui::FontAtlasRefMut,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
     ) -> Result<Texture, Box<dyn std::error::Error>> {
         let texture = fonts.build_rgba32_texture();
 
@@ -390,15 +406,18 @@ impl Renderer {
             },
             vulkano::image::MipmapsCount::One,
             Format::R8G8B8A8_SRGB,
-            queue.clone(),
+            context.graphics_queue.clone(),
         )?;
 
         fut.then_signal_fence_and_flush()?.wait(None)?;
 
-        let sampler = Sampler::simple_repeat_linear(device.clone());
+        let sampler = Sampler::simple_repeat_linear(context.device.clone());
 
         fonts.tex_id = TextureId::from(usize::MAX);
-        Ok((ImageView::new(image)?, sampler))
+
+        let ctx = Self::create_texture_usage_buffer(context, TextureUsage { depth: 0 });
+
+        Ok((ImageView::new(image)?, sampler, ctx))
     }
 
     fn lookup_texture(&self, texture_id: TextureId) -> Result<&Texture, RendererError> {
@@ -409,5 +428,21 @@ impl Renderer {
         } else {
             Err(RendererError::BadTexture(texture_id))
         }
+    }
+
+    fn create_texture_usage_buffer(
+        context: &Context,
+        data: TextureUsage,
+    ) -> Arc<ImmutableBuffer<TextureUsage>> {
+        let (buffer, future) = ImmutableBuffer::from_data(
+            data,
+            BufferUsage::uniform_buffer_transfer_destination(),
+            context.graphics_queue.clone(),
+        )
+        .unwrap();
+
+        future.flush().unwrap();
+
+        buffer
     }
 }

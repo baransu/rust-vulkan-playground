@@ -4,7 +4,8 @@ pub mod renderer;
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use glam::{EulerRot, Quat, Vec3};
-use imgui_renderer::Renderer;
+use imgui::*;
+use imgui_renderer::{shaders::TextureUsage, Renderer};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
     camera::Camera,
@@ -18,7 +19,8 @@ use renderer::{
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
+        SecondaryAutoCommandBuffer, SubpassContents,
     },
     device::Device,
     format::ClearValue,
@@ -50,6 +52,8 @@ const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
 // const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
 const RENDER_SKYBOX: bool = false;
+
+const SHADOW_MAP_DIM: f32 = 2048.0;
 
 type FramebufferT = dyn FramebufferAbstract + Send + Sync;
 
@@ -85,6 +89,8 @@ struct Application {
     imgui: imgui::Context,
     imgui_renderer: Renderer,
     platform: WinitPlatform,
+
+    shadow_framebuffer_texture_id: TextureId,
 }
 
 impl Application {
@@ -217,7 +223,7 @@ impl Application {
                 }),
             }]);
 
-        let imgui_renderer = Renderer::init(&context, &mut imgui).unwrap();
+        let mut imgui_renderer = Renderer::init(&context, &mut imgui).unwrap();
 
         let screen_frame = ScreenFrame::initialize(
             &context,
@@ -225,6 +231,14 @@ impl Application {
             &shadow_framebuffer,
             &imgui_renderer.target,
         );
+
+        let shadow_framebuffer_texture_id = imgui_renderer
+            .register_texture(
+                &context,
+                &shadow_framebuffer.attachment,
+                TextureUsage { depth: 1 },
+            )
+            .unwrap();
 
         let mut app = Self {
             context,
@@ -253,6 +267,8 @@ impl Application {
             scene,
 
             camera,
+
+            shadow_framebuffer_texture_id,
         };
 
         app.create_scene_command_buffers();
@@ -280,7 +296,7 @@ impl Application {
     fn create_shadow_depth_image(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
         let image = AttachmentImage::with_usage(
             context.device.clone(),
-            context.swap_chain.dimensions(),
+            [SHADOW_MAP_DIM as u32, SHADOW_MAP_DIM as u32],
             context.depth_format,
             ImageUsage {
                 sampled: true,
@@ -452,11 +468,9 @@ impl Application {
             renderer::shaders::shadow_fragment_shader::Shader::load(context.device.clone())
                 .unwrap();
 
-        let dimensions_u32 = context.swap_chain.dimensions();
-        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
         let viewport = Viewport {
             origin: [0.0, 0.0],
-            dimensions,
+            dimensions: [SHADOW_MAP_DIM, SHADOW_MAP_DIM],
             depth_range: 0.0..1.0,
         };
 
@@ -657,12 +671,9 @@ impl Application {
     }
 
     fn create_shadow_command_buffers(&mut self) {
-        let dimensions_u32 = self.context.swap_chain.dimensions();
-        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-
         let viewport = Viewport {
             origin: [0.0, 0.0],
-            dimensions,
+            dimensions: [SHADOW_MAP_DIM, SHADOW_MAP_DIM],
             depth_range: 0.0..1.0,
         };
 
@@ -717,7 +728,33 @@ impl Application {
         Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>
     }
 
-    fn draw_frame(&mut self) {
+    fn draw_ui(
+        &mut self,
+        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        delta_time: &f64,
+    ) {
+        let ui = self.imgui.frame();
+        let texture_id = self.shadow_framebuffer_texture_id;
+
+        // Here we create a window with a specific size, and force it to always have a vertical scrollbar visible
+        Window::new("Debug")
+            .size([300.0, 110.0], Condition::Always)
+            .build(&ui, || {
+                let fps = 1.0 / delta_time;
+                ui.text(format!("FPS: {:.2}", fps));
+                ui.separator();
+
+                Image::new(texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("Directional light shadow map");
+            });
+
+        let draw_data = ui.render();
+        self.imgui_renderer
+            .draw_commands(builder, draw_data)
+            .unwrap();
+    }
+
+    fn draw_frame(&mut self, delta_time: &f64) {
         self.previous_frame_end.as_mut().unwrap().cleanup_finished();
 
         if self.recreate_swap_chain {
@@ -802,14 +839,7 @@ impl Application {
             .end_render_pass()
             .unwrap();
 
-        let ui = self.imgui.frame();
-        // let mut value = true;
-        // ui.show_demo_window(&mut value);
-
-        let draw_data = ui.render();
-        self.imgui_renderer
-            .draw_commands(&mut builder, draw_data)
-            .unwrap();
+        self.draw_ui(&mut builder, delta_time);
 
         builder
             .begin_render_pass(
@@ -986,15 +1016,11 @@ impl Application {
                         let now = Instant::now();
                         delta_time = now.duration_since(self.last_time).as_secs_f64();
 
-                        // let fps = 1.0 / delta_time;
-
-                        // println!("fps: {}", fps);
-
                         self.last_time = now;
 
                         self.update(&keyboard_buttons, delta_time);
 
-                        self.draw_frame();
+                        self.draw_frame(&delta_time);
                     }
 
                     _ => (),

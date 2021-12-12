@@ -24,6 +24,8 @@ pub mod vs {
     }
 }
 
+pub type TextureUsage = fs::ty::TextureUsage;
+
 pub mod fs {
     vulkano_shaders::shader! {
             ty: "fragment",
@@ -31,6 +33,9 @@ pub mod fs {
 			#version 450
 
 			layout(binding = 0) uniform sampler2D tex;
+			layout(binding = 1) uniform TextureUsage {
+				bool depth;
+			} usage;
 
 			layout(location = 0) in vec2 f_uv;
 			layout(location = 1) in vec4 f_color;
@@ -38,7 +43,13 @@ pub mod fs {
 			layout(location = 0) out vec4 Target0;
 
 			void main() {
-				Target0 = f_color * texture(tex, f_uv);
+				if(usage.depth) {
+					float depth = texture(tex, f_uv).r;
+					Target0 = vec4(vec3(depth), 1.0);
+				} else {
+					Target0 = f_color * texture(tex, f_uv);
+				}
+			
 			}		
 						",
     }
