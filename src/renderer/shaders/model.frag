@@ -137,7 +137,7 @@ void main() {
 	vec3 norm = normalize(f_normal);
 	vec3 view_dir = normalize(camera.position - f_position);
 
-	// phase 1: directional light
+	// phase 1: directional light with shadows
 	vec3 result = calc_dir_light(light.dir_light, norm, view_dir);
 
 	// phase 2: point lights
@@ -146,9 +146,15 @@ void main() {
 	}
 
 	// phase 3: texture
-	out_color = vec4(result,  1.0) * texture(diffuse_sampler, f_uv);
+	vec4 color = vec4(result,  1.0) * texture(diffuse_sampler, f_uv);
 
-	// phase 4: gamma correction
+	// phase 4: exposure tone mapping
+	float exposure = 1.0;
+	vec3 mapped = vec3(1.0) - exp(-color.rgb * exposure);
+
+	// phase: 5 gamma correction
 	float gamma = 2.2;
-	out_color.rgb = pow(out_color.rgb, vec3(1.0 / gamma));
+	mapped = pow(mapped, vec3(1.0 / gamma));
+
+	out_color = vec4(mapped, 1.0);
 }
