@@ -2,28 +2,29 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
 use glam::{Mat4, Vec3};
 use gltf::Semantic;
-use rand::Rng;
 use vulkano::{
-    buffer::{BufferUsage, BufferView, CpuAccessibleBuffer, ImmutableBuffer},
+    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     device::Queue,
     pipeline::GraphicsPipeline,
-    sampler::Sampler,
     sync::GpuFuture,
 };
 
-use crate::renderer::texture::Texture;
+use crate::{renderer::texture::Texture, FramebufferWithAttachment};
 
 use super::{
     camera::Camera,
     context::Context,
     mesh::{GameObject, Mesh},
-    shaders::{CameraUniformBufferObject, DirectionalLight, LightUniformBufferObject, PointLight},
+    shaders::{
+        CameraUniformBufferObject, DirectionalLight, LightSpaceUniformBufferObject,
+        LightUniformBufferObject, PointLight,
+    },
     vertex::Vertex,
 };
 
-const NR_POINT_LIGHTS: usize = 4;
+const NR_POINT_LIGHTS: usize = 1;
 
 pub struct Scene {
     pub meshes: HashMap<String, Mesh>,
@@ -38,9 +39,12 @@ impl Scene {
         context: &Context,
         mesh_paths: Vec<&str>,
         graphics_pipeline: &Arc<GraphicsPipeline>,
+        shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
+        shadow_framebuffer: &FramebufferWithAttachment,
     ) -> Self {
         let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
         let light_uniform_buffer = Self::create_light_uniform_buffer(context);
+        let light_space_uniform_buffer = Self::create_light_space_uniform_buffer(context);
 
         let mut meshes = HashMap::new();
 
@@ -49,8 +53,11 @@ impl Scene {
                 context,
                 path,
                 graphics_pipeline,
+                shadow_graphics_pipeline,
                 &camera_uniform_buffer,
                 &light_uniform_buffer,
+                &light_space_uniform_buffer,
+                &shadow_framebuffer,
             );
 
             for mesh in meshes_vec {
@@ -80,8 +87,11 @@ impl Scene {
         context: &Context,
         path: &str,
         graphics_pipeline: &Arc<GraphicsPipeline>,
+        shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
+        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
+        shadow_framebuffer: &FramebufferWithAttachment,
     ) -> Vec<Mesh> {
         let mut meshes = Vec::new();
 
@@ -178,11 +188,18 @@ impl Scene {
                             Self::create_index_buffer(&context.graphics_queue, &indices);
 
                         let descriptor_set = Self::create_descriptor_set(
+                            context,
                             &graphics_pipeline,
                             &camera_uniform_buffer,
                             &light_uniform_buffer,
+                            &light_space_uniform_buffer,
                             &texture,
-                            &context.image_sampler,
+                            &shadow_framebuffer,
+                        );
+
+                        let shadow_descriptor_set = Self::create_shadow_descriptor_set(
+                            &shadow_graphics_pipeline,
+                            &light_space_uniform_buffer,
                         );
 
                         let mesh = Mesh {
@@ -191,6 +208,7 @@ impl Scene {
                             index_buffer,
                             index_count: indices.len() as u32,
                             descriptor_set,
+                            shadow_descriptor_set,
                         };
 
                         meshes.push(mesh);
@@ -236,11 +254,13 @@ impl Scene {
     }
 
     fn create_descriptor_set(
+        context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
+        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         texture: &Texture,
-        image_sampler: &Arc<Sampler>,
+        shadow_framebuffer: &FramebufferWithAttachment,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -255,11 +275,41 @@ impl Scene {
             .unwrap();
 
         set_builder
-            .add_sampled_image(texture.image.clone(), image_sampler.clone())
+            .add_sampled_image(texture.image.clone(), context.image_sampler.clone())
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(
+                shadow_framebuffer.attachment.clone(),
+                context.depth_sampler.clone(),
+            )
+            .unwrap();
+
+        set_builder
+            .add_buffer(light_space_uniform_buffer.clone())
             .unwrap();
 
         set_builder
             .add_buffer(light_uniform_buffer.clone())
+            .unwrap();
+
+        Arc::new(set_builder.build().unwrap())
+    }
+
+    fn create_shadow_descriptor_set(
+        graphics_pipeline: &Arc<GraphicsPipeline>,
+        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
+    ) -> Arc<PersistentDescriptorSet> {
+        let layout = graphics_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(0)
+            .unwrap();
+
+        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        set_builder
+            .add_buffer(light_space_uniform_buffer.clone())
             .unwrap();
 
         Arc::new(set_builder.build().unwrap())
@@ -287,21 +337,50 @@ impl Scene {
         buffer
     }
 
+    fn create_light_space_uniform_buffer(
+        context: &Context,
+    ) -> Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>> {
+        let position = Self::light_positions().get(0).unwrap().clone();
+
+        // NOTE: vulkan has Y flipped from OpenGL so I guess that's why bottom/top has to be reversed
+        let mut light_projection = Mat4::orthographic_rh(-10.0, 10.0, 10.0, -10.0, 0.1, 1000.0);
+
+        light_projection.y_axis.y *= -1.0;
+
+        let light_view = Mat4::look_at_rh(position, Vec3::ZERO, Vec3::Y);
+
+        let matrix = light_projection * light_view;
+
+        let uniform_buffer_data = LightSpaceUniformBufferObject {
+            matrix: matrix.to_cols_array_2d(),
+        };
+
+        let buffer = CpuAccessibleBuffer::from_data(
+            context.device.clone(),
+            BufferUsage::uniform_buffer_transfer_destination(),
+            false,
+            uniform_buffer_data,
+        )
+        .unwrap();
+
+        buffer
+    }
+
     pub fn light_positions() -> [Vec3; NR_POINT_LIGHTS] {
         [
             Vec3::new(0.7, 5.0, 2.0),
-            Vec3::new(2.3, 5.0, -4.0),
-            Vec3::new(-4.0, 5.0, -12.0),
-            Vec3::new(0.0, 5.0, -3.0),
+            // Vec3::new(2.3, 5.0, -4.0),
+            // Vec3::new(-4.0, 5.0, -12.0),
+            // Vec3::new(0.0, 5.0, -3.0),
         ]
     }
 
     pub fn light_colors() -> [Vec3; NR_POINT_LIGHTS] {
         [
-            Vec3::new(1.0, 0.0, 0.0),
-            Vec3::new(0.0, 1.0, 0.0),
-            Vec3::new(0.0, 0.0, 1.0),
-            Vec3::new(0.5, 0.5, 1.0),
+            Vec3::new(1.0, 1.0, 1.0),
+            // Vec3::new(0.0, 1.0, 0.0),
+            // Vec3::new(0.0, 0.0, 1.0),
+            // Vec3::new(0.5, 0.5, 1.0),
         ]
     }
 
