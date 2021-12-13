@@ -26,20 +26,12 @@ layout(location = 2) out vec4 out_albedo;
 void main() {
 	out_position = f_position;
 
-	// 	T = normalize(T - dot(T, N) * N);
-	// vec3 B = cross(N, T);
-
-	// f_normal = mat3(T, B, N);
-
 	vec3 t = normalize(f_tangent);
 	vec3 b = normalize(cross(f_normal, f_tangent));
 	vec3 n = cross(t, b);
 
 	out_normal = normalize(texture(normal_sampler, f_uv).rgb);
 	out_normal = out_normal.x * t + out_normal.y * b + out_normal.z * n;
-
-	// out_normal = out_normal * 2.0 - 1.0;
-	// out_normal = normalize(f_normal * out_normal);
 
 	out_albedo.rgb = f_material_diffuse * texture(diffuse_sampler, f_uv).rgb;
 	out_albedo.a = f_material_specular.r;
