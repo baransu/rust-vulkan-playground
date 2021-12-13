@@ -167,21 +167,20 @@ impl Application {
             Default::default(),
         ));
 
-        let light_colors = Scene::light_colors();
         // point light cubes for reference
-        for (index, position) in Scene::light_positions().iter().enumerate() {
-            scene.add_game_object(GameObject::new(
-                "Cube",
-                Transform {
-                    rotation: Quat::IDENTITY,
-                    scale: Vec3::ONE * 0.2,
-                    translation: position.clone(),
-                },
-                Material {
-                    diffuse: light_colors.get(index).unwrap().clone(),
-                    ..Default::default()
-                },
-            ));
+        for light in scene.point_lights.clone() {
+            let material = Material {
+                diffuse: light.color,
+                ..Default::default()
+            };
+
+            let transform = Transform {
+                rotation: Quat::IDENTITY,
+                scale: Vec3::ONE * 0.2,
+                translation: light.position,
+            };
+
+            scene.add_game_object(GameObject::new("Cube", transform, material));
         }
 
         // dir light
@@ -632,10 +631,8 @@ impl Application {
 
             (*instances).push(InstanceData {
                 model: model.to_cols_array_2d(),
-                material_ambient: game_object.material.ambient.to_array(),
                 material_diffuse: game_object.material.diffuse.to_array(),
                 material_specular: game_object.material.specular.to_array(),
-                material_shininess: game_object.material.shininess,
             });
         }
 
