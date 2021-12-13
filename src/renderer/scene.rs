@@ -137,25 +137,29 @@ impl Scene {
         for node in document.nodes() {
             if let Some(mesh) = node.mesh() {
                 for primitive in mesh.primitives() {
-                    let pbr = primitive.material().pbr_metallic_roughness();
+                    let material = primitive.material();
+                    let pbr = material.pbr_metallic_roughness();
 
                     // let base_color_factor = pbr.base_color_factor();
 
-                    let (texture, tex_coord) = pbr
+                    let diffuse_texture = pbr
                         .base_color_texture()
-                        .map(|color_info| {
-                            let texture = Texture::from_gltf_texture(
-                                &context,
-                                path,
-                                &color_info.texture(),
-                                &buffers,
-                            );
-
-                            (texture, color_info.tex_coord())
+                        .map(|info| {
+                            Texture::from_gltf_texture(&context, path, &info.texture(), &buffers)
                         })
                         .unwrap_or_else(|| {
                             // just a fillter image to make descriptor set happy
-                            (Texture::empty(&context), 0)
+                            Texture::empty(&context)
+                        });
+
+                    let normal_texture = material
+                        .normal_texture()
+                        .map(|info| {
+                            Texture::from_gltf_texture(&context, path, &info.texture(), &buffers)
+                        })
+                        .unwrap_or_else(|| {
+                            // just a fillter image to make descriptor set happy
+                            Texture::empty(&context)
                         });
 
                     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
@@ -167,17 +171,9 @@ impl Scene {
                             .read_normals()
                             .map_or(vec![], |normals| normals.collect());
 
-                        let color = &reader
-                            .read_colors(0)
-                            .map_or(vec![], |colors| colors.into_rgba_f32().collect());
-
-                        // TODO: what gltf has more than one uv channel?
-                        let tex_coords_0 = &reader
+                        // TODO: why gltf has more than one uv channel?
+                        let tex_coords = &reader
                             .read_tex_coords(0)
-                            .map_or(vec![], |coords| coords.into_f32().collect());
-
-                        let tex_coords_1 = &reader
-                            .read_tex_coords(1)
                             .map_or(vec![], |coords| coords.into_f32().collect());
 
                         let vertices = positions
@@ -186,17 +182,9 @@ impl Scene {
                             .map(|(index, position)| {
                                 let position = *position;
                                 let normal = *normals.get(index).unwrap_or(&[1.0, 1.0, 1.0]);
-                                let tex_coords_0 = *tex_coords_0.get(index).unwrap_or(&[0.0, 0.0]);
-                                let tex_coords_1 = *tex_coords_1.get(index).unwrap_or(&[0.0, 0.0]);
+                                let uv = *tex_coords.get(index).unwrap_or(&[0.0, 0.0]);
 
-                                let color = *color.get(index).unwrap_or(&[1.0, 1.0, 1.0, 1.0]);
-
-                                let uv = [
-                                    [tex_coords_0[0], tex_coords_0[1]],
-                                    [tex_coords_1[0], tex_coords_1[1]],
-                                ][tex_coord as usize];
-
-                                Vertex::new(position, normal, uv, color)
+                                Vertex::new(position, normal, uv)
                             })
                             .collect::<Vec<_>>();
 
@@ -214,7 +202,8 @@ impl Scene {
                             context,
                             &graphics_pipeline,
                             &camera_uniform_buffer,
-                            &texture,
+                            &diffuse_texture,
+                            &normal_texture,
                         );
 
                         let mesh = Mesh {
@@ -271,7 +260,8 @@ impl Scene {
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        texture: &Texture,
+        diffuse_texture: &Texture,
+        normal_texture: &Texture,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -286,7 +276,11 @@ impl Scene {
             .unwrap();
 
         set_builder
-            .add_sampled_image(texture.image.clone(), context.image_sampler.clone())
+            .add_sampled_image(diffuse_texture.image.clone(), context.image_sampler.clone())
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(normal_texture.image.clone(), context.image_sampler.clone())
             .unwrap();
 
         Arc::new(set_builder.build().unwrap())
