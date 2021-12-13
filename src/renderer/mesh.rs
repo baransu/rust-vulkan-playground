@@ -13,6 +13,7 @@ pub struct Mesh {
 
     pub descriptor_set: Arc<PersistentDescriptorSet>,
     pub shadow_descriptor_set: Arc<PersistentDescriptorSet>,
+    pub light_descriptor_set: Arc<PersistentDescriptorSet>,
 }
 
 pub struct Material {

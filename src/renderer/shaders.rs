@@ -1,14 +1,14 @@
 pub mod model_vertex_shader {
     vulkano_shaders::shader! {
                 ty: "vertex",
-                path: "src/renderer/shaders/model.vert"
+                path: "src/renderer/shaders/gbuffer.vert"
     }
 }
 
 pub mod model_fragment_shader {
     vulkano_shaders::shader! {
                 ty: "fragment",
-                path: "src/renderer/shaders/model.frag"
+                path: "src/renderer/shaders/gbuffer.frag"
     }
 }
 

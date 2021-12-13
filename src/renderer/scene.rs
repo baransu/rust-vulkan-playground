@@ -2,11 +2,13 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
 use glam::{Mat4, Vec3};
 use gltf::Semantic;
+use imgui::draw_list::Image;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     device::Queue,
+    image::{view::ImageView, AttachmentImage},
     pipeline::GraphicsPipeline,
     sync::GpuFuture,
 };
@@ -40,7 +42,9 @@ impl Scene {
         mesh_paths: Vec<&str>,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
+        light_graphics_pipeline: &Arc<GraphicsPipeline>,
         shadow_framebuffer: &FramebufferWithAttachment,
+        gbuffer_color_input: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> Self {
         let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
         let light_uniform_buffer = Self::create_light_uniform_buffer(context);
@@ -54,10 +58,12 @@ impl Scene {
                 path,
                 graphics_pipeline,
                 shadow_graphics_pipeline,
+                light_graphics_pipeline,
                 &camera_uniform_buffer,
                 &light_uniform_buffer,
                 &light_space_uniform_buffer,
                 &shadow_framebuffer,
+                &gbuffer_color_input,
             );
 
             for mesh in meshes_vec {
@@ -88,10 +94,12 @@ impl Scene {
         path: &str,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
+        light_graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
         light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         shadow_framebuffer: &FramebufferWithAttachment,
+        gbuffer_color_input: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> Vec<Mesh> {
         let mut meshes = Vec::new();
 
@@ -197,9 +205,18 @@ impl Scene {
                             &shadow_framebuffer,
                         );
 
+                        // TODO: system can keep that, we don't need one per mesh
                         let shadow_descriptor_set = Self::create_shadow_descriptor_set(
                             &shadow_graphics_pipeline,
                             &light_space_uniform_buffer,
+                        );
+
+                        // TODO: system can keep that, we don't need one per mesh
+                        let light_descriptor_set = Self::create_light_descriptor_set(
+                            context,
+                            &camera_uniform_buffer,
+                            &light_graphics_pipeline,
+                            &gbuffer_color_input,
                         );
 
                         let mesh = Mesh {
@@ -209,6 +226,7 @@ impl Scene {
                             index_count: indices.len() as u32,
                             descriptor_set,
                             shadow_descriptor_set,
+                            light_descriptor_set,
                         };
 
                         meshes.push(mesh);
@@ -292,6 +310,29 @@ impl Scene {
         set_builder
             .add_buffer(light_uniform_buffer.clone())
             .unwrap();
+
+        Arc::new(set_builder.build().unwrap())
+    }
+
+    fn create_light_descriptor_set(
+        context: &Context,
+        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
+        light_graphics_pipeline: &Arc<GraphicsPipeline>,
+        gbuffer_color_input: &Arc<ImageView<Arc<AttachmentImage>>>,
+    ) -> Arc<PersistentDescriptorSet> {
+        let layout = light_graphics_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(0)
+            .unwrap();
+
+        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        set_builder
+            .add_buffer(camera_uniform_buffer.clone())
+            .unwrap();
+
+        set_builder.add_image(gbuffer_color_input.clone()).unwrap();
 
         Arc::new(set_builder.build().unwrap())
     }

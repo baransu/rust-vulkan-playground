@@ -22,7 +22,7 @@ pub struct GBuffer {
     pub depth_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
 
     pub render_pass: Arc<RenderPass>,
-    pub lighting_subpass: Arc<Subpass>,
+    pub lighting_subpass: Subpass,
     pub framebuffer: Arc<FramebufferT>,
     pub pipeline: Arc<GraphicsPipeline>,
 }
@@ -44,7 +44,7 @@ impl GBuffer {
 
         let pipeline = Self::create_pipeline(context, &render_pass, &target);
 
-        let lighting_subpass = Arc::new(Subpass::from(render_pass.clone(), 1).unwrap());
+        let lighting_subpass = Subpass::from(render_pass.clone(), 1).unwrap();
 
         GBuffer {
             diffuse_buffer,
@@ -134,9 +134,8 @@ impl GBuffer {
         render_pass: &Arc<RenderPass>,
         target: &GBufferTarget,
     ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module =
-            super::shaders::model_vertex_shader::Shader::load(context.device.clone()).unwrap();
-        let frag_shader_module =
+        let vs = super::shaders::model_vertex_shader::Shader::load(context.device.clone()).unwrap();
+        let fs =
             super::shaders::model_fragment_shader::Shader::load(context.device.clone()).unwrap();
 
         let dimensions = target.image().dimensions().width_height();
@@ -154,11 +153,11 @@ impl GBuffer {
                         .vertex::<Vertex>()
                         .instance::<InstanceData>(),
                 )
-                .vertex_shader(vert_shader_module.main_entry_point(), ())
+                .vertex_shader(vs.main_entry_point(), ())
                 .triangle_list()
                 .primitive_restart(false)
                 .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(frag_shader_module.main_entry_point(), ())
+                .fragment_shader(fs.main_entry_point(), ())
                 .depth_clamp(false)
                 // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
                 .polygon_mode_fill() // = default

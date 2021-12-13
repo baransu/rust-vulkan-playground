@@ -8,6 +8,7 @@ use imgui::*;
 use imgui_renderer::{shaders::TextureUsage, Renderer};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
+    ambient_light_system::{self, AmbientLightSystem},
     camera::Camera,
     context::Context,
     gbuffer::GBuffer,
@@ -68,6 +69,9 @@ struct Application {
 
     gbuffer: GBuffer,
     scene_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
+    ambient_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
+
+    ambient_light_system: AmbientLightSystem,
 
     // scene_graphics_pipeline: Arc<GraphicsPipeline>,
     // scene_framebuffers: Vec<FramebufferWithAttachment>,
@@ -108,12 +112,17 @@ impl Application {
         let gbuffer_target = Self::create_gbuffer_target(&context);
         let gbuffer = GBuffer::initialize(&context, &gbuffer_target);
 
+        let ambient_light_system =
+            AmbientLightSystem::initialize(&context, gbuffer.lighting_subpass.clone());
+
         let mut scene = Scene::initialize(
             &context,
             MODEL_PATHS.to_vec(),
             &gbuffer.pipeline,
             &shadow_graphics_pipeline,
+            &ambient_light_system.pipeline,
             &shadow_framebuffer,
+            &gbuffer.diffuse_buffer,
         );
 
         let count = 10;
@@ -255,6 +264,9 @@ impl Application {
             // scene_graphics_pipeline,
             // scene_framebuffers,
             scene_command_buffers: vec![],
+            ambient_command_buffers: vec![],
+
+            ambient_light_system,
 
             shadow_framebuffer,
             shadow_graphics_pipeline,
@@ -274,6 +286,7 @@ impl Application {
 
         app.create_scene_command_buffers();
         app.create_shadow_command_buffers();
+        app.create_ambient_command_buffers();
 
         app
     }
@@ -670,6 +683,61 @@ impl Application {
         self.scene_command_buffers = command_buffers;
     }
 
+    fn create_ambient_command_buffers(&mut self) {
+        let dimensions_u32 = self.context.swap_chain.dimensions();
+        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
+
+        let viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions,
+            depth_range: 0.0..1.0,
+        };
+
+        let instance_data_buffers = self.create_instance_data_buffers();
+
+        let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
+
+        for _i in 0..self.context.swap_chain.num_images() {
+            let mut builder = AutoCommandBufferBuilder::secondary_graphics(
+                self.context.device.clone(),
+                self.context.graphics_queue.family(),
+                CommandBufferUsage::SimultaneousUse,
+                self.ambient_light_system.pipeline.subpass().clone(),
+            )
+            .unwrap();
+
+            builder.set_viewport(0, [viewport.clone()]);
+
+            builder.bind_pipeline_graphics(self.ambient_light_system.pipeline.clone());
+
+            for mesh in self.scene.meshes.values() {
+                // if there is no instance_data_buffer it means we have 0 instances for this mesh
+                if let Some(instance_data_buffer) = instance_data_buffers.get(&mesh.id) {
+                    builder
+                        .bind_descriptor_sets(
+                            PipelineBindPoint::Graphics,
+                            self.ambient_light_system.pipeline.layout().clone(),
+                            0,
+                            mesh.light_descriptor_set.clone(),
+                        )
+                        .bind_vertex_buffers(
+                            0,
+                            (mesh.vertex_buffer.clone(), instance_data_buffer.clone()),
+                        )
+                        .bind_index_buffer(mesh.index_buffer.clone())
+                        .draw_indexed(mesh.index_count, instance_data_buffer.len() as u32, 0, 0, 0)
+                        .unwrap();
+                }
+            }
+
+            let command_buffer = Arc::new(builder.build().unwrap());
+
+            command_buffers.push(command_buffer);
+        }
+
+        self.ambient_command_buffers = command_buffers;
+    }
+
     fn create_shadow_command_buffers(&mut self) {
         let viewport = Viewport {
             origin: [0.0, 0.0],
@@ -780,6 +848,8 @@ impl Application {
 
         let command_buffer = self.screen_frame.command_buffers[image_index].clone();
 
+        let ambient_light_command_buffer = self.ambient_command_buffers[image_index].clone();
+
         let mut builder = AutoCommandBufferBuilder::primary(
             self.context.device.clone(),
             self.context.graphics_queue.family(),
@@ -843,7 +913,7 @@ impl Application {
             .unwrap()
             .next_subpass(SubpassContents::SecondaryCommandBuffers)
             .unwrap()
-            .execute_commands(offscreen_command_buffer.clone())
+            .execute_commands(ambient_light_command_buffer.clone())
             .unwrap()
             .end_render_pass()
             .unwrap();

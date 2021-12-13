@@ -1,3 +1,4 @@
+pub mod ambient_light_system;
 pub mod camera;
 pub mod context;
 pub mod gbuffer;
