@@ -17,11 +17,9 @@ use super::{
     camera::Camera,
     context::Context,
     gbuffer::GBuffer,
+    light_system::{DirectionalLight, LightUniformBufferObject, PointLight},
     mesh::{GameObject, Mesh},
-    shaders::{
-        CameraUniformBufferObject, DirectionalLight, LightSpaceUniformBufferObject,
-        LightUniformBufferObject, PointLight,
-    },
+    shaders::{CameraUniformBufferObject, LightSpaceUniformBufferObject},
     vertex::Vertex,
 };
 
@@ -55,15 +53,8 @@ impl Scene {
         let mut meshes = HashMap::new();
 
         for path in mesh_paths {
-            let meshes_vec = Self::load_gltf(
-                context,
-                path,
-                graphics_pipeline,
-                &camera_uniform_buffer,
-                &light_uniform_buffer,
-                &light_space_uniform_buffer,
-                &shadow_framebuffer,
-            );
+            let meshes_vec =
+                Self::load_gltf(context, path, graphics_pipeline, &camera_uniform_buffer);
 
             for mesh in meshes_vec {
                 meshes.insert(mesh.id.clone(), mesh);
@@ -80,9 +71,13 @@ impl Scene {
         );
 
         let light_descriptor_set = Self::create_light_descriptor_set(
+            context,
             &light_graphics_pipeline,
             &camera_uniform_buffer,
             &gbuffer,
+            &light_uniform_buffer,
+            &light_space_uniform_buffer,
+            &shadow_framebuffer,
         );
 
         Scene {
@@ -107,9 +102,6 @@ impl Scene {
         path: &str,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
-        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
-        shadow_framebuffer: &FramebufferWithAttachment,
     ) -> Vec<Mesh> {
         let mut meshes = Vec::new();
 
@@ -209,10 +201,7 @@ impl Scene {
                             context,
                             &graphics_pipeline,
                             &camera_uniform_buffer,
-                            &light_uniform_buffer,
-                            &light_space_uniform_buffer,
                             &texture,
-                            &shadow_framebuffer,
                         );
 
                         let mesh = Mesh {
@@ -269,10 +258,7 @@ impl Scene {
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
-        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         texture: &Texture,
-        shadow_framebuffer: &FramebufferWithAttachment,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -290,28 +276,17 @@ impl Scene {
             .add_sampled_image(texture.image.clone(), context.image_sampler.clone())
             .unwrap();
 
-        set_builder
-            .add_sampled_image(
-                shadow_framebuffer.attachment.clone(),
-                context.depth_sampler.clone(),
-            )
-            .unwrap();
-
-        set_builder
-            .add_buffer(light_space_uniform_buffer.clone())
-            .unwrap();
-
-        set_builder
-            .add_buffer(light_uniform_buffer.clone())
-            .unwrap();
-
         Arc::new(set_builder.build().unwrap())
     }
 
     fn create_light_descriptor_set(
+        context: &Context,
         light_graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         gbuffer: &GBuffer,
+        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
+        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
+        shadow_framebuffer: &FramebufferWithAttachment,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = light_graphics_pipeline
             .layout()
@@ -335,6 +310,21 @@ impl Scene {
 
         set_builder
             .add_image(gbuffer.albedo_buffer.clone())
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(
+                shadow_framebuffer.attachment.clone(),
+                context.depth_sampler.clone(),
+            )
+            .unwrap();
+
+        set_builder
+            .add_buffer(light_space_uniform_buffer.clone())
+            .unwrap();
+
+        set_builder
+            .add_buffer(light_uniform_buffer.clone())
             .unwrap();
 
         Arc::new(set_builder.build().unwrap())

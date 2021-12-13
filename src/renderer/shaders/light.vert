@@ -27,6 +27,7 @@ layout(location = 7) out float f_material_shininess;
 void main() {
 	gl_Position = camera.proj * camera.view * model * vec4(position, 1.0);
 
+	// TODO: this should be inside gbuffer?
 	f_material_ambient = material_ambient;
 	f_material_diffuse = material_diffuse;
 	f_material_specular = material_specular;

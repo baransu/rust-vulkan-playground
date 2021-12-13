@@ -13,9 +13,6 @@ pub mod model_fragment_shader {
 }
 
 pub type CameraUniformBufferObject = model_vertex_shader::ty::CameraUniformBufferObject;
-pub type LightUniformBufferObject = model_fragment_shader::ty::LightUniformBufferObject;
-pub type PointLight = model_fragment_shader::ty::PointLight;
-pub type DirectionalLight = model_fragment_shader::ty::DirectionalLight;
 pub type LightSpaceUniformBufferObject = shadow_vertex_shader::ty::LightSpaceUniformBufferObject;
 
 pub mod shadow_vertex_shader {

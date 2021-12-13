@@ -7,10 +7,6 @@ layout(binding = 0) uniform CameraUniformBufferObject {
 	vec3 position;
 } camera;
 
-layout(binding = 3) uniform LightSpaceUniformBufferObject {
-	mat4 matrix;
-} light_space;
-
 // in per vertex
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -34,15 +30,12 @@ layout(location = 4) out vec3 f_material_ambient;
 layout(location = 5) out vec3 f_material_diffuse;
 layout(location = 6) out vec3 f_material_specular;
 layout(location = 7) out float f_material_shininess;
-layout(location = 8) out vec4 f_position_light_space;
 
 void main() {
 	f_position = vec3(model * vec4(position, 1.0));
 
 	gl_Position = camera.proj * camera.view * vec4(f_position, 1.0);
 
-	f_position_light_space = light_space.matrix * vec4(f_position, 1.0);
-	
 	f_uv = uv;
 
 	f_material_ambient = material_ambient;

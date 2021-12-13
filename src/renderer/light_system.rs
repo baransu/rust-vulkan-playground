@@ -53,3 +53,7 @@ mod fs {
         path: "src/renderer/shaders/light.frag"
     }
 }
+
+pub type LightUniformBufferObject = fs::ty::LightUniformBufferObject;
+pub type PointLight = fs::ty::PointLight;
+pub type DirectionalLight = fs::ty::DirectionalLight;
