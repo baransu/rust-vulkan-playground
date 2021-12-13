@@ -103,7 +103,7 @@ vec3 calc_point_light(PointLight light, vec3 normal, vec3 f_position, float f_sp
 	vec3 light_dir = normalize(light.position - f_position);
 
 	// diffuse shading
-	float diff = max(dot(normal, light_dir), 0.0);
+	float diff = clamp(dot(normal, light_dir), 0, 1);
 
 	// specular shading
 	vec3 halfway_dir = normalize(light_dir + view_dir);

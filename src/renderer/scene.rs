@@ -171,6 +171,10 @@ impl Scene {
                             .read_normals()
                             .map_or(vec![], |normals| normals.collect());
 
+                        let tangents = &reader
+                            .read_tangents()
+                            .map_or(vec![], |tangets| tangets.collect());
+
                         // TODO: why gltf has more than one uv channel?
                         let tex_coords = &reader
                             .read_tex_coords(0)
@@ -183,8 +187,9 @@ impl Scene {
                                 let position = *position;
                                 let normal = *normals.get(index).unwrap_or(&[1.0, 1.0, 1.0]);
                                 let uv = *tex_coords.get(index).unwrap_or(&[0.0, 0.0]);
+                                let tangent = *tangents.get(index).unwrap_or(&[1.0, 1.0, 1.0, 1.0]);
 
-                                Vertex::new(position, normal, uv)
+                                Vertex::new(position, normal, uv, tangent)
                             })
                             .collect::<Vec<_>>();
 
@@ -412,7 +417,7 @@ impl Scene {
         let mut rng = rand::thread_rng();
 
         let mut lights = Vec::new();
-        for _i in 0..MAX_POINT_LIGHTS {
+        for _i in 0..5 {
             let position = Vec3::new(
                 rng.gen_range(-10.0..10.0),
                 rng.gen_range(1.0..10.0),

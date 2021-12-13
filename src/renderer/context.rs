@@ -382,7 +382,7 @@ impl Context {
         *available_formats
             .iter()
             .find(|(format, color_space)| {
-                *format == Format::R16G16B16A16_UNORM && *color_space == ColorSpace::SrgbNonLinear
+                *format == Format::R8G8B8A8_UNORM && *color_space == ColorSpace::SrgbNonLinear
             })
             .unwrap_or_else(|| &available_formats[0])
     }

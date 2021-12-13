@@ -244,7 +244,7 @@ impl Texture {
             dimensions,
             // vulkano already supports mipmap generation so we don't need to do this by hand
             MipmapsCount::Log2,
-            Format::R8G8B8A8_SRGB,
+            Format::R8G8B8A8_UNORM,
             context.graphics_queue.clone(),
         )
         .unwrap();
