@@ -24,6 +24,7 @@ use super::{
 };
 
 const NR_POINT_LIGHTS: usize = 4;
+const MAX_POINT_LIGHTS: usize = 32;
 
 pub struct Scene {
     pub meshes: HashMap<String, Mesh>,
@@ -415,7 +416,7 @@ impl Scene {
             Vec3::new(1.0, 1.0, 1.0),
             Vec3::new(0.0, 1.0, 0.0),
             Vec3::new(0.0, 0.0, 1.0),
-            Vec3::new(0.5, 0.5, 1.0),
+            Vec3::new(1.0, 0.0, 0.0),
         ]
     }
 
@@ -426,13 +427,26 @@ impl Scene {
     fn create_light_uniform_buffer(
         context: &Context,
     ) -> Arc<CpuAccessibleBuffer<LightUniformBufferObject>> {
-        let mut point_lights = Vec::new();
+        let mut point_lights: [PointLight; MAX_POINT_LIGHTS] = [PointLight {
+            position: Vec3::ZERO.to_array(),
+            _dummy0: [0, 0, 0, 0],
+            ambient: Vec3::ZERO.to_array(),
+            _dummy1: [0, 0, 0, 0],
+            diffuse: Vec3::ZERO.to_array(),
+            _dummy2: [0, 0, 0, 0],
+            specular: Vec3::ZERO.to_array(),
+            _dummy3: [0, 0, 0, 0, 0, 0, 0, 0],
+            constant_: 0.0,
+            linear: 0.0,
+            quadratic: 0.0,
+        }; MAX_POINT_LIGHTS];
+
         let colors = Self::light_colors();
 
         for (index, position) in Self::light_positions().iter().enumerate() {
             let color = colors.get(index).unwrap().clone();
 
-            point_lights.push(PointLight {
+            point_lights[index] = PointLight {
                 position: position.to_array(),
                 _dummy0: [0, 0, 0, 0],
                 ambient: (color * 0.1).to_array(),
@@ -444,7 +458,7 @@ impl Scene {
                 constant_: 1.0,
                 linear: 0.09,
                 quadratic: 0.032,
-            })
+            }
         }
 
         let dir_light = DirectionalLight {
@@ -458,8 +472,10 @@ impl Scene {
         };
 
         let buffer_data = LightUniformBufferObject {
-            point_lights: point_lights.as_slice().try_into().unwrap(),
+            point_lights,
+            _dummy0: [0, 0, 0, 0],
             dir_light,
+            point_lights_count: NR_POINT_LIGHTS as i32,
         };
 
         let buffer = CpuAccessibleBuffer::from_data(

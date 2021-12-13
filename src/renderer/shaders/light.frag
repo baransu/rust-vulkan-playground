@@ -1,6 +1,6 @@
 #version 450
 
-#define NR_POINT_LIGHTS 4
+#define MAX_POINT_LIGHTS 32
 
 struct DirectionalLight { 
 	vec3 direction;
@@ -40,8 +40,9 @@ layout(binding = 5) uniform LightSpaceUniformBufferObject {
 } light_space;
 
 layout(binding = 6) uniform LightUniformBufferObject { 
-	PointLight point_lights[NR_POINT_LIGHTS];
+	PointLight point_lights[MAX_POINT_LIGHTS];
 	DirectionalLight dir_light;
+	int point_lights_count;
 } light;
 
 layout(location = 4) in vec3 f_material_ambient;
@@ -139,9 +140,8 @@ void main() {
 	vec3 result = calc_dir_light(light.dir_light, f_normal, view_dir, f_position_light_space);
 
 	// phase 2: point lights
-	for(int i = 0; i < NR_POINT_LIGHTS; i++) {
-    result += calc_point_light(light.point_lights[i], f_normal, f_position, view_dir);   
-	}
+	for(int i = 0; i < light.point_lights_count; i++)
+    result += calc_point_light(light.point_lights[i], f_normal, f_position, view_dir);
 
 	// phase 3: texture
 	vec4 color = vec4(result * subpassLoad(u_albedo).rgb,  1.0);
