@@ -12,8 +12,6 @@ pub struct Mesh {
     pub index_buffer: Arc<ImmutableBuffer<[u32]>>,
 
     pub descriptor_set: Arc<PersistentDescriptorSet>,
-    pub shadow_descriptor_set: Arc<PersistentDescriptorSet>,
-    pub light_descriptor_set: Arc<PersistentDescriptorSet>,
 }
 
 pub struct Material {

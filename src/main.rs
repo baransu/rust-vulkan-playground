@@ -739,16 +739,17 @@ impl Application {
 
             builder.bind_pipeline_graphics(self.light_system.pipeline.clone());
 
+            builder.bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.light_system.pipeline.layout().clone(),
+                0,
+                self.scene.light_descriptor_set.clone(),
+            );
+
             for mesh in self.scene.meshes.values() {
                 // if there is no instance_data_buffer it means we have 0 instances for this mesh
                 if let Some(instance_data_buffer) = instance_data_buffers.get(&mesh.id) {
                     builder
-                        .bind_descriptor_sets(
-                            PipelineBindPoint::Graphics,
-                            self.light_system.pipeline.layout().clone(),
-                            0,
-                            mesh.light_descriptor_set.clone(),
-                        )
                         .bind_vertex_buffers(
                             0,
                             (mesh.vertex_buffer.clone(), instance_data_buffer.clone()),
@@ -793,16 +794,17 @@ impl Application {
 
             // TODO: set depth bias
 
+            builder.bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.shadow_graphics_pipeline.layout().clone(),
+                0,
+                self.scene.shadow_descriptor_set.clone(),
+            );
+
             for mesh in self.scene.meshes.values() {
                 // if there is no instance_data_buffer it means we have 0 instances for this mesh
                 if let Some(instance_data_buffer) = instance_data_buffers.get(&mesh.id) {
                     builder
-                        .bind_descriptor_sets(
-                            PipelineBindPoint::Graphics,
-                            self.shadow_graphics_pipeline.layout().clone(),
-                            0,
-                            mesh.shadow_descriptor_set.clone(),
-                        )
                         .bind_vertex_buffers(
                             0,
                             (mesh.vertex_buffer.clone(), instance_data_buffer.clone()),

@@ -7,7 +7,6 @@ use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     device::Queue,
-    image::{view::ImageView, AttachmentImage},
     pipeline::GraphicsPipeline,
     sync::GpuFuture,
 };
@@ -34,6 +33,9 @@ pub struct Scene {
 
     camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     light_uniform_buffer: Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
+
+    pub shadow_descriptor_set: Arc<PersistentDescriptorSet>,
+    pub light_descriptor_set: Arc<PersistentDescriptorSet>,
 }
 
 impl Scene {
@@ -57,13 +59,10 @@ impl Scene {
                 context,
                 path,
                 graphics_pipeline,
-                shadow_graphics_pipeline,
-                light_graphics_pipeline,
                 &camera_uniform_buffer,
                 &light_uniform_buffer,
                 &light_space_uniform_buffer,
                 &shadow_framebuffer,
-                &gbuffer,
             );
 
             for mesh in meshes_vec {
@@ -75,11 +74,25 @@ impl Scene {
             println!("Loaded {} mesh", mesh.id);
         }
 
+        let shadow_descriptor_set = Self::create_shadow_descriptor_set(
+            &shadow_graphics_pipeline,
+            &light_space_uniform_buffer,
+        );
+
+        let light_descriptor_set = Self::create_light_descriptor_set(
+            &light_graphics_pipeline,
+            &camera_uniform_buffer,
+            &gbuffer,
+        );
+
         Scene {
             meshes,
             game_objects: vec![],
             camera_uniform_buffer,
             light_uniform_buffer,
+
+            shadow_descriptor_set,
+            light_descriptor_set,
         }
     }
 
@@ -93,13 +106,10 @@ impl Scene {
         context: &Context,
         path: &str,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
-        light_graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
         light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         shadow_framebuffer: &FramebufferWithAttachment,
-        gbuffer: &GBuffer,
     ) -> Vec<Mesh> {
         let mut meshes = Vec::new();
 
@@ -205,28 +215,12 @@ impl Scene {
                             &shadow_framebuffer,
                         );
 
-                        // TODO: system can keep that, we don't need one per mesh
-                        let shadow_descriptor_set = Self::create_shadow_descriptor_set(
-                            &shadow_graphics_pipeline,
-                            &light_space_uniform_buffer,
-                        );
-
-                        // TODO: system can keep that, we don't need one per mesh
-                        let light_descriptor_set = Self::create_light_descriptor_set(
-                            context,
-                            &camera_uniform_buffer,
-                            &light_graphics_pipeline,
-                            &gbuffer,
-                        );
-
                         let mesh = Mesh {
                             id: node.name().unwrap().to_string(),
                             vertex_buffer,
                             index_buffer,
                             index_count: indices.len() as u32,
                             descriptor_set,
-                            shadow_descriptor_set,
-                            light_descriptor_set,
                         };
 
                         meshes.push(mesh);
@@ -315,9 +309,8 @@ impl Scene {
     }
 
     fn create_light_descriptor_set(
-        context: &Context,
-        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         light_graphics_pipeline: &Arc<GraphicsPipeline>,
+        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         gbuffer: &GBuffer,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = light_graphics_pipeline
