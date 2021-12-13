@@ -1,21 +1,18 @@
 pub mod model_vertex_shader {
     vulkano_shaders::shader! {
                 ty: "vertex",
-                path: "src/renderer/shaders/model.vert"
+                path: "src/renderer/shaders/gbuffer.vert"
     }
 }
 
 pub mod model_fragment_shader {
     vulkano_shaders::shader! {
                 ty: "fragment",
-                path: "src/renderer/shaders/model.frag"
+                path: "src/renderer/shaders/gbuffer.frag"
     }
 }
 
 pub type CameraUniformBufferObject = model_vertex_shader::ty::CameraUniformBufferObject;
-pub type LightUniformBufferObject = model_fragment_shader::ty::LightUniformBufferObject;
-pub type PointLight = model_fragment_shader::ty::PointLight;
-pub type DirectionalLight = model_fragment_shader::ty::DirectionalLight;
 pub type LightSpaceUniformBufferObject = shadow_vertex_shader::ty::LightSpaceUniformBufferObject;
 
 pub mod shadow_vertex_shader {

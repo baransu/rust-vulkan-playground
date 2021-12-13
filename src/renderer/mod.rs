@@ -1,5 +1,7 @@
 pub mod camera;
 pub mod context;
+pub mod gbuffer;
+pub mod light_system;
 pub mod mesh;
 pub mod scene;
 pub mod screen_frame;

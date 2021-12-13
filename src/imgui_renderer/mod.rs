@@ -415,7 +415,14 @@ impl Renderer {
 
         fonts.tex_id = TextureId::from(usize::MAX);
 
-        let ctx = Self::create_texture_usage_buffer(context, TextureUsage { depth: 0 });
+        let ctx = Self::create_texture_usage_buffer(
+            context,
+            TextureUsage {
+                depth: 0,
+                normal: 0,
+                position: 0,
+            },
+        );
 
         Ok((ImageView::new(image)?, sampler, ctx))
     }

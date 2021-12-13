@@ -16,15 +16,15 @@ use crate::{renderer::texture::Texture, FramebufferWithAttachment};
 use super::{
     camera::Camera,
     context::Context,
+    gbuffer::GBuffer,
+    light_system::{DirectionalLight, LightUniformBufferObject, PointLight},
     mesh::{GameObject, Mesh},
-    shaders::{
-        CameraUniformBufferObject, DirectionalLight, LightSpaceUniformBufferObject,
-        LightUniformBufferObject, PointLight,
-    },
+    shaders::{CameraUniformBufferObject, LightSpaceUniformBufferObject},
     vertex::Vertex,
 };
 
 const NR_POINT_LIGHTS: usize = 4;
+const MAX_POINT_LIGHTS: usize = 32;
 
 pub struct Scene {
     pub meshes: HashMap<String, Mesh>,
@@ -32,6 +32,9 @@ pub struct Scene {
 
     camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     light_uniform_buffer: Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
+
+    pub shadow_descriptor_set: Arc<PersistentDescriptorSet>,
+    pub light_descriptor_set: Arc<PersistentDescriptorSet>,
 }
 
 impl Scene {
@@ -40,7 +43,9 @@ impl Scene {
         mesh_paths: Vec<&str>,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
+        light_graphics_pipeline: &Arc<GraphicsPipeline>,
         shadow_framebuffer: &FramebufferWithAttachment,
+        gbuffer: &GBuffer,
     ) -> Self {
         let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
         let light_uniform_buffer = Self::create_light_uniform_buffer(context);
@@ -49,16 +54,8 @@ impl Scene {
         let mut meshes = HashMap::new();
 
         for path in mesh_paths {
-            let meshes_vec = Self::load_gltf(
-                context,
-                path,
-                graphics_pipeline,
-                shadow_graphics_pipeline,
-                &camera_uniform_buffer,
-                &light_uniform_buffer,
-                &light_space_uniform_buffer,
-                &shadow_framebuffer,
-            );
+            let meshes_vec =
+                Self::load_gltf(context, path, graphics_pipeline, &camera_uniform_buffer);
 
             for mesh in meshes_vec {
                 meshes.insert(mesh.id.clone(), mesh);
@@ -69,11 +66,29 @@ impl Scene {
             println!("Loaded {} mesh", mesh.id);
         }
 
+        let shadow_descriptor_set = Self::create_shadow_descriptor_set(
+            &shadow_graphics_pipeline,
+            &light_space_uniform_buffer,
+        );
+
+        let light_descriptor_set = Self::create_light_descriptor_set(
+            context,
+            &light_graphics_pipeline,
+            &camera_uniform_buffer,
+            &gbuffer,
+            &light_uniform_buffer,
+            &light_space_uniform_buffer,
+            &shadow_framebuffer,
+        );
+
         Scene {
             meshes,
             game_objects: vec![],
             camera_uniform_buffer,
             light_uniform_buffer,
+
+            shadow_descriptor_set,
+            light_descriptor_set,
         }
     }
 
@@ -87,11 +102,7 @@ impl Scene {
         context: &Context,
         path: &str,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
-        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
-        shadow_framebuffer: &FramebufferWithAttachment,
     ) -> Vec<Mesh> {
         let mut meshes = Vec::new();
 
@@ -191,15 +202,7 @@ impl Scene {
                             context,
                             &graphics_pipeline,
                             &camera_uniform_buffer,
-                            &light_uniform_buffer,
-                            &light_space_uniform_buffer,
                             &texture,
-                            &shadow_framebuffer,
-                        );
-
-                        let shadow_descriptor_set = Self::create_shadow_descriptor_set(
-                            &shadow_graphics_pipeline,
-                            &light_space_uniform_buffer,
                         );
 
                         let mesh = Mesh {
@@ -208,7 +211,6 @@ impl Scene {
                             index_buffer,
                             index_count: indices.len() as u32,
                             descriptor_set,
-                            shadow_descriptor_set,
                         };
 
                         meshes.push(mesh);
@@ -257,10 +259,7 @@ impl Scene {
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
-        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         texture: &Texture,
-        shadow_framebuffer: &FramebufferWithAttachment,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -276,6 +275,42 @@ impl Scene {
 
         set_builder
             .add_sampled_image(texture.image.clone(), context.image_sampler.clone())
+            .unwrap();
+
+        Arc::new(set_builder.build().unwrap())
+    }
+
+    fn create_light_descriptor_set(
+        context: &Context,
+        light_graphics_pipeline: &Arc<GraphicsPipeline>,
+        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
+        gbuffer: &GBuffer,
+        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
+        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
+        shadow_framebuffer: &FramebufferWithAttachment,
+    ) -> Arc<PersistentDescriptorSet> {
+        let layout = light_graphics_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(0)
+            .unwrap();
+
+        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        set_builder
+            .add_buffer(camera_uniform_buffer.clone())
+            .unwrap();
+
+        set_builder
+            .add_image(gbuffer.position_buffer.clone())
+            .unwrap();
+
+        set_builder
+            .add_image(gbuffer.normals_buffer.clone())
+            .unwrap();
+
+        set_builder
+            .add_image(gbuffer.albedo_buffer.clone())
             .unwrap();
 
         set_builder
@@ -381,7 +416,7 @@ impl Scene {
             Vec3::new(1.0, 1.0, 1.0),
             Vec3::new(0.0, 1.0, 0.0),
             Vec3::new(0.0, 0.0, 1.0),
-            Vec3::new(0.5, 0.5, 1.0),
+            Vec3::new(1.0, 0.0, 0.0),
         ]
     }
 
@@ -392,13 +427,26 @@ impl Scene {
     fn create_light_uniform_buffer(
         context: &Context,
     ) -> Arc<CpuAccessibleBuffer<LightUniformBufferObject>> {
-        let mut point_lights = Vec::new();
+        let mut point_lights: [PointLight; MAX_POINT_LIGHTS] = [PointLight {
+            position: Vec3::ZERO.to_array(),
+            _dummy0: [0, 0, 0, 0],
+            ambient: Vec3::ZERO.to_array(),
+            _dummy1: [0, 0, 0, 0],
+            diffuse: Vec3::ZERO.to_array(),
+            _dummy2: [0, 0, 0, 0],
+            specular: Vec3::ZERO.to_array(),
+            _dummy3: [0, 0, 0, 0, 0, 0, 0, 0],
+            constant_: 0.0,
+            linear: 0.0,
+            quadratic: 0.0,
+        }; MAX_POINT_LIGHTS];
+
         let colors = Self::light_colors();
 
         for (index, position) in Self::light_positions().iter().enumerate() {
             let color = colors.get(index).unwrap().clone();
 
-            point_lights.push(PointLight {
+            point_lights[index] = PointLight {
                 position: position.to_array(),
                 _dummy0: [0, 0, 0, 0],
                 ambient: (color * 0.1).to_array(),
@@ -410,7 +458,7 @@ impl Scene {
                 constant_: 1.0,
                 linear: 0.09,
                 quadratic: 0.032,
-            })
+            }
         }
 
         let dir_light = DirectionalLight {
@@ -424,8 +472,10 @@ impl Scene {
         };
 
         let buffer_data = LightUniformBufferObject {
-            point_lights: point_lights.as_slice().try_into().unwrap(),
+            point_lights,
+            _dummy0: [0, 0, 0, 0],
             dir_light,
+            point_lights_count: NR_POINT_LIGHTS as i32,
         };
 
         let buffer = CpuAccessibleBuffer::from_data(
