@@ -2,7 +2,6 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
 use glam::{Mat4, Vec3};
 use gltf::Semantic;
-use imgui::draw_list::Image;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
@@ -18,6 +17,7 @@ use crate::{renderer::texture::Texture, FramebufferWithAttachment};
 use super::{
     camera::Camera,
     context::Context,
+    gbuffer::GBuffer,
     mesh::{GameObject, Mesh},
     shaders::{
         CameraUniformBufferObject, DirectionalLight, LightSpaceUniformBufferObject,
@@ -44,7 +44,7 @@ impl Scene {
         shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
         light_graphics_pipeline: &Arc<GraphicsPipeline>,
         shadow_framebuffer: &FramebufferWithAttachment,
-        gbuffer_color_input: &Arc<ImageView<Arc<AttachmentImage>>>,
+        gbuffer: &GBuffer,
     ) -> Self {
         let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
         let light_uniform_buffer = Self::create_light_uniform_buffer(context);
@@ -63,7 +63,7 @@ impl Scene {
                 &light_uniform_buffer,
                 &light_space_uniform_buffer,
                 &shadow_framebuffer,
-                &gbuffer_color_input,
+                &gbuffer,
             );
 
             for mesh in meshes_vec {
@@ -99,7 +99,7 @@ impl Scene {
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
         light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         shadow_framebuffer: &FramebufferWithAttachment,
-        gbuffer_color_input: &Arc<ImageView<Arc<AttachmentImage>>>,
+        gbuffer: &GBuffer,
     ) -> Vec<Mesh> {
         let mut meshes = Vec::new();
 
@@ -216,7 +216,7 @@ impl Scene {
                             context,
                             &camera_uniform_buffer,
                             &light_graphics_pipeline,
-                            &gbuffer_color_input,
+                            &gbuffer,
                         );
 
                         let mesh = Mesh {
@@ -318,7 +318,7 @@ impl Scene {
         context: &Context,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         light_graphics_pipeline: &Arc<GraphicsPipeline>,
-        gbuffer_color_input: &Arc<ImageView<Arc<AttachmentImage>>>,
+        gbuffer: &GBuffer,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = light_graphics_pipeline
             .layout()
@@ -332,7 +332,17 @@ impl Scene {
             .add_buffer(camera_uniform_buffer.clone())
             .unwrap();
 
-        set_builder.add_image(gbuffer_color_input.clone()).unwrap();
+        set_builder
+            .add_image(gbuffer.position_buffer.clone())
+            .unwrap();
+
+        set_builder
+            .add_image(gbuffer.normals_buffer.clone())
+            .unwrap();
+
+        set_builder
+            .add_image(gbuffer.albedo_buffer.clone())
+            .unwrap();
 
         Arc::new(set_builder.build().unwrap())
     }

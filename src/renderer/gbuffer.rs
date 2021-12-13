@@ -3,10 +3,7 @@ use std::sync::Arc;
 use vulkano::{
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageUsage, ImageViewAbstract},
-    pipeline::{
-        depth_stencil::DepthStencil, vertex::BuffersDefinition, viewport::Viewport,
-        GraphicsPipeline,
-    },
+    pipeline::{vertex::BuffersDefinition, viewport::Viewport, GraphicsPipeline},
     render_pass::{Framebuffer, RenderPass, Subpass},
 };
 
@@ -17,8 +14,9 @@ use super::{context::Context, mesh::InstanceData, vertex::Vertex};
 pub type GBufferTarget = Arc<ImageView<Arc<AttachmentImage>>>;
 
 pub struct GBuffer {
-    pub diffuse_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
+    pub position_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
     pub normals_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
+    pub albedo_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
     pub depth_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
 
     pub render_pass: Arc<RenderPass>,
@@ -29,16 +27,18 @@ pub struct GBuffer {
 
 impl GBuffer {
     pub fn initialize(context: &Context, target: &GBufferTarget) -> GBuffer {
-        let diffuse_buffer = Self::create_diffuse_buffer(context, &target);
+        let position_buffer = Self::create_position_buffer(context, &target);
         let normals_buffer = Self::create_normals_buffer(context, &target);
+        let albedo_buffer = Self::create_albedo_buffer(context, &target);
         let depth_buffer = Self::create_depth_buffer(context, &target);
 
         let render_pass = Self::create_render_pass(context);
         let framebuffer = Self::create_framebuffer(
             &render_pass,
             &target,
-            &diffuse_buffer,
+            &position_buffer,
             &normals_buffer,
+            &albedo_buffer,
             &depth_buffer,
         );
 
@@ -47,8 +47,9 @@ impl GBuffer {
         let lighting_subpass = Subpass::from(render_pass.clone(), 1).unwrap();
 
         GBuffer {
-            diffuse_buffer,
+            position_buffer,
             normals_buffer,
+            albedo_buffer,
             depth_buffer,
 
             render_pass,
@@ -61,16 +62,19 @@ impl GBuffer {
     fn create_framebuffer(
         render_pass: &Arc<RenderPass>,
         target: &GBufferTarget,
-        diffuse_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
+        position_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
         normals_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
+        albedo_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
         depth_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> Arc<FramebufferT> {
         let framebuffer = Framebuffer::start(render_pass.clone())
             .add(target.clone())
             .unwrap()
-            .add(diffuse_buffer.clone())
+            .add(position_buffer.clone())
             .unwrap()
             .add(normals_buffer.clone())
+            .unwrap()
+            .add(albedo_buffer.clone())
             .unwrap()
             .add(depth_buffer.clone())
             .unwrap()
@@ -82,7 +86,6 @@ impl GBuffer {
 
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
         let color_format = context.swap_chain.format();
-        let depth_format = context.depth_format;
 
         Arc::new(
             vulkano::ordered_passes_renderpass!(context.device.clone(),
@@ -93,10 +96,10 @@ impl GBuffer {
                                 format: color_format,
                                 samples: 1,
                             },
-                            diffuse: {
+                            position: {
                                 load: Clear,
-                                store: Store,
-                                format: Format::A2B10G10R10_UNORM_PACK32,
+                                store: DontCare,
+                                format: Format::R16G16B16A16_SFLOAT,
                                 samples: 1,
                             },
                             normals: {
@@ -105,23 +108,29 @@ impl GBuffer {
                                 format: Format::R16G16B16A16_SFLOAT,
                                 samples: 1,
                             },
+                            albedo: {
+                                load: Clear,
+                                store: DontCare,
+                                format: Format::R16G16B16A16_SFLOAT,
+                                samples: 1,
+                            },
                             depth: {
                                 load: Clear,
                                 store: DontCare,
-                                format: depth_format,
+                                format: context.depth_format,
                                 samples: 1,
                             }
                         },
                 passes: [
                                 {
-                                    color:[diffuse, normals],
+                                    color: [position, normals, albedo],
                                     depth_stencil: {depth},
                                     input: []
                                 },
                                 {
-                                    color:[final_color],
+                                    color: [final_color],
                                     depth_stencil: {},
-                                    input: [diffuse, normals, depth]
+                                    input: [position, normals, albedo]
                                 }
                             ]
             )
@@ -158,16 +167,7 @@ impl GBuffer {
                 .primitive_restart(false)
                 .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
                 .fragment_shader(fs.main_entry_point(), ())
-                .depth_clamp(false)
-                // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
-                .polygon_mode_fill() // = default
-                .line_width(1.0) // = default
-                // TODO: just to make developing easier we render both faces of models
-                .cull_mode_back()
-                .front_face_counter_clockwise()
-                // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
-                .blend_pass_through()
-                .depth_stencil(DepthStencil::simple_depth_test())
+                .depth_stencil_simple_depth()
                 .viewports_dynamic_scissors_irrelevant(1)
                 .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
                 .build(context.device.clone())
@@ -177,7 +177,7 @@ impl GBuffer {
         pipeline
     }
 
-    fn create_diffuse_buffer(
+    fn create_position_buffer(
         context: &Context,
         target: &GBufferTarget,
     ) -> Arc<ImageView<Arc<AttachmentImage>>> {
@@ -187,7 +187,7 @@ impl GBuffer {
             AttachmentImage::with_usage(
                 context.graphics_queue.device().clone(),
                 dimensions,
-                Format::A2B10G10R10_UNORM_PACK32,
+                Format::R16G16B16A16_SFLOAT,
                 usage,
             )
             .unwrap(),
@@ -196,6 +196,24 @@ impl GBuffer {
     }
 
     fn create_normals_buffer(
+        context: &Context,
+        target: &GBufferTarget,
+    ) -> Arc<ImageView<Arc<AttachmentImage>>> {
+        let (usage, dimensions) = Self::usage_dimensions(target);
+
+        ImageView::new(
+            AttachmentImage::with_usage(
+                context.graphics_queue.device().clone(),
+                dimensions,
+                Format::R16G16B16A16_SFLOAT,
+                usage,
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    }
+
+    fn create_albedo_buffer(
         context: &Context,
         target: &GBufferTarget,
     ) -> Arc<ImageView<Arc<AttachmentImage>>> {
@@ -235,8 +253,10 @@ impl GBuffer {
         let dimensions = target.image().dimensions().width_height();
 
         let usage = ImageUsage {
-            transient_attachment: true,
+            // transient_attachment: true,
             input_attachment: true,
+            // NOTE: for debugging
+            sampled: true,
             ..ImageUsage::none()
         };
 

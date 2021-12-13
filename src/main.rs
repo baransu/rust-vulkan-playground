@@ -8,10 +8,10 @@ use imgui::*;
 use imgui_renderer::{shaders::TextureUsage, Renderer};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
-    ambient_light_system::{self, AmbientLightSystem},
     camera::Camera,
     context::Context,
     gbuffer::GBuffer,
+    light_system::LightSystem,
     mesh::{GameObject, InstanceData, Material, Transform},
     scene::Scene,
     screen_frame::ScreenFrame,
@@ -71,10 +71,8 @@ struct Application {
     scene_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
     ambient_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
 
-    ambient_light_system: AmbientLightSystem,
+    light_system: LightSystem,
 
-    // scene_graphics_pipeline: Arc<GraphicsPipeline>,
-    // scene_framebuffers: Vec<FramebufferWithAttachment>,
     shadow_graphics_pipeline: Arc<GraphicsPipeline>,
     shadow_framebuffer: FramebufferWithAttachment,
     shadow_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
@@ -97,6 +95,9 @@ struct Application {
     platform: WinitPlatform,
 
     shadow_framebuffer_texture_id: TextureId,
+    gbuffer_position_texture_id: TextureId,
+    gbuffer_normals_texture_id: TextureId,
+    gbuffer_albedo_texture_id: TextureId,
 }
 
 impl Application {
@@ -112,17 +113,16 @@ impl Application {
         let gbuffer_target = Self::create_gbuffer_target(&context);
         let gbuffer = GBuffer::initialize(&context, &gbuffer_target);
 
-        let ambient_light_system =
-            AmbientLightSystem::initialize(&context, gbuffer.lighting_subpass.clone());
+        let light_system = LightSystem::initialize(&context, gbuffer.lighting_subpass.clone());
 
         let mut scene = Scene::initialize(
             &context,
             MODEL_PATHS.to_vec(),
             &gbuffer.pipeline,
             &shadow_graphics_pipeline,
-            &ambient_light_system.pipeline,
+            &light_system.pipeline,
             &shadow_framebuffer,
-            &gbuffer.diffuse_buffer,
+            &gbuffer,
         );
 
         let count = 10;
@@ -245,7 +245,49 @@ impl Application {
             .register_texture(
                 &context,
                 &shadow_framebuffer.attachment,
-                TextureUsage { depth: 1 },
+                TextureUsage {
+                    depth: 1,
+                    normal: 0,
+                    position: 0,
+                },
+            )
+            .unwrap();
+
+        let gbuffer_position_texture_id = imgui_renderer
+            .register_texture(
+                &context,
+                &gbuffer.position_buffer,
+                TextureUsage {
+                    depth: 0,
+                    // NOTE: they are not normals but also are in [-1, 1] space
+                    // so we need to convert them to [0,1]
+                    normal: 0,
+                    position: 1,
+                },
+            )
+            .unwrap();
+
+        let gbuffer_normals_texture_id = imgui_renderer
+            .register_texture(
+                &context,
+                &gbuffer.normals_buffer,
+                TextureUsage {
+                    depth: 0,
+                    normal: 1,
+                    position: 0,
+                },
+            )
+            .unwrap();
+
+        let gbuffer_albedo_texture_id = imgui_renderer
+            .register_texture(
+                &context,
+                &gbuffer.albedo_buffer,
+                TextureUsage {
+                    depth: 0,
+                    normal: 0,
+                    position: 0,
+                },
             )
             .unwrap();
 
@@ -266,7 +308,7 @@ impl Application {
             scene_command_buffers: vec![],
             ambient_command_buffers: vec![],
 
-            ambient_light_system,
+            light_system,
 
             shadow_framebuffer,
             shadow_graphics_pipeline,
@@ -282,6 +324,9 @@ impl Application {
             camera,
 
             shadow_framebuffer_texture_id,
+            gbuffer_albedo_texture_id,
+            gbuffer_position_texture_id,
+            gbuffer_normals_texture_id,
         };
 
         app.create_scene_command_buffers();
@@ -289,22 +334,6 @@ impl Application {
         app.create_ambient_command_buffers();
 
         app
-    }
-
-    fn create_depth_image(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
-        let image = AttachmentImage::multisampled_with_usage(
-            context.device.clone(),
-            context.swap_chain.dimensions(),
-            context.sample_count,
-            context.depth_format,
-            ImageUsage {
-                depth_stencil_attachment: true,
-                ..ImageUsage::none()
-            },
-        )
-        .unwrap();
-
-        ImageView::new(image).unwrap()
     }
 
     fn create_shadow_depth_image(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
@@ -702,13 +731,13 @@ impl Application {
                 self.context.device.clone(),
                 self.context.graphics_queue.family(),
                 CommandBufferUsage::SimultaneousUse,
-                self.ambient_light_system.pipeline.subpass().clone(),
+                self.light_system.pipeline.subpass().clone(),
             )
             .unwrap();
 
             builder.set_viewport(0, [viewport.clone()]);
 
-            builder.bind_pipeline_graphics(self.ambient_light_system.pipeline.clone());
+            builder.bind_pipeline_graphics(self.light_system.pipeline.clone());
 
             for mesh in self.scene.meshes.values() {
                 // if there is no instance_data_buffer it means we have 0 instances for this mesh
@@ -716,7 +745,7 @@ impl Application {
                     builder
                         .bind_descriptor_sets(
                             PipelineBindPoint::Graphics,
-                            self.ambient_light_system.pipeline.layout().clone(),
+                            self.light_system.pipeline.layout().clone(),
                             0,
                             mesh.light_descriptor_set.clone(),
                         )
@@ -802,18 +831,31 @@ impl Application {
         delta_time: &f64,
     ) {
         let ui = self.imgui.frame();
-        let texture_id = self.shadow_framebuffer_texture_id;
+        let shadow_texture_id = self.shadow_framebuffer_texture_id;
+        let gbuffer_position_texture_id = self.gbuffer_position_texture_id;
+        let gbuffer_albedo_texture_id = self.gbuffer_albedo_texture_id;
+        let gbuffer_normals_texture_id = self.gbuffer_normals_texture_id;
 
         // Here we create a window with a specific size, and force it to always have a vertical scrollbar visible
         Window::new("Debug")
-            .size([300.0, 110.0], Condition::Always)
+            .position([0.0, 0.0], Condition::Always)
+            .size([350.0, 600.0], Condition::Always)
             .build(&ui, || {
                 let fps = 1.0 / delta_time;
                 ui.text(format!("FPS: {:.2}", fps));
                 ui.separator();
 
-                Image::new(texture_id, [300.0, 300.0]).build(&ui);
+                Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("Directional light shadow map");
+
+                Image::new(gbuffer_position_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("GBuffer position");
+
+                Image::new(gbuffer_normals_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("GBuffer normals");
+
+                Image::new(gbuffer_albedo_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("GBuffer albedo");
             });
 
         let draw_data = ui.render();
@@ -848,7 +890,7 @@ impl Application {
 
         let command_buffer = self.screen_frame.command_buffers[image_index].clone();
 
-        let ambient_light_command_buffer = self.ambient_command_buffers[image_index].clone();
+        let light_command_buffer = self.ambient_command_buffers[image_index].clone();
 
         let mut builder = AutoCommandBufferBuilder::primary(
             self.context.device.clone(),
@@ -892,9 +934,11 @@ impl Application {
                 vec![
                     // color
                     ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
-                    // diffusee
+                    // position
                     ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
                     // normals
+                    ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
+                    // albedo
                     ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
                     // depth
                     ClearValue::Depth(1.0),
@@ -913,7 +957,7 @@ impl Application {
             .unwrap()
             .next_subpass(SubpassContents::SecondaryCommandBuffers)
             .unwrap()
-            .execute_commands(ambient_light_command_buffer.clone())
+            .execute_commands(light_command_buffer.clone())
             .unwrap()
             .end_render_pass()
             .unwrap();

@@ -35,6 +35,8 @@ pub mod fs {
 			layout(binding = 0) uniform sampler2D tex;
 			layout(binding = 1) uniform TextureUsage {
 				bool depth;
+				bool normal;
+				bool position;
 			} usage;
 
 			layout(location = 0) in vec2 f_uv;
@@ -46,10 +48,15 @@ pub mod fs {
 				if(usage.depth) {
 					float depth = texture(tex, f_uv).r;
 					Target0 = vec4(vec3(depth), 1.0);
+				} else if(usage.normal) {
+					vec3 rgb_normal = texture(tex, f_uv).rgb * 0.5 + 0.5;
+					Target0 = vec4(rgb_normal, 1.0);
+				} else if(usage.position) {
+					vec3 rgb_normal = texture(tex, f_uv).rgb * 0.5 + 0.5;
+					Target0 = vec4(rgb_normal, 1.0);
 				} else {
 					Target0 = f_color * texture(tex, f_uv);
 				}
-			
 			}		
 						",
     }
