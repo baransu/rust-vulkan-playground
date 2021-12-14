@@ -45,11 +45,6 @@ layout(binding = 6) uniform LightUniformBufferObject {
 	int point_lights_count;
 } light;
 
-layout(location = 4) in vec3 f_material_ambient;
-layout(location = 5) in vec3 f_material_diffuse;
-layout(location = 6) in vec3 f_material_specular;
-layout(location = 7) in float f_material_shininess;
-
 layout(location = 0) out vec4 out_color;
 
 float shadow_calculation_pcf(vec4 f_position_light_space, vec3 normal, vec3 light_dir) {
@@ -84,7 +79,7 @@ float shadow_calculation_pcf(vec4 f_position_light_space, vec3 normal, vec3 ligh
 	return shadow;
 }
 
-vec3 calc_dir_light(DirectionalLight light, vec3 normal, vec3 view_dir, vec4 f_position_light_space) {
+vec3 calc_dir_light(DirectionalLight light, vec3 normal, vec3 view_dir, float f_specular, vec4 f_position_light_space) {
 	vec3 light_dir = normalize(-light.direction);
 	
 	// diffuse shading
@@ -92,36 +87,36 @@ vec3 calc_dir_light(DirectionalLight light, vec3 normal, vec3 view_dir, vec4 f_p
 	
 	// specular shading
 	vec3 reflect_dir = reflect(-light_dir, normal);
-	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), f_material_shininess);
+	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
 
 	// combine results
-	vec3 ambient  = light.ambient * f_material_ambient;
-	vec3 diffuse  = light.diffuse * diff * f_material_diffuse;
-	vec3 specular = light.specular * spec * f_material_specular;
+	vec3 ambient  = light.ambient;
+	vec3 diffuse  = light.diffuse * diff;
+	vec3 specular = light.specular * spec * f_specular;
 
 	float shadow = shadow_calculation_pcf(f_position_light_space, normal, light_dir);       
 
 	return ambient + (1.0 - shadow) * (diffuse + specular);   
 }
 
-vec3 calc_point_light(PointLight light, vec3 normal, vec3 f_position, vec3 view_dir) {
+vec3 calc_point_light(PointLight light, vec3 normal, vec3 f_position, float f_specular, vec3 view_dir) {
 	vec3 light_dir = normalize(light.position - f_position);
 
 	// diffuse shading
-	float diff = max(dot(normal, light_dir), 0.0);
+	float diff = clamp(dot(normal, light_dir), 0, 1);
 
 	// specular shading
 	vec3 halfway_dir = normalize(light_dir + view_dir);
-	float spec = pow(max(dot(normal, halfway_dir), 0.0), f_material_shininess);
+	float spec = pow(max(dot(normal, halfway_dir), 0.0), 32);
 
 	// attenuation
 	float distance = length(light.position - f_position);
 	float attenuation = 1.0 / (light.constant_ + light.linear * distance + light.quadratic * (distance * distance));    
 
 	// combine results
-	vec3 ambient = light.ambient * f_material_diffuse;
-	vec3 diffuse = light.diffuse * diff * f_material_diffuse;
-	vec3 specular = light.specular * spec * f_material_specular;
+	vec3 ambient = light.ambient;
+	vec3 diffuse = light.diffuse * diff;
+	vec3 specular = light.specular * spec * f_specular;
 
 	ambient *= attenuation;
 	diffuse *= attenuation;
@@ -134,14 +129,16 @@ void main() {
 	vec3 f_position = subpassLoad(u_position).xyz;
 	vec3 f_normal = subpassLoad(u_normals).rgb;
 	vec4 f_position_light_space = light_space.matrix * vec4(f_position, 1.0);
+	float f_specular = subpassLoad(u_albedo).a;
+
 	vec3 view_dir = normalize(camera.position - f_position);
 
 	// phase 1: directional light with shadows
-	vec3 result = calc_dir_light(light.dir_light, f_normal, view_dir, f_position_light_space);
+	vec3 result = calc_dir_light(light.dir_light, f_normal, view_dir, f_specular, f_position_light_space);
 
 	// phase 2: point lights
 	for(int i = 0; i < light.point_lights_count; i++)
-    result += calc_point_light(light.point_lights[i], f_normal, f_position, view_dir);
+    result += calc_point_light(light.point_lights[i], f_normal, f_position, f_specular, view_dir);
 
 	// phase 3: texture
 	vec4 color = vec4(result * subpassLoad(u_albedo).rgb,  1.0);

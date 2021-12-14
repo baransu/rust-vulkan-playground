@@ -55,5 +55,5 @@ mod fs {
 }
 
 pub type LightUniformBufferObject = fs::ty::LightUniformBufferObject;
-pub type PointLight = fs::ty::PointLight;
-pub type DirectionalLight = fs::ty::DirectionalLight;
+pub type ShaderPointLight = fs::ty::PointLight;
+pub type ShaderDirectionalLight = fs::ty::DirectionalLight;

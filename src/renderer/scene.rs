@@ -1,7 +1,8 @@
-use std::{collections::HashMap, convert::TryInto, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use glam::{Mat4, Vec3};
 use gltf::Semantic;
+use rand::Rng;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
@@ -17,14 +18,19 @@ use super::{
     camera::Camera,
     context::Context,
     gbuffer::GBuffer,
-    light_system::{DirectionalLight, LightUniformBufferObject, PointLight},
+    light_system::{LightUniformBufferObject, ShaderDirectionalLight, ShaderPointLight},
     mesh::{GameObject, Mesh},
     shaders::{CameraUniformBufferObject, LightSpaceUniformBufferObject},
     vertex::Vertex,
 };
 
-const NR_POINT_LIGHTS: usize = 4;
 const MAX_POINT_LIGHTS: usize = 32;
+
+#[derive(Clone, Copy)]
+pub struct PointLight {
+    pub position: Vec3,
+    pub color: Vec3,
+}
 
 pub struct Scene {
     pub meshes: HashMap<String, Mesh>,
@@ -35,6 +41,8 @@ pub struct Scene {
 
     pub shadow_descriptor_set: Arc<PersistentDescriptorSet>,
     pub light_descriptor_set: Arc<PersistentDescriptorSet>,
+
+    pub point_lights: Vec<PointLight>,
 }
 
 impl Scene {
@@ -47,8 +55,10 @@ impl Scene {
         shadow_framebuffer: &FramebufferWithAttachment,
         gbuffer: &GBuffer,
     ) -> Self {
+        let point_lights = Self::gen_point_lights();
+
         let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
-        let light_uniform_buffer = Self::create_light_uniform_buffer(context);
+        let light_uniform_buffer = Self::create_light_uniform_buffer(context, &point_lights);
         let light_space_uniform_buffer = Self::create_light_space_uniform_buffer(context);
 
         let mut meshes = HashMap::new();
@@ -89,6 +99,8 @@ impl Scene {
 
             shadow_descriptor_set,
             light_descriptor_set,
+
+            point_lights,
         }
     }
 
@@ -125,25 +137,29 @@ impl Scene {
         for node in document.nodes() {
             if let Some(mesh) = node.mesh() {
                 for primitive in mesh.primitives() {
-                    let pbr = primitive.material().pbr_metallic_roughness();
+                    let material = primitive.material();
+                    let pbr = material.pbr_metallic_roughness();
 
                     // let base_color_factor = pbr.base_color_factor();
 
-                    let (texture, tex_coord) = pbr
+                    let diffuse_texture = pbr
                         .base_color_texture()
-                        .map(|color_info| {
-                            let texture = Texture::from_gltf_texture(
-                                &context,
-                                path,
-                                &color_info.texture(),
-                                &buffers,
-                            );
-
-                            (texture, color_info.tex_coord())
+                        .map(|info| {
+                            Texture::from_gltf_texture(&context, path, &info.texture(), &buffers)
                         })
                         .unwrap_or_else(|| {
                             // just a fillter image to make descriptor set happy
-                            (Texture::empty(&context), 0)
+                            Texture::empty(&context)
+                        });
+
+                    let normal_texture = material
+                        .normal_texture()
+                        .map(|info| {
+                            Texture::from_gltf_texture(&context, path, &info.texture(), &buffers)
+                        })
+                        .unwrap_or_else(|| {
+                            // just a fillter image to make descriptor set happy
+                            Texture::empty(&context)
                         });
 
                     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
@@ -155,17 +171,13 @@ impl Scene {
                             .read_normals()
                             .map_or(vec![], |normals| normals.collect());
 
-                        let color = &reader
-                            .read_colors(0)
-                            .map_or(vec![], |colors| colors.into_rgba_f32().collect());
+                        let tangents = &reader
+                            .read_tangents()
+                            .map_or(vec![], |tangets| tangets.collect());
 
-                        // TODO: what gltf has more than one uv channel?
-                        let tex_coords_0 = &reader
+                        // TODO: why gltf has more than one uv channel?
+                        let tex_coords = &reader
                             .read_tex_coords(0)
-                            .map_or(vec![], |coords| coords.into_f32().collect());
-
-                        let tex_coords_1 = &reader
-                            .read_tex_coords(1)
                             .map_or(vec![], |coords| coords.into_f32().collect());
 
                         let vertices = positions
@@ -174,17 +186,10 @@ impl Scene {
                             .map(|(index, position)| {
                                 let position = *position;
                                 let normal = *normals.get(index).unwrap_or(&[1.0, 1.0, 1.0]);
-                                let tex_coords_0 = *tex_coords_0.get(index).unwrap_or(&[0.0, 0.0]);
-                                let tex_coords_1 = *tex_coords_1.get(index).unwrap_or(&[0.0, 0.0]);
+                                let uv = *tex_coords.get(index).unwrap_or(&[0.0, 0.0]);
+                                let tangent = *tangents.get(index).unwrap_or(&[1.0, 1.0, 1.0, 1.0]);
 
-                                let color = *color.get(index).unwrap_or(&[1.0, 1.0, 1.0, 1.0]);
-
-                                let uv = [
-                                    [tex_coords_0[0], tex_coords_0[1]],
-                                    [tex_coords_1[0], tex_coords_1[1]],
-                                ][tex_coord as usize];
-
-                                Vertex::new(position, normal, uv, color)
+                                Vertex::new(position, normal, uv, tangent)
                             })
                             .collect::<Vec<_>>();
 
@@ -202,7 +207,8 @@ impl Scene {
                             context,
                             &graphics_pipeline,
                             &camera_uniform_buffer,
-                            &texture,
+                            &diffuse_texture,
+                            &normal_texture,
                         );
 
                         let mesh = Mesh {
@@ -259,7 +265,8 @@ impl Scene {
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        texture: &Texture,
+        diffuse_texture: &Texture,
+        normal_texture: &Texture,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -274,7 +281,11 @@ impl Scene {
             .unwrap();
 
         set_builder
-            .add_sampled_image(texture.image.clone(), context.image_sampler.clone())
+            .add_sampled_image(diffuse_texture.image.clone(), context.image_sampler.clone())
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(normal_texture.image.clone(), context.image_sampler.clone())
             .unwrap();
 
         Arc::new(set_builder.build().unwrap())
@@ -402,22 +413,27 @@ impl Scene {
         buffer
     }
 
-    pub fn light_positions() -> [Vec3; NR_POINT_LIGHTS] {
-        [
-            Vec3::new(0.7, 5.0, 2.0),
-            Vec3::new(2.3, 5.0, -4.0),
-            Vec3::new(-4.0, 5.0, -12.0),
-            Vec3::new(0.0, 5.0, -3.0),
-        ]
-    }
+    fn gen_point_lights() -> Vec<PointLight> {
+        let mut rng = rand::thread_rng();
 
-    pub fn light_colors() -> [Vec3; NR_POINT_LIGHTS] {
-        [
-            Vec3::new(1.0, 1.0, 1.0),
-            Vec3::new(0.0, 1.0, 0.0),
-            Vec3::new(0.0, 0.0, 1.0),
-            Vec3::new(1.0, 0.0, 0.0),
-        ]
+        let mut lights = Vec::new();
+        for _i in 0..5 {
+            let position = Vec3::new(
+                rng.gen_range(-10.0..10.0),
+                rng.gen_range(1.0..10.0),
+                rng.gen_range(-10.0..10.0),
+            );
+
+            let color = Vec3::new(
+                rng.gen_range(0.0..0.75),
+                rng.gen_range(0.0..0.75),
+                rng.gen_range(0.0..0.75),
+            );
+
+            lights.push(PointLight { position, color });
+        }
+
+        lights
     }
 
     pub fn dir_light_position() -> Vec3 {
@@ -426,8 +442,9 @@ impl Scene {
 
     fn create_light_uniform_buffer(
         context: &Context,
+        point_lights: &Vec<PointLight>,
     ) -> Arc<CpuAccessibleBuffer<LightUniformBufferObject>> {
-        let mut point_lights: [PointLight; MAX_POINT_LIGHTS] = [PointLight {
+        let mut shader_point_lights: [ShaderPointLight; MAX_POINT_LIGHTS] = [ShaderPointLight {
             position: Vec3::ZERO.to_array(),
             _dummy0: [0, 0, 0, 0],
             ambient: Vec3::ZERO.to_array(),
@@ -439,21 +456,18 @@ impl Scene {
             constant_: 0.0,
             linear: 0.0,
             quadratic: 0.0,
-        }; MAX_POINT_LIGHTS];
+        };
+            MAX_POINT_LIGHTS];
 
-        let colors = Self::light_colors();
-
-        for (index, position) in Self::light_positions().iter().enumerate() {
-            let color = colors.get(index).unwrap().clone();
-
-            point_lights[index] = PointLight {
-                position: position.to_array(),
+        for (index, light) in point_lights.iter().enumerate() {
+            shader_point_lights[index] = ShaderPointLight {
+                position: light.position.to_array(),
                 _dummy0: [0, 0, 0, 0],
-                ambient: (color * 0.1).to_array(),
+                ambient: (light.color * 0.1).to_array(),
                 _dummy1: [0, 0, 0, 0],
-                diffuse: color.to_array(),
+                diffuse: light.color.to_array(),
                 _dummy2: [0, 0, 0, 0],
-                specular: color.to_array(),
+                specular: light.color.to_array(),
                 _dummy3: [0, 0, 0, 0, 0, 0, 0, 0],
                 constant_: 1.0,
                 linear: 0.09,
@@ -461,7 +475,7 @@ impl Scene {
             }
         }
 
-        let dir_light = DirectionalLight {
+        let dir_light = ShaderDirectionalLight {
             direction: Vec3::new(-0.2, -1.0, -0.3).to_array(),
             _dummy0: [0, 0, 0, 0],
             ambient: Vec3::ZERO.to_array(),
@@ -472,10 +486,10 @@ impl Scene {
         };
 
         let buffer_data = LightUniformBufferObject {
-            point_lights,
+            point_lights: shader_point_lights,
             _dummy0: [0, 0, 0, 0],
             dir_light,
-            point_lights_count: NR_POINT_LIGHTS as i32,
+            point_lights_count: point_lights.len() as i32,
         };
 
         let buffer = CpuAccessibleBuffer::from_data(
