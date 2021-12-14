@@ -12,15 +12,12 @@ use vulkano::{
     sync::GpuFuture,
 };
 
-use crate::{renderer::texture::Texture, FramebufferWithAttachment};
+use crate::renderer::texture::Texture;
 
 use super::{
     camera::Camera,
     context::Context,
-    gbuffer::GBuffer,
-    light_system::{
-        LightSystem, LightUniformBufferObject, ShaderDirectionalLight, ShaderPointLight,
-    },
+    light_system::{LightUniformBufferObject, ShaderDirectionalLight, ShaderPointLight},
     mesh::{GameObject, Mesh},
     shaders::{CameraUniformBufferObject, LightSpaceUniformBufferObject},
     vertex::Vertex,
@@ -125,7 +122,7 @@ impl Scene {
 
         for node in document.nodes() {
             if let Some(mesh) = node.mesh() {
-                for primitive in mesh.primitives() {
+                for (idx, primitive) in mesh.primitives().enumerate() {
                     let material = primitive.material();
                     let pbr = material.pbr_metallic_roughness();
 
@@ -201,7 +198,10 @@ impl Scene {
                         );
 
                         let mesh = Mesh {
-                            id: node.name().unwrap().to_string(),
+                            id: node
+                                .name()
+                                .unwrap_or(format!("sponza-{}", idx).as_str())
+                                .to_string(),
                             vertex_buffer,
                             index_buffer,
                             index_count: indices.len() as u32,
