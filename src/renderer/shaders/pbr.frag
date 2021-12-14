@@ -30,7 +30,7 @@ layout(binding = 3) uniform sampler2D u_albedo;
 layout(binding = 4) uniform sampler2D u_metalic_roughness;
 layout(binding = 5) uniform sampler2D ssao_sampler;
 layout(binding = 6) uniform sampler2D shadow_sampler;
-layout(binding = 7) uniform samplerCube skybox_texture;
+layout(binding = 7) uniform samplerCube irradianceMap;
 
 // duplicated definition in model.vert and shaders.rs
 layout(binding = 8)	uniform LightSpaceUniformBufferObject {
@@ -47,12 +47,17 @@ layout(location = 0) in vec2 f_uv;
 
 layout(location = 0) out vec4 out_color;
 
-const float PI = 3.14159265359;
+#define PI 3.1415926535897932384626433832795
 
 vec3 fresnelShlick(float cosTheta,  vec3 F0);
 float DistributionGGX(vec3 N, vec3 H, float roughness);
 float GeometryShlickGGX(float NdotV, float roughness); 
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness);
+
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+{
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}  
 
 void main() {
 	vec3 raw_albedo = texture(u_albedo, f_uv).xyz;
@@ -107,13 +112,20 @@ void main() {
 			Lo += (kD * albedo / PI + specular) * radiance * NdotL;
 		}
 
-		vec3 ambient = vec3(0.03) * albedo * ao;
+		vec3 kS = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
+    vec3 kD = 1.0 - kS;
+    kD *= 1.0 - metallic;	  
+    vec3 irradiance = texture(irradianceMap, N).rgb;
+    vec3 diffuse    = irradiance * albedo;
+    vec3 ambient    = (kD * diffuse) * ao;
+
 		color = ambient + Lo;
 	}
 
-	// gamma correction and tone mapping
-	float gamma = 2.2;
+	// tone mapping
 	color = color / (color + vec3(1.0));
+	// gamma correction
+	float gamma = 2.2;
 	color = pow(color, vec3(1.0/gamma));
 
 	out_color = vec4(color, 1.0);

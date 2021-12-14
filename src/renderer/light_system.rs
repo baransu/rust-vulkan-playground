@@ -4,7 +4,7 @@ use vulkano::{
     buffer::CpuAccessibleBuffer,
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
-    image::{view::ImageView, AttachmentImage},
+    image::{view::ImageView, AttachmentImage, StorageImage},
     pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
     render_pass::{Framebuffer, RenderPass, Subpass},
     single_pass_renderpass,
@@ -17,7 +17,6 @@ use super::{
     gbuffer::{GBuffer, GBufferTarget},
     screen_frame::{ScreenFrameQuadBuffers, ScreenQuadVertex},
     shaders::{screen_vertex_shader, CameraUniformBufferObject, LightSpaceUniformBufferObject},
-    texture::Texture,
 };
 
 pub struct LightSystem {
@@ -38,7 +37,7 @@ impl LightSystem {
         light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         gbuffer: &GBuffer,
         ssao_target: &Arc<ImageView<Arc<AttachmentImage>>>,
-        skybox: &Texture,
+        irradiance_map: &Arc<ImageView<Arc<StorageImage>>>,
     ) -> LightSystem {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
 
@@ -55,7 +54,7 @@ impl LightSystem {
             &light_space_uniform_buffer,
             &shadow_framebuffer,
             &ssao_target,
-            &skybox,
+            &irradiance_map,
         );
 
         let command_buffers =
@@ -79,7 +78,7 @@ impl LightSystem {
         light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         shadow_framebuffer: &FramebufferWithAttachment,
         ssao_target: &Arc<ImageView<Arc<AttachmentImage>>>,
-        skybox: &Texture,
+        irradiance_map: &Arc<ImageView<Arc<StorageImage>>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = light_graphics_pipeline
             .layout()
@@ -133,7 +132,7 @@ impl LightSystem {
             .unwrap();
 
         set_builder
-            .add_sampled_image(skybox.image.clone(), context.image_sampler.clone())
+            .add_sampled_image(irradiance_map.clone(), context.attachment_sampler.clone())
             .unwrap();
 
         set_builder

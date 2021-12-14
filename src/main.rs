@@ -11,6 +11,7 @@ use renderer::{
     camera::Camera,
     context::Context,
     gbuffer::GBuffer,
+    irradiance_pass::IrradiancePass,
     light_system::LightSystem,
     mesh::{GameObject, InstanceData, Material, Transform},
     scene::Scene,
@@ -52,8 +53,8 @@ const MODEL_PATHS: [&str; 3] = [
     // "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf",
 ];
 
-const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
-// const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
+// const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
+const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
 // const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
 const RENDER_SKYBOX: bool = true;
@@ -103,6 +104,8 @@ struct Application {
 
     ssao: Ssao,
     ssao_blur: SsaoBlur,
+
+    irradiance_convolution: IrradiancePass,
 }
 
 impl Application {
@@ -130,6 +133,8 @@ impl Application {
 
         let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, SKYBOX_PATH);
 
+        let irradiance_convolution = IrradiancePass::initialize(&context, &skybox.texture);
+
         let light_system = LightSystem::initialize(
             &context,
             &gbuffer_target,
@@ -139,7 +144,7 @@ impl Application {
             &scene.light_space_uniform_buffer,
             &gbuffer,
             &ssao_blur.target,
-            &skybox.texture,
+            &irradiance_convolution.attachment,
         );
 
         // let count = 10;
@@ -279,7 +284,7 @@ impl Application {
         );
 
         let shadow_framebuffer_texture_id = imgui_renderer
-            .register_texture(
+            .register_attachment_image_texture(
                 &context,
                 &shadow_framebuffer.attachment,
                 TextureUsage {
@@ -292,7 +297,7 @@ impl Application {
             .unwrap();
 
         let gbuffer_position_texture_id = imgui_renderer
-            .register_texture(
+            .register_attachment_image_texture(
                 &context,
                 &gbuffer.position_buffer,
                 TextureUsage {
@@ -307,7 +312,7 @@ impl Application {
             .unwrap();
 
         let gbuffer_normals_texture_id = imgui_renderer
-            .register_texture(
+            .register_attachment_image_texture(
                 &context,
                 &gbuffer.normals_buffer,
                 TextureUsage {
@@ -320,7 +325,7 @@ impl Application {
             .unwrap();
 
         let gbuffer_albedo_texture_id = imgui_renderer
-            .register_texture(
+            .register_attachment_image_texture(
                 &context,
                 &gbuffer.albedo_buffer,
                 TextureUsage {
@@ -333,7 +338,7 @@ impl Application {
             .unwrap();
 
         let ssao_texture_id = imgui_renderer
-            .register_texture(
+            .register_attachment_image_texture(
                 &context,
                 &ssao_blur.target,
                 TextureUsage {
@@ -382,6 +387,8 @@ impl Application {
 
             ssao,
             ssao_blur,
+
+            irradiance_convolution,
         };
 
         app.create_scene_command_buffers();
@@ -939,6 +946,43 @@ impl Application {
         let mut rotation_y = 0.0;
 
         let original_rotation = self.camera.rotation;
+
+        let (_image_index, _suboptimal, acquire_future) =
+            match acquire_next_image(self.context.swap_chain.clone(), None) {
+                Ok(r) => r,
+                Err(AcquireError::OutOfDate) => {
+                    self.recreate_swap_chain = true;
+                    return;
+                }
+                Err(err) => panic!("{:?}", err),
+            };
+
+        let mut builder = AutoCommandBufferBuilder::primary(
+            self.context.device.clone(),
+            self.context.graphics_queue.family(),
+            CommandBufferUsage::SimultaneousUse,
+        )
+        .unwrap();
+
+        builder
+            .begin_render_pass(
+                self.irradiance_convolution.framebuffer.clone(),
+                SubpassContents::SecondaryCommandBuffers,
+                vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
+            )
+            .unwrap()
+            .execute_commands(self.irradiance_convolution.command_buffer.clone())
+            .unwrap()
+            .end_render_pass()
+            .unwrap();
+
+        let command_buffer = builder.build().unwrap();
+
+        acquire_future
+            .then_execute(self.context.graphics_queue.clone(), command_buffer)
+            .unwrap()
+            .flush()
+            .unwrap();
 
         self.context
             .event_loop

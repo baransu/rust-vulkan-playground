@@ -14,7 +14,7 @@ use vulkano::{
 use super::{context::Context, shaders::CameraUniformBufferObject, texture::Texture};
 
 #[derive(Default, Debug, Clone)]
-struct SkyboxVertex {
+pub struct SkyboxVertex {
     position: [f32; 3],
 }
 
@@ -80,7 +80,7 @@ impl SkyboxPass {
         );
     }
 
-    fn create_uniform_buffer(
+    pub fn create_uniform_buffer(
         context: &Context,
     ) -> Arc<CpuAccessibleBuffer<CameraUniformBufferObject>> {
         let identity = Mat4::IDENTITY.to_cols_array_2d();
@@ -147,10 +147,8 @@ impl SkyboxPass {
         context: &Context,
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module =
-            super::shaders::skybox_vertex_shader::Shader::load(context.device.clone()).unwrap();
-        let frag_shader_module =
-            super::shaders::skybox_fragment_shader::Shader::load(context.device.clone()).unwrap();
+        let vert_shader_module = vs::Shader::load(context.device.clone()).unwrap();
+        let frag_shader_module = fs::Shader::load(context.device.clone()).unwrap();
 
         // TODO: add that to context as util or something
         let dimensions_u32 = context.swap_chain.dimensions();
@@ -212,7 +210,7 @@ impl SkyboxPass {
         Arc::new(set_builder.build().unwrap())
     }
 
-    fn create_vertex_buffer(context: &Context) -> Arc<ImmutableBuffer<[SkyboxVertex]>> {
+    pub fn create_vertex_buffer(context: &Context) -> Arc<ImmutableBuffer<[SkyboxVertex]>> {
         let (vertex_buffer, future) = ImmutableBuffer::from_iter(
             skybox_vertices().clone(),
             BufferUsage::vertex_buffer(),
@@ -273,4 +271,32 @@ fn skybox_vertices() -> [SkyboxVertex; 36] {
         SkyboxVertex::new(-1.0, -1.0, 1.0),
         SkyboxVertex::new(1.0, -1.0, 1.0),
     ]
+}
+
+pub mod vs {
+    vulkano_shaders::shader! {
+        ty: "vertex",
+        path: "src/renderer/shaders/skybox.vert"
+    }
+}
+
+pub mod fs {
+    vulkano_shaders::shader! {
+                    ty: "fragment",
+                    src: "
+	#version 450
+
+	layout (binding = 1) uniform samplerCube skybox_texture;
+	
+	layout (location = 0) in vec3 inUV;
+	
+	// it's gbuffer albedo
+	layout (location = 2) out vec4 outFragColor;
+
+	void main() {
+		vec3 uv = vec3(inUV.x, -inUV.y, inUV.z);
+		outFragColor = texture(skybox_texture, uv);
+	}
+"
+    }
 }
