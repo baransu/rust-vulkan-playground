@@ -24,18 +24,19 @@ layout(location = 0) in vec2 f_uv;
 // out
 layout(location = 0) out float out_color;
 
+// TODO: they are not working :shrug:
 void main() {
-	vec3 f_position = texture(u_position, f_uv).xyz;
-	vec3 f_normal = normalize(texture(u_normals, f_uv).rgb * 2.0 - 1.0);
+	vec3 f_position = vec4(camera.view * texture(u_position, f_uv)).xyz;
+	vec3 f_normal = normalize(texture(u_normals, f_uv).rgb);
 
 	ivec2 tex_dim = textureSize(u_position, 0);
 	ivec2 noise_dim = textureSize(noise_sampler, 0);
-	const vec2 noise_uv = vec2(float(tex_dim.x)/float(noise_dim.x), float(tex_dim.y)/(noise_dim.y)) * f_uv;  
+	const vec2 noise_uv = vec2(float(tex_dim.x)/float(noise_dim.x), float(tex_dim.y)/(noise_dim.y));  
 
-	vec3 random_vec = texture(noise_sampler, noise_uv).xyz * 2.0 - 1.0;
+	vec3 random_vec = normalize(texture(noise_sampler, f_uv * noise_uv)).xyz;
 
 	vec3 tangent   = normalize(random_vec - f_normal * dot(random_vec, f_normal));
-	vec3 bitangent = cross(f_normal, tangent);
+	vec3 bitangent = cross(tangent, f_normal);
 	mat3 TBN       = mat3(tangent, bitangent, f_normal);  
 
 	float occlusion = 0.0;
@@ -52,7 +53,7 @@ void main() {
 			offset.xyz /= offset.w;               // perspective divide
 			offset.xyz  = offset.xyz * 0.5 + 0.5; // transform to range 0.0 - 1.0  
 
-			float sample_depth = -texture(u_position, offset.xy).w; 
+			float sample_depth = vec4(camera.view * texture(u_position, offset.xy)).z; 
 			
 			float range_check = smoothstep(0.0, 1.0, SSAO_RADIUS / abs(f_position.z - sample_depth));
 			occlusion += (sample_depth >= sample_pos.z + bias ? 1.0 : 0.0) * range_check;  

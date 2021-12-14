@@ -148,6 +148,16 @@ impl Scene {
                             Texture::empty(&context)
                         });
 
+                    let metalic_roughness_texture = pbr
+                        .metallic_roughness_texture()
+                        .map(|info| {
+                            Texture::from_gltf_texture(&context, path, &info.texture(), &buffers)
+                        })
+                        .unwrap_or_else(|| {
+                            // just a fillter image to make descriptor set happy
+                            Texture::empty(&context)
+                        });
+
                     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
                     if let Some(_accessor) = primitive.get(&Semantic::Positions) {
@@ -195,6 +205,7 @@ impl Scene {
                             &camera_uniform_buffer,
                             &diffuse_texture,
                             &normal_texture,
+                            &metalic_roughness_texture,
                         );
 
                         let mesh = Mesh {
@@ -256,6 +267,7 @@ impl Scene {
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         diffuse_texture: &Texture,
         normal_texture: &Texture,
+        metalic_roughness_texture: &Texture,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -275,6 +287,13 @@ impl Scene {
 
         set_builder
             .add_sampled_image(normal_texture.image.clone(), context.image_sampler.clone())
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(
+                metalic_roughness_texture.image.clone(),
+                context.image_sampler.clone(),
+            )
             .unwrap();
 
         Arc::new(set_builder.build().unwrap())
@@ -352,26 +371,10 @@ impl Scene {
     }
 
     fn gen_point_lights() -> Vec<PointLight> {
-        let mut rng = rand::thread_rng();
-
-        let mut lights = Vec::new();
-        for _i in 0..5 {
-            let position = Vec3::new(
-                rng.gen_range(-5.0..5.0),
-                rng.gen_range(1.0..5.0),
-                rng.gen_range(-5.0..5.0),
-            );
-
-            let color = Vec3::new(
-                rng.gen_range(0.0..1.0),
-                rng.gen_range(0.0..1.0),
-                rng.gen_range(0.0..1.0),
-            );
-
-            lights.push(PointLight { position, color });
-        }
-
-        lights
+        vec![PointLight {
+            position: Vec3::new(0.0, 1.0, 0.0),
+            color: Vec3::new(1.0, 1.0, 1.0),
+        }]
     }
 
     pub fn dir_light_position() -> Vec3 {

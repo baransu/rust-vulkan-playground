@@ -55,7 +55,7 @@ impl Camera {
 impl Default for Camera {
     fn default() -> Self {
         Camera {
-            position: Vec3::new(0.0, 5.0, 0.0),
+            position: Vec3::new(0.0, 0.0, 5.0),
             rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
         }
     }

@@ -170,7 +170,17 @@ impl Application {
         //     }
         // }
 
-        // // Plane
+        // scene.add_game_object(GameObject::new(
+        //     "damaged_helmet",
+        //     Transform {
+        //         translation: Vec3::ZERO,
+        //         rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
+        //         scale: Vec3::ONE,
+        //     },
+        //     Default::default(),
+        // ));
+
+        // Plane
         // scene.add_game_object(GameObject::new(
         //     "Plane",
         //     Transform {
@@ -181,8 +191,8 @@ impl Application {
         //     Default::default(),
         // ));
 
+        // sponza
         for idx in 0..102 {
-            // Plane
             scene.add_game_object(GameObject::new(
                 format!("sponza-{}", idx).as_str(),
                 Transform {
@@ -674,6 +684,8 @@ impl Application {
         let gbuffer_normals_texture_id = self.gbuffer_normals_texture_id;
         let ssao_texture_id = self.ssao_texture_id;
 
+        let camera_pos = self.camera.position;
+
         // Here we create a window with a specific size, and force it to always have a vertical scrollbar visible
         Window::new("Debug")
             .position([0.0, 0.0], Condition::Always)
@@ -681,6 +693,10 @@ impl Application {
             .build(&ui, || {
                 let fps = 1.0 / delta_time;
                 ui.text(format!("FPS: {:.2}", fps));
+                ui.text(format!(
+                    "Camera: ({:.2}, {:.2}, {:.2})",
+                    camera_pos.x, camera_pos.y, camera_pos.z
+                ));
                 ui.separator();
 
                 Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
@@ -778,6 +794,8 @@ impl Application {
                     // normals
                     ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
                     // albedo
+                    ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
+                    // metalic_roughness
                     ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
                     // depth
                     ClearValue::Depth(1.0),

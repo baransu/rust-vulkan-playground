@@ -111,6 +111,13 @@ impl LightSystem {
             .unwrap();
 
         set_builder
+            .add_sampled_image(
+                gbuffer.metalic_roughness_buffer.clone(),
+                context.attachment_sampler.clone(),
+            )
+            .unwrap();
+
+        set_builder
             .add_sampled_image(ssao_target.clone(), context.attachment_sampler.clone())
             .unwrap();
 
@@ -248,7 +255,7 @@ impl LightSystem {
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "src/renderer/shaders/light.frag"
+        path: "src/renderer/shaders/pbr.frag"
     }
 }
 

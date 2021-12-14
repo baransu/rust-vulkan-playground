@@ -9,6 +9,7 @@ layout(binding = 0) uniform CameraUniformBufferObject {
 
 layout(binding = 1) uniform sampler2D diffuse_sampler;
 layout(binding = 2) uniform sampler2D normal_sampler;
+layout(binding = 3) uniform sampler2D metalic_roughness_sampler;
 
 // in
 layout(location = 0) in vec2 f_uv;
@@ -20,8 +21,9 @@ layout(location = 5) in vec3 f_material_specular;
 
 // out
 layout(location = 0) out vec4 out_position;
-layout(location = 1) out vec4 out_normal;
+layout(location = 1) out vec3 out_normal;
 layout(location = 2) out vec4 out_albedo;
+layout(location = 3) out vec4 out_metalic_roughness;
 
 float linear_depth(float depth) {
 	float z = depth * 2.0 - 1.0; 
@@ -31,15 +33,23 @@ float linear_depth(float depth) {
 void main() {
 	out_position = vec4(f_position, linear_depth(gl_FragCoord.z));
 
-	vec3 t = normalize(f_tangent);
-	vec3 b = normalize(cross(f_normal, f_tangent));
-	vec3 n = cross(t, b);
-
-	vec3 normal = texture(normal_sampler, f_uv).rgb;
-	normal = normalize(normal * 2.0 - 1.0);
-	normal = normal.x * t + normal.y * b + normal.z * n;
-	out_normal = vec4(normal, 1.0);
-
 	out_albedo.rgb = f_material_diffuse.rgb * texture(diffuse_sampler, f_uv).rgb;
 	out_albedo.a = f_material_specular.r;
+
+	out_metalic_roughness = texture(metalic_roughness_sampler, f_uv);
+
+	// normal
+	vec3 tangentNormal = texture(normal_sampler, f_uv).xyz * 2.0 - 1.0;
+
+	vec3 Q1  = dFdx(f_position);
+	vec3 Q2  = dFdy(f_position);
+	vec2 st1 = dFdx(f_uv);
+	vec2 st2 = dFdy(f_uv);
+
+	vec3 N   = normalize(f_normal);
+	vec3 T  = normalize(Q1*st2.t - Q2*st1.t);
+	vec3 B  = -normalize(cross(N, T));
+	mat3 TBN = mat3(T, B, N);
+
+	out_normal = normalize(TBN * tangentNormal);
 }

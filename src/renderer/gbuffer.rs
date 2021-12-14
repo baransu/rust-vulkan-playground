@@ -18,6 +18,7 @@ pub struct GBuffer {
     pub normals_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
     pub albedo_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
     pub depth_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
+    pub metalic_roughness_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
 
     pub render_pass: Arc<RenderPass>,
     pub framebuffer: Arc<FramebufferT>,
@@ -29,6 +30,7 @@ impl GBuffer {
         let position_buffer = Self::create_position_buffer(context, &target);
         let normals_buffer = Self::create_normals_buffer(context, &target);
         let albedo_buffer = Self::create_albedo_buffer(context, &target);
+        let metalic_roughness_buffer = Self::create_metalic_roughness_buffer(context, &target);
         let depth_buffer = Self::create_depth_buffer(context, &target);
 
         let render_pass = Self::create_render_pass(context);
@@ -37,6 +39,7 @@ impl GBuffer {
             &position_buffer,
             &normals_buffer,
             &albedo_buffer,
+            &metalic_roughness_buffer,
             &depth_buffer,
         );
 
@@ -47,6 +50,7 @@ impl GBuffer {
             normals_buffer,
             albedo_buffer,
             depth_buffer,
+            metalic_roughness_buffer,
 
             render_pass,
             framebuffer,
@@ -59,6 +63,7 @@ impl GBuffer {
         position_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
         normals_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
         albedo_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
+        metalic_roughness_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
         depth_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> Arc<FramebufferT> {
         let framebuffer = Framebuffer::start(render_pass.clone())
@@ -67,6 +72,8 @@ impl GBuffer {
             .add(normals_buffer.clone())
             .unwrap()
             .add(albedo_buffer.clone())
+            .unwrap()
+            .add(metalic_roughness_buffer.clone())
             .unwrap()
             .add(depth_buffer.clone())
             .unwrap()
@@ -98,6 +105,12 @@ impl GBuffer {
                                 format: Format::R16G16B16A16_SFLOAT,
                                 samples: 1,
                             },
+                            metalic_roughness: {
+                                load: Clear,
+                                store: Store,
+                                format: Format::R16G16B16A16_SFLOAT,
+                                samples: 1,
+                            },
                             depth: {
                                 load: Clear,
                                 store: DontCare,
@@ -106,7 +119,7 @@ impl GBuffer {
                             }
                         },
                 pass: {
-                    color: [position, normals, albedo],
+                    color: [position, normals, albedo, metalic_roughness],
                     depth_stencil: {depth}
                 }
             )
@@ -190,6 +203,24 @@ impl GBuffer {
     }
 
     fn create_albedo_buffer(
+        context: &Context,
+        target: &GBufferTarget,
+    ) -> Arc<ImageView<Arc<AttachmentImage>>> {
+        let (usage, dimensions) = Self::usage_dimensions(target);
+
+        ImageView::new(
+            AttachmentImage::with_usage(
+                context.graphics_queue.device().clone(),
+                dimensions,
+                Format::R16G16B16A16_SFLOAT,
+                usage,
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    }
+
+    fn create_metalic_roughness_buffer(
         context: &Context,
         target: &GBufferTarget,
     ) -> Arc<ImageView<Arc<AttachmentImage>>> {

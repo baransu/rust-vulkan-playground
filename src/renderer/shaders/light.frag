@@ -31,15 +31,16 @@ layout(binding = 0) uniform CameraUniformBufferObject {
 layout(binding = 1) uniform sampler2D u_position;
 layout(binding = 2) uniform sampler2D u_normals;
 layout(binding = 3) uniform sampler2D u_albedo;
-layout(binding = 4) uniform sampler2D ssao_sampler;
-layout(binding = 5) uniform sampler2D shadow_sampler;
+layout(binding = 4) uniform sampler2D u_metalic_roughness;
+layout(binding = 5) uniform sampler2D ssao_sampler;
+layout(binding = 6) uniform sampler2D shadow_sampler;
 
 // duplicated definition in model.vert and shaders.rs
-layout(binding = 6)	uniform LightSpaceUniformBufferObject {
+layout(binding = 7)	uniform LightSpaceUniformBufferObject {
 	mat4 matrix;
 } light_space;
 
-layout(binding = 7) uniform LightUniformBufferObject { 
+layout(binding = 8) uniform LightUniformBufferObject { 
 	PointLight point_lights[MAX_POINT_LIGHTS];
 	DirectionalLight dir_light;
 	int point_lights_count;
@@ -50,10 +51,10 @@ layout(location = 0) in vec2 f_uv;
 layout(location = 0) out vec4 out_color;
 
 float shadow_calculation_pcf(vec4 f_position_light_space, vec3 normal, vec3 light_dir) {
-	// // perform perspective divide
+	// perform perspective divide
 	vec3 proj_coords = f_position_light_space.xyz / f_position_light_space.w;
 
-	// // transform to [0,1] range
+	// transform to [0,1] range
 	proj_coords = proj_coords * 0.5 + 0.5;
 
 	// get depth of current fragment from light's perspective
@@ -83,7 +84,7 @@ float shadow_calculation_pcf(vec4 f_position_light_space, vec3 normal, vec3 ligh
 
 vec3 calc_dir_light(DirectionalLight light, vec3 f_normal, vec3 f_position, float f_specular, vec3 diffuse, vec4 f_position_light_space) {
 	vec3 normal = f_normal;
-	vec3 position = (inverse(camera.view) * vec4(f_position, 1.0)).xyz;
+	vec3 position = vec4(f_position, 1.0).xyz;
 	
 	vec3 view_dir = normalize(-position);
 
@@ -104,7 +105,7 @@ vec3 calc_dir_light(DirectionalLight light, vec3 f_normal, vec3 f_position, floa
 
 vec3 calc_point_light(PointLight light, vec3 f_normal, vec3 f_position, float f_specular, vec3 diffuse) {
 	vec3 normal = f_normal;
-	vec3 position = (inverse(camera.view) * vec4(f_position, 1.0)).xyz;
+	vec3 position = vec4(f_position, 1.0).xyz;
 
 	vec3 view_dir = normalize(-position);
 
@@ -130,7 +131,7 @@ vec3 calc_point_light(PointLight light, vec3 f_normal, vec3 f_position, float f_
 void main() {
 	vec3 f_position = texture(u_position, f_uv).xyz;
 	vec3 f_normal = texture(u_normals, f_uv).rgb;
-	vec4 f_position_light_space = light_space.matrix * inverse(camera.view) * vec4(f_position, 1.0);
+	vec4 f_position_light_space = light_space.matrix * vec4(f_position, 1.0);
 
 	float ambient_occlusion = texture(ssao_sampler, f_uv).r;
 	vec3 diffuse = texture(u_albedo, f_uv).rgb;

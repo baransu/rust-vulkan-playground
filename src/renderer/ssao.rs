@@ -271,8 +271,8 @@ impl Ssao {
             scale = lerp(0.1, 1.0, scale * scale);
 
             let sample = Vec3::new(
-                rng.gen_range(0.0..1.0),
-                rng.gen_range(0.0..1.0),
+                rng.gen_range(0.0..1.0) * 2.0 - 1.0,
+                rng.gen_range(0.0..1.0) * 2.0 - 1.0,
                 rng.gen_range(0.0..1.0),
             )
             .normalize()
@@ -302,12 +302,10 @@ impl Ssao {
         let mut rng = rand::thread_rng();
         let mut data = Vec::with_capacity(4 * 4 * 3);
 
-        for _ in 0..4 {
-            for _ in 0..4 {
-                data.push(rng.gen_range(0.0..1.0) * 2.0 - 1.0);
-                data.push(rng.gen_range(0.0..1.0) * 2.0 - 1.0);
-                data.push(0.0);
-            }
+        for _ in 0..16 {
+            data.push(rng.gen_range(0.0..1.0) * 2.0 - 1.0);
+            data.push(rng.gen_range(0.0..1.0) * 2.0 - 1.0);
+            data.push(0.0);
         }
 
         let (image, future) = ImmutableImage::from_iter(
@@ -318,7 +316,7 @@ impl Ssao {
                 array_layers: 1,
             },
             MipmapsCount::One,
-            Format::R16G16B16A16_SFLOAT,
+            Format::R32G32B32A32_SFLOAT,
             context.graphics_queue.clone(),
         )
         .unwrap();
