@@ -177,9 +177,6 @@ impl SsaoBlur {
         let dimensions = context.swap_chain.dimensions();
 
         let usage = ImageUsage {
-            // transient_attachment: true,
-            // input_attachment: true,
-            // NOTE: for debugging
             sampled: true,
             ..ImageUsage::none()
         };

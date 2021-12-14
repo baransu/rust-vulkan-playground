@@ -137,7 +137,7 @@ void main() {
 	float f_specular = texture(u_albedo, f_uv).a;
 
 	// phase 1: ambient occlusion
-	vec3 ambient = vec3(diffuse * ambient_occlusion * 0.3);
+	vec3 ambient = diffuse * 0.3 * ambient_occlusion;
 
 	vec3 result = ambient;
 

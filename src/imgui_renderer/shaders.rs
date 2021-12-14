@@ -37,6 +37,7 @@ pub mod fs {
 				bool depth;
 				bool normal;
 				bool position;
+				bool rgb;
 			} usage;
 
 			layout(location = 0) in vec2 f_uv;
@@ -54,6 +55,8 @@ pub mod fs {
 				} else if(usage.position) {
 					vec3 rgb_normal = texture(tex, f_uv).rgb * 0.5 + 0.5;
 					Target0 = vec4(rgb_normal, 1.0);
+				} else if(usage.rgb) {
+					Target0 = vec4(texture(tex, f_uv).rgb, 1.0);
 				} else {
 					Target0 = f_color * texture(tex, f_uv);
 				}

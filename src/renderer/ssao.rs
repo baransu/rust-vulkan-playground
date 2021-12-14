@@ -199,9 +199,6 @@ impl Ssao {
         let dimensions = context.swap_chain.dimensions();
 
         let usage = ImageUsage {
-            // transient_attachment: true,
-            // input_attachment: true,
-            // NOTE: for debugging
             sampled: true,
             ..ImageUsage::none()
         };
@@ -241,19 +238,19 @@ impl Ssao {
         set_builder
             .add_sampled_image(
                 gbuffer.position_buffer.clone(),
-                context.image_sampler.clone(),
+                context.attachment_sampler.clone(),
             )
             .unwrap();
 
         set_builder
             .add_sampled_image(
                 gbuffer.normals_buffer.clone(),
-                context.image_sampler.clone(),
+                context.attachment_sampler.clone(),
             )
             .unwrap();
 
         set_builder
-            .add_sampled_image(noise_texture.clone(), context.image_sampler.clone())
+            .add_sampled_image(noise_texture.clone(), context.attachment_sampler.clone())
             .unwrap();
 
         set_builder.add_buffer(ssao_unfirm_buffer.clone()).unwrap();

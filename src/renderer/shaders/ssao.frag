@@ -60,5 +60,5 @@ void main() {
 
 	occlusion = 1.0 - (occlusion / SAMPLES_SIZE);
 
-	out_color = pow(occlusion, 2.0);
+	out_color = pow(occlusion, 1.0);
 }

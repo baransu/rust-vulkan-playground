@@ -275,6 +275,7 @@ impl Application {
                     depth: 1,
                     normal: 0,
                     position: 0,
+                    rgb: 0,
                 },
             )
             .unwrap();
@@ -289,6 +290,7 @@ impl Application {
                     // so we need to convert them to [0,1]
                     normal: 0,
                     position: 1,
+                    rgb: 0,
                 },
             )
             .unwrap();
@@ -301,6 +303,7 @@ impl Application {
                     depth: 0,
                     normal: 1,
                     position: 0,
+                    rgb: 0,
                 },
             )
             .unwrap();
@@ -313,6 +316,7 @@ impl Application {
                     depth: 0,
                     normal: 0,
                     position: 0,
+                    rgb: 1,
                 },
             )
             .unwrap();
@@ -325,6 +329,7 @@ impl Application {
                     depth: 1,
                     normal: 0,
                     position: 0,
+                    rgb: 0,
                 },
             )
             .unwrap();
