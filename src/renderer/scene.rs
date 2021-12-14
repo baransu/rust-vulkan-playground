@@ -357,15 +357,15 @@ impl Scene {
         let mut lights = Vec::new();
         for _i in 0..5 {
             let position = Vec3::new(
-                rng.gen_range(-10.0..10.0),
-                rng.gen_range(1.0..10.0),
-                rng.gen_range(-10.0..10.0),
+                rng.gen_range(-5.0..5.0),
+                rng.gen_range(1.0..5.0),
+                rng.gen_range(-5.0..5.0),
             );
 
             let color = Vec3::new(
-                rng.gen_range(0.0..0.75),
-                rng.gen_range(0.0..0.75),
-                rng.gen_range(0.0..0.75),
+                rng.gen_range(0.0..1.0),
+                rng.gen_range(0.0..1.0),
+                rng.gen_range(0.0..1.0),
             );
 
             lights.push(PointLight { position, color });

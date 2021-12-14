@@ -81,48 +81,50 @@ float shadow_calculation_pcf(vec4 f_position_light_space, vec3 normal, vec3 ligh
 	return shadow;
 }
 
-vec3 calc_dir_light(DirectionalLight light, vec3 normal, vec3 view_dir, float f_specular, vec4 f_position_light_space) {
+vec3 calc_dir_light(DirectionalLight light, vec3 f_normal, vec3 f_position, float f_specular, vec3 diffuse, vec4 f_position_light_space) {
+	vec3 normal = f_normal;
+	vec3 position = (inverse(camera.view) * vec4(f_position, 1.0)).xyz;
+	
+	vec3 view_dir = normalize(-position);
+
 	vec3 light_dir = normalize(-light.direction);
 	
 	// diffuse shading
-	float diff = max(dot(normal, light_dir), 0.0);
+	vec3 diff = max(dot(normal, light_dir), 0.0) * light.diffuse * diffuse;
 	
 	// specular shading
-	vec3 reflect_dir = reflect(-light_dir, normal);
-	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+	vec3 halfway_dir = normalize(light_dir + view_dir);
+	vec3 spec = pow(max(dot(normal, halfway_dir), 0.0), 32) * light.specular * f_specular;
 
-	// combine results
-	vec3 diffuse  = light.diffuse * diff;
-	vec3 specular = light.specular * spec * f_specular;
+	// shadows
+	float shadow = shadow_calculation_pcf(f_position_light_space, normal, light_dir);       
 
-	// float shadow = shadow_calculation_pcf(f_position_light_space, normal, light_dir);       
-
-	// return (1.0 - shadow) * (diffuse + specular);   
-	return (diffuse + specular);   
+	return (1.0 - shadow) * (diff + spec);   
 }
 
-vec3 calc_point_light(PointLight light, vec3 normal, vec3 f_position, float f_specular, vec3 view_dir) {
-	vec3 light_dir = normalize(light.position - f_position);
+vec3 calc_point_light(PointLight light, vec3 f_normal, vec3 f_position, float f_specular, vec3 diffuse) {
+	vec3 normal = f_normal;
+	vec3 position = (inverse(camera.view) * vec4(f_position, 1.0)).xyz;
+
+	vec3 view_dir = normalize(-position);
+
+	vec3 light_dir = normalize(light.position - position);
 
 	// diffuse shading
-	float diff = clamp(dot(normal, light_dir), 0, 1);
+	vec3 diff = max(dot(normal, light_dir), 0.0) * light.diffuse * diffuse;
 
 	// specular shading
 	vec3 halfway_dir = normalize(light_dir + view_dir);
-	float spec = pow(max(dot(normal, halfway_dir), 0.0), 32);
+	vec3 specular = pow(max(dot(normal, halfway_dir), 0.0), 32) * light.specular * f_specular;
 
 	// attenuation
-	float distance = length(light.position - f_position);
-	float attenuation = 1.0 / (light.constant_ + light.linear * distance + light.quadratic * (distance * distance));    
+	float dist = length(light.position - position);
+	float attenuation = 1.0 / (light.constant_ + light.linear * dist + light.quadratic * dist * dist);    
 
-	// combine results
-	vec3 diffuse = light.diffuse * diff;
-	vec3 specular = light.specular * spec * f_specular;
-
-	diffuse *= attenuation;
+	diff *= attenuation;
 	specular *= attenuation;
 
-	return diffuse + specular;   
+	return diff + specular;   
 }
 
 void main() {
@@ -130,26 +132,24 @@ void main() {
 	vec3 f_normal = texture(u_normals, f_uv).rgb;
 	vec4 f_position_light_space = light_space.matrix * inverse(camera.view) * vec4(f_position, 1.0);
 
+	float ambient_occlusion = texture(ssao_sampler, f_uv).r;
 	vec3 diffuse = texture(u_albedo, f_uv).rgb;
 	float f_specular = texture(u_albedo, f_uv).a;
 
-	vec3 view_dir = normalize(-f_position);
-
 	// phase 1: ambient occlusion
-	float ambient_occlusion = texture(ssao_sampler, f_uv).r;
-	vec3 ambient = vec3(0.3 * ambient_occlusion);
+	vec3 ambient = vec3(diffuse * ambient_occlusion * 0.3);
 
 	vec3 result = ambient;
 
 	// phase 2: directional light with shadows
-	result += calc_dir_light(light.dir_light, f_normal, view_dir, f_specular, f_position_light_space);
+	result += calc_dir_light(light.dir_light, f_normal, f_position, f_specular, diffuse, f_position_light_space);
 
 	// phase 3: point lights
 	for(int i = 0; i < light.point_lights_count; i++)
-    result += calc_point_light(light.point_lights[i], f_normal, f_position, f_specular, view_dir);
+    result += calc_point_light(light.point_lights[i], f_normal, f_position, f_specular, diffuse);
 
 	// phase 4: texture
-	vec4 color = vec4(result * diffuse,  1.0);
+	vec4 color = vec4(result, 1.0);
 
 	// phase 5: exposure tone mapping
 	float exposure = 1.0;
