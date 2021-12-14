@@ -1,7 +1,7 @@
 pub mod imgui_renderer;
 pub mod renderer;
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc, time::Instant, vec};
 
 use glam::{EulerRot, Quat, Vec3};
 use imgui::*;
@@ -16,6 +16,8 @@ use renderer::{
     scene::Scene,
     screen_frame::ScreenFrame,
     skybox_pass::SkyboxPass,
+    ssao::Ssao,
+    ssao_blur::SsaoBlur,
     vertex::Vertex,
 };
 use vulkano::{
@@ -69,8 +71,7 @@ struct Application {
 
     gbuffer: GBuffer,
     scene_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
-    ambient_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
-
+    // ambient_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
     light_system: LightSystem,
 
     shadow_graphics_pipeline: Arc<GraphicsPipeline>,
@@ -98,6 +99,10 @@ struct Application {
     gbuffer_position_texture_id: TextureId,
     gbuffer_normals_texture_id: TextureId,
     gbuffer_albedo_texture_id: TextureId,
+    ssao_texture_id: TextureId,
+
+    ssao: Ssao,
+    ssao_blur: SsaoBlur,
 }
 
 impl Application {
@@ -113,16 +118,27 @@ impl Application {
         let gbuffer_target = Self::create_gbuffer_target(&context);
         let gbuffer = GBuffer::initialize(&context, &gbuffer_target);
 
-        let light_system = LightSystem::initialize(&context, gbuffer.lighting_subpass.clone());
-
         let mut scene = Scene::initialize(
             &context,
             MODEL_PATHS.to_vec(),
             &gbuffer.pipeline,
             &shadow_graphics_pipeline,
-            &light_system.pipeline,
             &shadow_framebuffer,
             &gbuffer,
+        );
+
+        let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
+        let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);
+
+        let light_system = LightSystem::initialize(
+            &context,
+            &gbuffer_target,
+            &shadow_framebuffer,
+            &scene.camera_uniform_buffer,
+            &scene.light_uniform_buffer,
+            &scene.light_space_uniform_buffer,
+            &gbuffer,
+            &ssao_blur.target,
         );
 
         let count = 10;
@@ -290,6 +306,18 @@ impl Application {
             )
             .unwrap();
 
+        let ssao_texture_id = imgui_renderer
+            .register_texture(
+                &context,
+                &ssao_blur.target,
+                TextureUsage {
+                    depth: 1,
+                    normal: 0,
+                    position: 0,
+                },
+            )
+            .unwrap();
+
         let mut app = Self {
             context,
 
@@ -302,11 +330,8 @@ impl Application {
             platform,
 
             gbuffer,
-            // scene_graphics_pipeline,
-            // scene_framebuffers,
-            scene_command_buffers: vec![],
-            ambient_command_buffers: vec![],
 
+            scene_command_buffers: vec![],
             light_system,
 
             shadow_framebuffer,
@@ -326,11 +351,14 @@ impl Application {
             gbuffer_albedo_texture_id,
             gbuffer_position_texture_id,
             gbuffer_normals_texture_id,
+            ssao_texture_id,
+
+            ssao,
+            ssao_blur,
         };
 
         app.create_scene_command_buffers();
         app.create_shadow_command_buffers();
-        app.create_ambient_command_buffers();
 
         app
     }
@@ -709,61 +737,117 @@ impl Application {
         self.scene_command_buffers = command_buffers;
     }
 
-    fn create_ambient_command_buffers(&mut self) {
-        let dimensions_u32 = self.context.swap_chain.dimensions();
-        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
+    // fn create_ambient_command_buffers(&mut self) {
+    //     let dimensions_u32 = self.context.swap_chain.dimensions();
+    //     let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions,
-            depth_range: 0.0..1.0,
-        };
+    //     let viewport = Viewport {
+    //         origin: [0.0, 0.0],
+    //         dimensions,
+    //         depth_range: 0.0..1.0,
+    //     };
 
-        let instance_data_buffers = self.create_instance_data_buffers();
+    //     let instance_data_buffers = self.create_instance_data_buffers();
 
-        let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
+    //     let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
 
-        for _i in 0..self.context.swap_chain.num_images() {
-            let mut builder = AutoCommandBufferBuilder::secondary_graphics(
-                self.context.device.clone(),
-                self.context.graphics_queue.family(),
-                CommandBufferUsage::SimultaneousUse,
-                self.light_system.pipeline.subpass().clone(),
-            )
-            .unwrap();
+    //     for _i in 0..self.context.swap_chain.num_images() {
+    //         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
+    //             self.context.device.clone(),
+    //             self.context.graphics_queue.family(),
+    //             CommandBufferUsage::SimultaneousUse,
+    //             self.light_system.pipeline.subpass().clone(),
+    //         )
+    //         .unwrap();
 
-            builder.set_viewport(0, [viewport.clone()]);
+    //         builder.set_viewport(0, [viewport.clone()]);
 
-            builder.bind_pipeline_graphics(self.light_system.pipeline.clone());
+    //         builder.bind_pipeline_graphics(self.light_system.pipeline.clone());
 
-            builder.bind_descriptor_sets(
-                PipelineBindPoint::Graphics,
-                self.light_system.pipeline.layout().clone(),
-                0,
-                self.scene.light_descriptor_set.clone(),
-            );
+    //         builder.bind_descriptor_sets(
+    //             PipelineBindPoint::Graphics,
+    //             self.light_system.pipeline.layout().clone(),
+    //             0,
+    //             self.scene.light_descriptor_set.clone(),
+    //         );
 
-            for mesh in self.scene.meshes.values() {
-                // if there is no instance_data_buffer it means we have 0 instances for this mesh
-                if let Some(instance_data_buffer) = instance_data_buffers.get(&mesh.id) {
-                    builder
-                        .bind_vertex_buffers(
-                            0,
-                            (mesh.vertex_buffer.clone(), instance_data_buffer.clone()),
-                        )
-                        .bind_index_buffer(mesh.index_buffer.clone())
-                        .draw_indexed(mesh.index_count, instance_data_buffer.len() as u32, 0, 0, 0)
-                        .unwrap();
-                }
-            }
+    //         for mesh in self.scene.meshes.values() {
+    //             // if there is no instance_data_buffer it means we have 0 instances for this mesh
+    //             if let Some(instance_data_buffer) = instance_data_buffers.get(&mesh.id) {
+    //                 builder
+    //                     .bind_vertex_buffers(
+    //                         0,
+    //                         (mesh.vertex_buffer.clone(), instance_data_buffer.clone()),
+    //                     )
+    //                     .bind_index_buffer(mesh.index_buffer.clone())
+    //                     .draw_indexed(mesh.index_count, instance_data_buffer.len() as u32, 0, 0, 0)
+    //                     .unwrap();
+    //             }
+    //         }
 
-            let command_buffer = Arc::new(builder.build().unwrap());
+    //         let command_buffer = Arc::new(builder.build().unwrap());
 
-            command_buffers.push(command_buffer);
-        }
+    //         command_buffers.push(command_buffer);
+    //     }
 
-        self.ambient_command_buffers = command_buffers;
-    }
+    //     self.ambient_command_buffers = command_buffers;
+    // }
+
+    // fn create_ssao_command_buffers(&mut self) {
+    //     let dimensions_u32 = self.context.swap_chain.dimensions();
+    //     let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
+
+    //     let viewport = Viewport {
+    //         origin: [0.0, 0.0],
+    //         dimensions,
+    //         depth_range: 0.0..1.0,
+    //     };
+
+    //     let instance_data_buffers = self.create_instance_data_buffers();
+
+    //     let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
+
+    //     for _i in 0..self.context.swap_chain.num_images() {
+    //         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
+    //             self.context.device.clone(),
+    //             self.context.graphics_queue.family(),
+    //             CommandBufferUsage::SimultaneousUse,
+    //             self.ssao.pipeline.subpass().clone(),
+    //         )
+    //         .unwrap();
+
+    //         builder.set_viewport(0, [viewport.clone()]);
+
+    //         builder.bind_pipeline_graphics(self.ssao.pipeline.clone());
+
+    //         builder.bind_descriptor_sets(
+    //             PipelineBindPoint::Graphics,
+    //             self.ssao.pipeline.layout().clone(),
+    //             0,
+    //             self.ssao.descriptor_set.clone(),
+    //         );
+
+    //         for mesh in self.scene.meshes.values() {
+    //             // if there is no instance_data_buffer it means we have 0 instances for this mesh
+    //             if let Some(instance_data_buffer) = instance_data_buffers.get(&mesh.id) {
+    //                 builder
+    //                     .bind_vertex_buffers(
+    //                         0,
+    //                         (mesh.vertex_buffer.clone(), instance_data_buffer.clone()),
+    //                     )
+    //                     .bind_index_buffer(mesh.index_buffer.clone())
+    //                     .draw_indexed(mesh.index_count, instance_data_buffer.len() as u32, 0, 0, 0)
+    //                     .unwrap();
+    //             }
+    //         }
+
+    //         let command_buffer = Arc::new(builder.build().unwrap());
+
+    //         command_buffers.push(command_buffer);
+    //     }
+
+    //     self.ssao_command_buffers = command_buffers;
+    // }
 
     fn create_shadow_command_buffers(&mut self) {
         let viewport = Viewport {
@@ -834,6 +918,7 @@ impl Application {
         let gbuffer_position_texture_id = self.gbuffer_position_texture_id;
         let gbuffer_albedo_texture_id = self.gbuffer_albedo_texture_id;
         let gbuffer_normals_texture_id = self.gbuffer_normals_texture_id;
+        let ssao_texture_id = self.ssao_texture_id;
 
         // Here we create a window with a specific size, and force it to always have a vertical scrollbar visible
         Window::new("Debug")
@@ -843,6 +928,9 @@ impl Application {
                 let fps = 1.0 / delta_time;
                 ui.text(format!("FPS: {:.2}", fps));
                 ui.separator();
+
+                Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("SSAO with Blur");
 
                 Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("Directional light shadow map");
@@ -889,7 +977,7 @@ impl Application {
 
         let command_buffer = self.screen_frame.command_buffers[image_index].clone();
 
-        let light_command_buffer = self.ambient_command_buffers[image_index].clone();
+        let light_command_buffer = self.light_system.command_buffers[image_index].clone();
 
         let mut builder = AutoCommandBufferBuilder::primary(
             self.context.device.clone(),
@@ -931,8 +1019,6 @@ impl Application {
                 offscreen_framebuffer.clone(),
                 SubpassContents::SecondaryCommandBuffers,
                 vec![
-                    // color
-                    ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
                     // position
                     ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
                     // normals
@@ -952,9 +1038,41 @@ impl Application {
         }
 
         builder
-            .execute_commands(offscreen_command_buffer.clone())
+            .execute_commands(offscreen_command_buffer)
             .unwrap()
-            .next_subpass(SubpassContents::SecondaryCommandBuffers)
+            .end_render_pass()
+            .unwrap();
+
+        builder
+            .begin_render_pass(
+                self.ssao.framebuffer.clone(),
+                SubpassContents::SecondaryCommandBuffers,
+                vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
+            )
+            .unwrap()
+            .execute_commands(self.ssao.command_buffers[image_index].clone())
+            .unwrap()
+            .end_render_pass()
+            .unwrap();
+
+        builder
+            .begin_render_pass(
+                self.ssao_blur.framebuffer.clone(),
+                SubpassContents::SecondaryCommandBuffers,
+                vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
+            )
+            .unwrap()
+            .execute_commands(self.ssao_blur.command_buffers[image_index].clone())
+            .unwrap()
+            .end_render_pass()
+            .unwrap();
+
+        builder
+            .begin_render_pass(
+                self.light_system.framebuffer.clone(),
+                SubpassContents::SecondaryCommandBuffers,
+                vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
+            )
             .unwrap()
             .execute_commands(light_command_buffer.clone())
             .unwrap()
@@ -967,7 +1085,7 @@ impl Application {
             .begin_render_pass(
                 framebuffer.clone(),
                 SubpassContents::SecondaryCommandBuffers,
-                vec![[0.0, 0.0, 0.0, 1.0].into()],
+                vec![ClearValue::Float([0.0, 0.0, 0.0, 1.0])],
             )
             .unwrap()
             .execute_commands(command_buffer)

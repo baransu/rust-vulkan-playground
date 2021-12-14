@@ -28,9 +28,11 @@ layout(location = 4) out vec3 f_material_diffuse;
 layout(location = 5) out vec3 f_material_specular;
 
 void main() {
-	f_position = vec3(model * vec4(position, 1.0));
+	vec4 view_pos = camera.view * model * vec4(position, 1.0);
 
-	gl_Position = camera.proj * camera.view * vec4(f_position, 1.0);
+	f_position = view_pos.xyz;
+
+	gl_Position = camera.proj * view_pos;
 
 	f_uv = uv;
 

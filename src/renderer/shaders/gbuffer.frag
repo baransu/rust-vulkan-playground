@@ -33,6 +33,6 @@ void main() {
 	out_normal = normalize(texture(normal_sampler, f_uv).rgb);
 	out_normal = out_normal.x * t + out_normal.y * b + out_normal.z * n;
 
-	out_albedo.rgb = f_material_diffuse * texture(diffuse_sampler, f_uv).rgb;
+	out_albedo.rgb = f_material_diffuse.rgb * texture(diffuse_sampler, f_uv).rgb;
 	out_albedo.a = f_material_specular.r;
 }

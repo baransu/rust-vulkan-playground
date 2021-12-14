@@ -63,6 +63,7 @@ pub struct Context {
     pub depth_format: Format,
     pub sample_count: SampleCount,
     pub image_sampler: Arc<Sampler>,
+    pub attachment_sampler: Arc<Sampler>,
     pub depth_sampler: Arc<Sampler>,
 }
 
@@ -92,6 +93,7 @@ impl Context {
 
         let image_sampler = Self::create_image_sampler(&device);
         let depth_sampler = Self::create_depth_sampler(&device);
+        let attachment_sampler = Self::create_attachment_sampler(&device);
 
         Context {
             instance,
@@ -109,6 +111,7 @@ impl Context {
             sample_count: Self::find_sample_count(),
             image_sampler,
             depth_sampler,
+            attachment_sampler,
         }
     }
 
@@ -424,6 +427,23 @@ impl Context {
             0.0,
             // if something will be super small we set 1_000 so it adjustes automatically
             1_000.0,
+        )
+        .unwrap()
+    }
+
+    fn create_attachment_sampler(device: &Arc<Device>) -> Arc<Sampler> {
+        Sampler::new(
+            device.clone(),
+            Filter::Nearest,
+            Filter::Nearest,
+            MipmapMode::Linear,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
         )
         .unwrap()
     }

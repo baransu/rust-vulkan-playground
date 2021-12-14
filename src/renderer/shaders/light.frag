@@ -28,30 +28,32 @@ layout(binding = 0) uniform CameraUniformBufferObject {
 } camera;
 
 // The `color_input` parameter of the `draw` method.
-layout(input_attachment_index = 0, set = 0, binding = 1) uniform subpassInput u_position;
-layout(input_attachment_index = 0, set = 0, binding = 2) uniform subpassInput u_normals;
-layout(input_attachment_index = 0, set = 0, binding = 3) uniform subpassInput u_albedo;
-
-layout(binding = 4) uniform sampler2D shadow_sampler;
+layout(binding = 1) uniform sampler2D u_position;
+layout(binding = 2) uniform sampler2D u_normals;
+layout(binding = 3) uniform sampler2D u_albedo;
+layout(binding = 4) uniform sampler2D ssao_sampler;
+layout(binding = 5) uniform sampler2D shadow_sampler;
 
 // duplicated definition in model.vert and shaders.rs
-layout(binding = 5) uniform LightSpaceUniformBufferObject {
+layout(binding = 6)	uniform LightSpaceUniformBufferObject {
 	mat4 matrix;
 } light_space;
 
-layout(binding = 6) uniform LightUniformBufferObject { 
+layout(binding = 7) uniform LightUniformBufferObject { 
 	PointLight point_lights[MAX_POINT_LIGHTS];
 	DirectionalLight dir_light;
 	int point_lights_count;
 } light;
 
+layout(location = 0) in vec2 f_uv;
+
 layout(location = 0) out vec4 out_color;
 
 float shadow_calculation_pcf(vec4 f_position_light_space, vec3 normal, vec3 light_dir) {
-	// perform perspective divide
+	// // perform perspective divide
 	vec3 proj_coords = f_position_light_space.xyz / f_position_light_space.w;
 
-	// transform to [0,1] range
+	// // transform to [0,1] range
 	proj_coords = proj_coords * 0.5 + 0.5;
 
 	// get depth of current fragment from light's perspective
@@ -90,13 +92,12 @@ vec3 calc_dir_light(DirectionalLight light, vec3 normal, vec3 view_dir, float f_
 	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
 
 	// combine results
-	vec3 ambient  = light.ambient;
 	vec3 diffuse  = light.diffuse * diff;
 	vec3 specular = light.specular * spec * f_specular;
 
 	float shadow = shadow_calculation_pcf(f_position_light_space, normal, light_dir);       
 
-	return ambient + (1.0 - shadow) * (diffuse + specular);   
+	return (1.0 - shadow) * (diffuse + specular);   
 }
 
 vec3 calc_point_light(PointLight light, vec3 normal, vec3 f_position, float f_specular, vec3 view_dir) {
@@ -114,40 +115,46 @@ vec3 calc_point_light(PointLight light, vec3 normal, vec3 f_position, float f_sp
 	float attenuation = 1.0 / (light.constant_ + light.linear * distance + light.quadratic * (distance * distance));    
 
 	// combine results
-	vec3 ambient = light.ambient;
 	vec3 diffuse = light.diffuse * diff;
 	vec3 specular = light.specular * spec * f_specular;
 
-	ambient *= attenuation;
 	diffuse *= attenuation;
 	specular *= attenuation;
 
-	return ambient + diffuse + specular;   
+	return diffuse + specular;   
 }
 
 void main() {
-	vec3 f_position = subpassLoad(u_position).xyz;
-	vec3 f_normal = subpassLoad(u_normals).rgb;
-	vec4 f_position_light_space = light_space.matrix * vec4(f_position, 1.0);
-	float f_specular = subpassLoad(u_albedo).a;
+	vec3 f_position = texture(u_position, f_uv).xyz;
+	vec3 f_normal = texture(u_normals, f_uv).rgb;
+	vec4 f_position_light_space = light_space.matrix * inverse(camera.view) * vec4(f_position, 1.0);
+
+	vec3 diffuse = texture(u_albedo, f_uv).rgb;
+	float f_specular = texture(u_albedo, f_uv).a;
 
 	vec3 view_dir = normalize(camera.position - f_position);
 
-	// phase 1: directional light with shadows
-	vec3 result = calc_dir_light(light.dir_light, f_normal, view_dir, f_specular, f_position_light_space);
+	// phase 1: ambient occlusion
+	float ambient_occlusion = texture(ssao_sampler, f_uv).r;
+	vec3 ambient = vec3(0.3 * diffuse * ambient_occlusion);
 
-	// phase 2: point lights
+	vec3 result = ambient;
+
+	// phase 2: directional light with shadows
+	result = calc_dir_light(light.dir_light, f_normal, view_dir, f_specular, f_position_light_space);
+
+	// phase 3: point lights
 	for(int i = 0; i < light.point_lights_count; i++)
     result += calc_point_light(light.point_lights[i], f_normal, f_position, f_specular, view_dir);
 
-	// phase 3: texture
-	vec4 color = vec4(result * subpassLoad(u_albedo).rgb,  1.0);
+	// phase 4: texture
+	vec4 color = vec4(result * diffuse,  1.0);
 
-	// phase 4: exposure tone mapping
+	// phase 5: exposure tone mapping
 	float exposure = 1.0;
 	vec3 mapped = vec3(1.0) - exp(-color.rgb * exposure);
 
-	// phase: 5 gamma correction
+	// phase 6: gamma correction
 	float gamma = 2.2;
 	mapped = pow(mapped, vec3(1.0 / gamma));
 
