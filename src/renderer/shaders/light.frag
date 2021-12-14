@@ -49,10 +49,10 @@ layout(location = 0) in vec2 f_uv;
 layout(location = 0) out vec4 out_color;
 
 float shadow_calculation_pcf(vec4 f_position_light_space, vec3 normal, vec3 light_dir) {
-	// perform perspective divide
+	// // perform perspective divide
 	vec3 proj_coords = f_position_light_space.xyz / f_position_light_space.w;
 
-	// transform to [0,1] range
+	// // transform to [0,1] range
 	proj_coords = proj_coords * 0.5 + 0.5;
 
 	// get depth of current fragment from light's perspective
@@ -129,7 +129,7 @@ vec3 calc_point_light(PointLight light, vec3 normal, vec3 f_position, float f_sp
 void main() {
 	vec3 f_position = texture(u_position, f_uv).xyz;
 	vec3 f_normal = texture(u_normals, f_uv).rgb;
-	vec4 f_position_light_space = light_space.matrix * vec4(f_position, 1.0);
+	vec4 f_position_light_space = light_space.matrix * inverse(camera.view) * vec4(f_position, 1.0);
 	float f_specular = texture(u_albedo, f_uv).a;
 
 	vec3 view_dir = normalize(camera.position - f_position);
