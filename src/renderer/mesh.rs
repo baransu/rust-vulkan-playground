@@ -23,7 +23,7 @@ impl Default for Material {
     fn default() -> Self {
         Material {
             diffuse: Vec3::ONE,
-            specular: Vec3::ONE,
+            specular: Vec3::ZERO,
         }
     }
 }
