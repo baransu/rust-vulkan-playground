@@ -418,7 +418,7 @@ impl Scene {
             _dummy0: [0, 0, 0, 0],
             ambient: Vec3::ZERO.to_array(),
             _dummy1: [0, 0, 0, 0],
-            diffuse: (Vec3::ONE * 0.25).to_array(),
+            diffuse: (Vec3::ONE * 0.1).to_array(),
             _dummy2: [0, 0, 0, 0],
             specular: Vec3::ZERO.to_array(),
         };
