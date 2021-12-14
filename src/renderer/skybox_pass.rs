@@ -33,7 +33,7 @@ pub struct SkyboxPass {
     vertex_buffer: Arc<ImmutableBuffer<[SkyboxVertex]>>,
     descriptor_set: Arc<PersistentDescriptorSet>,
     pub uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-    // texture: Texture,
+    pub texture: Texture,
     pub command_buffer: Arc<SecondaryAutoCommandBuffer>,
 }
 
@@ -66,7 +66,7 @@ impl SkyboxPass {
             graphics_pipeline,
             vertex_buffer,
             descriptor_set,
-            // texture,
+            texture,
             command_buffer,
         }
     }

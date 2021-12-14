@@ -372,7 +372,7 @@ impl Scene {
 
     fn gen_point_lights() -> Vec<PointLight> {
         vec![PointLight {
-            position: Vec3::new(0.0, 1.0, 0.0),
+            position: Vec3::new(0.0, 5.0, 0.0),
             color: Vec3::new(1.0, 1.0, 1.0),
         }]
     }
@@ -386,14 +386,10 @@ impl Scene {
         point_lights: &Vec<PointLight>,
     ) -> Arc<CpuAccessibleBuffer<LightUniformBufferObject>> {
         let mut shader_point_lights: [ShaderPointLight; MAX_POINT_LIGHTS] = [ShaderPointLight {
-            position: Vec3::ZERO.to_array(),
+            color: Vec3::ZERO.to_array(),
             _dummy0: [0, 0, 0, 0],
-            ambient: Vec3::ZERO.to_array(),
-            _dummy1: [0, 0, 0, 0],
-            diffuse: Vec3::ZERO.to_array(),
-            _dummy2: [0, 0, 0, 0],
-            specular: Vec3::ZERO.to_array(),
-            _dummy3: [0, 0, 0, 0, 0, 0, 0, 0],
+            position: Vec3::ZERO.to_array(),
+            _dummy1: [0, 0, 0, 0, 0, 0, 0, 0],
             constant_: 0.0,
             linear: 0.0,
             quadratic: 0.0,
@@ -404,12 +400,8 @@ impl Scene {
             shader_point_lights[index] = ShaderPointLight {
                 position: light.position.to_array(),
                 _dummy0: [0, 0, 0, 0],
-                ambient: (light.color * 0.1).to_array(),
-                _dummy1: [0, 0, 0, 0],
-                diffuse: light.color.to_array(),
-                _dummy2: [0, 0, 0, 0],
-                specular: light.color.to_array(),
-                _dummy3: [0, 0, 0, 0, 0, 0, 0, 0],
+                color: light.color.to_array(),
+                _dummy1: [0, 0, 0, 0, 0, 0, 0, 0],
                 constant_: 1.0,
                 linear: 0.09,
                 quadratic: 0.032,
@@ -419,11 +411,7 @@ impl Scene {
         let dir_light = ShaderDirectionalLight {
             direction: Vec3::new(-0.2, -1.0, -0.3).to_array(),
             _dummy0: [0, 0, 0, 0],
-            ambient: Vec3::ZERO.to_array(),
-            _dummy1: [0, 0, 0, 0],
-            diffuse: (Vec3::ONE * 0.1).to_array(),
-            _dummy2: [0, 0, 0, 0],
-            specular: Vec3::ZERO.to_array(),
+            color: Vec3::ZERO.to_array(),
         };
 
         let buffer_data = LightUniformBufferObject {

@@ -4,17 +4,12 @@
 
 struct DirectionalLight { 
 	vec3 direction;
-	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
+	vec3 color;
 };
 
 struct PointLight {
 	vec3 position;
-	// TODO: make it just color
-	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
+	vec3 color;
 	// NOTE: is constant reserved keyword?
 	float constant_;
 	float linear;
@@ -35,13 +30,14 @@ layout(binding = 3) uniform sampler2D u_albedo;
 layout(binding = 4) uniform sampler2D u_metalic_roughness;
 layout(binding = 5) uniform sampler2D ssao_sampler;
 layout(binding = 6) uniform sampler2D shadow_sampler;
+layout(binding = 7) uniform samplerCube skybox_texture;
 
 // duplicated definition in model.vert and shaders.rs
-layout(binding = 7)	uniform LightSpaceUniformBufferObject {
+layout(binding = 8)	uniform LightSpaceUniformBufferObject {
 	mat4 matrix;
 } light_space;
 
-layout(binding = 8) uniform LightUniformBufferObject { 
+layout(binding = 9) uniform LightUniformBufferObject { 
 	PointLight point_lights[MAX_POINT_LIGHTS];
 	DirectionalLight dir_light;
 	int point_lights_count;
@@ -59,54 +55,63 @@ float GeometryShlickGGX(float NdotV, float roughness);
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness);
 
 void main() {
-	vec3 albedo = pow(texture(u_albedo, f_uv).rgb, vec3(2.2));
-	// float ao = texture(ssao_sampler, f_uv).r;
+	vec3 raw_albedo = texture(u_albedo, f_uv).xyz;
+	vec3 albedo = pow(raw_albedo, vec3(2.2));
 
 	vec3 Normal = texture(u_normals, f_uv).xyz;
 	// TODO: is this the correct pos?
 	vec3 Position = texture(u_position, f_uv).xyz;
-	vec3 N = normalize(Normal);
-	vec3 V = normalize(camera.position - Position);
 
-	vec4 metalic_roughness = texture(u_metalic_roughness, f_uv);
-	float ao = metalic_roughness.r;
-	float roughness = metalic_roughness.g;
-	float metallic = metalic_roughness.b;
+	vec3 color = vec3(0.0);
 
-	vec3 F0 = vec3(0.04);
-	F0 = mix(F0, albedo, metallic);
+	// if our depth is 0.0 it means there is nothing so return skybox
+	if(texture(u_position, f_uv).w == 0.0) {
+		color = raw_albedo;
+	} else {
+		vec3 N = normalize(Normal);
+		vec3 V = normalize(camera.position - Position);
 
-	vec3 Lo = vec3(0.0);
-	for(int i = 0; i < lights.point_lights_count; i++) {
-		PointLight light = lights.point_lights[i];
-		vec3 L = normalize(light.position - Position);
-		vec3 H = normalize(V + L);
+		vec4 metalic_roughness = texture(u_metalic_roughness, f_uv);
+		float ao = metalic_roughness.r;
+		float roughness = metalic_roughness.g;
+		float metallic = metalic_roughness.b;
 
-		float distance = length(light.position - Position);
-		float attenuation = 1.0 / (light.constant_ + light.linear * distance + light.quadratic * distance * distance);
-		vec3 radiance = light.diffuse * attenuation;
+		vec3 F0 = vec3(0.04);
+		F0 = mix(F0, albedo, metallic);
 
-		vec3 F = fresnelShlick(max(dot(H, V), 0.0), F0);
+		vec3 Lo = vec3(0.0);
+		for(int i = 0; i < lights.point_lights_count; i++) {
+			PointLight light = lights.point_lights[i];
+			vec3 L = normalize(light.position - Position);
+			vec3 H = normalize(V + L);
 
-		float NDF = DistributionGGX(N, H, roughness);
-		float G = GeometrySmith(N, V, L, roughness);
+			float distance = length(light.position - Position);
+			float attenuation = 1.0 / (light.constant_ + light.linear * distance + light.quadratic * distance * distance);
+			vec3 radiance = light.color * attenuation;
 
-		vec3 numerator = NDF * G * F;
-		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-		vec3 specular = numerator / denominator;
+			vec3 F = fresnelShlick(max(dot(H, V), 0.0), F0);
 
-		vec3 kS = F;
-		vec3 kD = vec3(1.0) - kS;
+			float NDF = DistributionGGX(N, H, roughness);
+			float G = GeometrySmith(N, V, L, roughness);
 
-		kD *= 1.0 - metallic;
+			vec3 numerator = NDF * G * F;
+			float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+			vec3 specular = numerator / denominator;
 
-		float NdotL = max(dot(N, L), 0.0);
-		Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+			vec3 kS = F;
+			vec3 kD = vec3(1.0) - kS;
+
+			kD *= 1.0 - metallic;
+
+			float NdotL = max(dot(N, L), 0.0);
+			Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+		}
+
+		vec3 ambient = vec3(0.03) * albedo * ao;
+		color = ambient + Lo;
 	}
 
-	vec3 ambient = vec3(0.03) * albedo * ao;
-	vec3 color = ambient + Lo;
-
+	// gamma correction and tone mapping
 	float gamma = 2.2;
 	color = color / (color + vec3(1.0));
 	color = pow(color, vec3(1.0/gamma));

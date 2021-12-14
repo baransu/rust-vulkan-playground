@@ -45,18 +45,18 @@ use winit::{
     event_loop::ControlFlow,
 };
 
-const MODEL_PATHS: [&str; 4] = [
+const MODEL_PATHS: [&str; 3] = [
     "res/models/damaged_helmet/scene.gltf",
     "res/models/plane/plane.gltf",
     "res/models/cube/cube.gltf",
-    "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf",
+    // "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf",
 ];
 
 const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
 // const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
 // const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
-const RENDER_SKYBOX: bool = false;
+const RENDER_SKYBOX: bool = true;
 
 const SHADOW_MAP_DIM: f32 = 2048.0;
 
@@ -128,6 +128,8 @@ impl Application {
         let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
         let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);
 
+        let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, SKYBOX_PATH);
+
         let light_system = LightSystem::initialize(
             &context,
             &gbuffer_target,
@@ -137,6 +139,7 @@ impl Application {
             &scene.light_space_uniform_buffer,
             &gbuffer,
             &ssao_blur.target,
+            &skybox.texture,
         );
 
         // let count = 10;
@@ -170,15 +173,15 @@ impl Application {
         //     }
         // }
 
-        // scene.add_game_object(GameObject::new(
-        //     "damaged_helmet",
-        //     Transform {
-        //         translation: Vec3::ZERO,
-        //         rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
-        //         scale: Vec3::ONE,
-        //     },
-        //     Default::default(),
-        // ));
+        scene.add_game_object(GameObject::new(
+            "damaged_helmet",
+            Transform {
+                translation: Vec3::ZERO,
+                rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
+                scale: Vec3::ONE,
+            },
+            Default::default(),
+        ));
 
         // Plane
         // scene.add_game_object(GameObject::new(
@@ -192,17 +195,17 @@ impl Application {
         // ));
 
         // sponza
-        for idx in 0..102 {
-            scene.add_game_object(GameObject::new(
-                format!("sponza-{}", idx).as_str(),
-                Transform {
-                    rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
-                    scale: Vec3::ONE * 0.01,
-                    translation: Vec3::new(0.0, 0.0, 0.0),
-                },
-                Default::default(),
-            ));
-        }
+        // for idx in 0..102 {
+        //     scene.add_game_object(GameObject::new(
+        //         format!("sponza-{}", idx).as_str(),
+        //         Transform {
+        //             rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+        //             scale: Vec3::ONE * 0.01,
+        //             translation: Vec3::new(0.0, 0.0, 0.0),
+        //         },
+        //         Default::default(),
+        //     ));
+        // }
 
         // point light cubes for reference
         for light in scene.point_lights.clone() {
@@ -236,8 +239,6 @@ impl Application {
         let previous_frame_end = Some(Self::create_sync_objects(&context.device));
 
         let camera = Default::default();
-
-        let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, SKYBOX_PATH);
 
         let mut imgui = imgui::Context::create();
         imgui.set_ini_filename(None);
@@ -699,12 +700,6 @@ impl Application {
                 ));
                 ui.separator();
 
-                Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("SSAO with Blur");
-
-                Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("Directional light shadow map");
-
                 Image::new(gbuffer_position_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("GBuffer position");
 
@@ -713,6 +708,12 @@ impl Application {
 
                 Image::new(gbuffer_albedo_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("GBuffer albedo");
+
+                Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("SSAO with Blur");
+
+                Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("Directional light shadow map");
             });
 
         let draw_data = ui.render();

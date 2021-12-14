@@ -192,7 +192,8 @@ pub mod skybox_fragment_shader {
 	
 	layout (location = 0) in vec3 inUV;
 	
-	layout (location = 0) out vec4 outFragColor;
+	// it's gbuffer albedo
+	layout (location = 2) out vec4 outFragColor;
 
 	void main() {
 		vec3 uv = vec3(inUV.x, -inUV.y, inUV.z);
