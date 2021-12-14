@@ -17,6 +17,7 @@ use renderer::{
     screen_frame::ScreenFrame,
     skybox_pass::SkyboxPass,
     ssao::Ssao,
+    ssao_blur::SsaoBlur,
     vertex::Vertex,
 };
 use vulkano::{
@@ -101,7 +102,7 @@ struct Application {
     ssao_texture_id: TextureId,
 
     ssao: Ssao,
-    // ssao_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
+    ssao_blur: SsaoBlur,
 }
 
 impl Application {
@@ -126,6 +127,9 @@ impl Application {
             &gbuffer,
         );
 
+        let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
+        let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);
+
         let light_system = LightSystem::initialize(
             &context,
             &gbuffer_target,
@@ -134,8 +138,8 @@ impl Application {
             &scene.light_uniform_buffer,
             &scene.light_space_uniform_buffer,
             &gbuffer,
+            &ssao_blur.target,
         );
-        let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
 
         let count = 10;
         let start = -(count / 2);
@@ -305,7 +309,7 @@ impl Application {
         let ssao_texture_id = imgui_renderer
             .register_texture(
                 &context,
-                &ssao.target,
+                &ssao_blur.target,
                 TextureUsage {
                     depth: 1,
                     normal: 0,
@@ -326,10 +330,8 @@ impl Application {
             platform,
 
             gbuffer,
-            // scene_graphics_pipeline,
-            // scene_framebuffers,
+
             scene_command_buffers: vec![],
-            // ambient_command_buffers: vec![],
             light_system,
 
             shadow_framebuffer,
@@ -352,13 +354,11 @@ impl Application {
             ssao_texture_id,
 
             ssao,
-            // ssao_command_buffers: vec![],
+            ssao_blur,
         };
 
         app.create_scene_command_buffers();
         app.create_shadow_command_buffers();
-        // app.create_ambient_command_buffers();
-        // app.create_ssao_command_buffers();
 
         app
     }
@@ -930,7 +930,7 @@ impl Application {
                 ui.separator();
 
                 Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("SSAO");
+                ui.text("SSAO with Blur");
 
                 Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("Directional light shadow map");
@@ -1043,8 +1043,6 @@ impl Application {
             .end_render_pass()
             .unwrap();
 
-        let ssao_command_buffer = self.ssao.command_buffers[image_index].clone();
-
         builder
             .begin_render_pass(
                 self.ssao.framebuffer.clone(),
@@ -1052,7 +1050,19 @@ impl Application {
                 vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
             )
             .unwrap()
-            .execute_commands(ssao_command_buffer)
+            .execute_commands(self.ssao.command_buffers[image_index].clone())
+            .unwrap()
+            .end_render_pass()
+            .unwrap();
+
+        builder
+            .begin_render_pass(
+                self.ssao_blur.framebuffer.clone(),
+                SubpassContents::SecondaryCommandBuffers,
+                vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
+            )
+            .unwrap()
+            .execute_commands(self.ssao_blur.command_buffers[image_index].clone())
             .unwrap()
             .end_render_pass()
             .unwrap();

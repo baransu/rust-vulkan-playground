@@ -22,7 +22,7 @@ layout(binding = 4) uniform SsaoUniformBufferObject {
 layout(location = 0) in vec2 f_uv;
 
 // out
-layout(location = 0) out vec4 out_color;
+layout(location = 0) out float out_color;
 
 const vec2 noise_scale = vec2(800.0/4.0, 600.0/4.0);
 
@@ -58,5 +58,6 @@ void main() {
 
 	occlusion = 1.0 - (occlusion / SAMPLES_SIZE);
 
-	out_color = vec4(occlusion);
+
+	out_color = pow(occlusion, 2.0);
 }

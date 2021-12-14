@@ -4,6 +4,7 @@ use vulkano::{
     buffer::CpuAccessibleBuffer,
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
+    image::{view::ImageView, AttachmentImage},
     pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
     render_pass::{Framebuffer, RenderPass, Subpass},
     single_pass_renderpass,
@@ -35,6 +36,7 @@ impl LightSystem {
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
         light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         gbuffer: &GBuffer,
+        ssao_target: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> LightSystem {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
 
@@ -50,6 +52,7 @@ impl LightSystem {
             &light_uniform_buffer,
             &light_space_uniform_buffer,
             &shadow_framebuffer,
+            &ssao_target,
         );
 
         let command_buffers =
@@ -72,6 +75,7 @@ impl LightSystem {
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
         light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         shadow_framebuffer: &FramebufferWithAttachment,
+        ssao_target: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = light_graphics_pipeline
             .layout()
@@ -104,6 +108,10 @@ impl LightSystem {
                 gbuffer.albedo_buffer.clone(),
                 context.attachment_sampler.clone(),
             )
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(ssao_target.clone(), context.attachment_sampler.clone())
             .unwrap();
 
         set_builder

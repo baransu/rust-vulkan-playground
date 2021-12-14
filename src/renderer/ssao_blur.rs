@@ -1,32 +1,23 @@
 use std::sync::Arc;
 
-use glam::Vec3;
-use rand::Rng;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     format::Format,
-    image::{
-        view::ImageView, AttachmentImage, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount,
-    },
+    image::{view::ImageView, AttachmentImage, ImageUsage},
     pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
     render_pass::{Framebuffer, RenderPass, Subpass},
-    sync::GpuFuture,
 };
 
 use crate::FramebufferT;
 
 use super::{
     context::Context,
-    gbuffer::GBuffer,
     screen_frame::{ScreenFrameQuadBuffers, ScreenQuadVertex},
-    shaders::{screen_vertex_shader, CameraUniformBufferObject},
+    shaders::screen_vertex_shader,
 };
 
-const SAMPLES_SIZE: usize = 64;
-
-pub struct Ssao {
+pub struct SsaoBlur {
     pub render_pass: Arc<RenderPass>,
     pub framebuffer: Arc<FramebufferT>,
     pub pipeline: Arc<GraphicsPipeline>,
@@ -38,12 +29,8 @@ pub struct Ssao {
     pub command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
 }
 
-impl Ssao {
-    pub fn initialize(
-        context: &Context,
-        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        gbuffer: &GBuffer,
-    ) -> Ssao {
+impl SsaoBlur {
+    pub fn initialize(context: &Context, ssao: &Arc<ImageView<Arc<AttachmentImage>>>) -> SsaoBlur {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
 
         let render_pass = Self::create_render_pass(context);
@@ -53,21 +40,12 @@ impl Ssao {
 
         let framebuffer = Self::create_framebuffer(&render_pass, &target);
 
-        let noise_texture = Self::create_noise_texture(context);
-        let uniform_buffer = Self::create_uniform_buffer(context);
-        let descriptor_set = Self::create_descriptor_set(
-            &context,
-            &pipeline,
-            &camera_uniform_buffer,
-            &gbuffer,
-            &uniform_buffer,
-            &noise_texture,
-        );
+        let descriptor_set = Self::create_descriptor_set(&context, &pipeline, &ssao);
 
         let command_buffers =
             Self::create_command_buffers(context, &pipeline, &descriptor_set, &screen_quad_buffers);
 
-        Ssao {
+        SsaoBlur {
             render_pass,
             pipeline,
             framebuffer,
@@ -221,10 +199,7 @@ impl Ssao {
     fn create_descriptor_set(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        gbuffer: &GBuffer,
-        ssao_unfirm_buffer: &Arc<CpuAccessibleBuffer<SsaoUniformBufferObject>>,
-        noise_texture: &Arc<ImageView<Arc<ImmutableImage>>>,
+        ssao: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -235,112 +210,16 @@ impl Ssao {
         let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
         set_builder
-            .add_buffer(camera_uniform_buffer.clone())
+            .add_sampled_image(ssao.clone(), context.attachment_sampler.clone())
             .unwrap();
-
-        set_builder
-            .add_sampled_image(
-                gbuffer.position_buffer.clone(),
-                context.image_sampler.clone(),
-            )
-            .unwrap();
-
-        set_builder
-            .add_sampled_image(
-                gbuffer.normals_buffer.clone(),
-                context.image_sampler.clone(),
-            )
-            .unwrap();
-
-        set_builder
-            .add_sampled_image(noise_texture.clone(), context.image_sampler.clone())
-            .unwrap();
-
-        set_builder.add_buffer(ssao_unfirm_buffer.clone()).unwrap();
 
         Arc::new(set_builder.build().unwrap())
-    }
-
-    fn create_uniform_buffer(
-        context: &Context,
-    ) -> Arc<CpuAccessibleBuffer<SsaoUniformBufferObject>> {
-        let mut rng = rand::thread_rng();
-
-        let mut samples = [[0.0, 0.0, 0.0, 0.0]; SAMPLES_SIZE];
-
-        for i in 0..SAMPLES_SIZE {
-            // inlined lerp
-            let mut scale = i as f32 / SAMPLES_SIZE as f32;
-            scale = lerp(0.1, 1.0, scale * scale);
-
-            let sample = Vec3::new(
-                rng.gen_range(0.0..1.0),
-                rng.gen_range(0.0..1.0),
-                rng.gen_range(0.0..1.0),
-            )
-            .normalize()
-                * rng.gen_range(0.0..1.0)
-                * scale;
-
-            samples[i][0] = sample.x;
-            samples[i][1] = sample.y;
-            samples[i][2] = sample.z;
-            samples[i][3] = 0.0;
-        }
-
-        let buffer_data = SsaoUniformBufferObject { samples };
-
-        let buffer = CpuAccessibleBuffer::from_data(
-            context.device.clone(),
-            BufferUsage::uniform_buffer_transfer_destination(),
-            false,
-            buffer_data,
-        )
-        .unwrap();
-
-        buffer
-    }
-
-    fn create_noise_texture(context: &Context) -> Arc<ImageView<Arc<ImmutableImage>>> {
-        let mut rng = rand::thread_rng();
-        let mut data = Vec::with_capacity(4 * 4 * 3);
-
-        for _ in 0..4 {
-            for _ in 0..4 {
-                data.push(rng.gen_range(0.0..1.0) * 2.0 - 1.0);
-                data.push(rng.gen_range(0.0..1.0) * 2.0 - 1.0);
-                data.push(0.0);
-            }
-        }
-
-        let (image, future) = ImmutableImage::from_iter(
-            data.iter().cloned(),
-            ImageDimensions::Dim2d {
-                width: 4,
-                height: 4,
-                array_layers: 1,
-            },
-            MipmapsCount::One,
-            Format::R16G16B16A16_SFLOAT,
-            context.graphics_queue.clone(),
-        )
-        .unwrap();
-
-        future.flush().unwrap();
-
-        ImageView::new(image).unwrap()
     }
 }
 
 mod fs {
     vulkano_shaders::shader! {
             ty: "fragment",
-            path: "src/renderer/shaders/ssao.frag"
+            path: "src/renderer/shaders/ssao_blur.frag"
     }
-}
-
-pub type SsaoUniformBufferObject = fs::ty::SsaoUniformBufferObject;
-
-fn lerp(a: f32, b: f32, f: f32) -> f32 {
-    return a + f * (b - a);
 }
