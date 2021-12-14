@@ -53,8 +53,6 @@ impl Scene {
         mesh_paths: Vec<&str>,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
-        shadow_framebuffer: &FramebufferWithAttachment,
-        gbuffer: &GBuffer,
     ) -> Self {
         let point_lights = Self::gen_point_lights();
 
@@ -81,16 +79,6 @@ impl Scene {
             &shadow_graphics_pipeline,
             &light_space_uniform_buffer,
         );
-
-        // let light_descriptor_set = Self::create_light_descriptor_set(
-        //     context,
-        //     &light_graphics_pipeline,
-        //     &camera_uniform_buffer,
-        //     &gbuffer,
-        //     &light_uniform_buffer,
-        //     &light_space_uniform_buffer,
-        //     &shadow_framebuffer,
-        // );
 
         Scene {
             meshes,
@@ -287,66 +275,6 @@ impl Scene {
 
         set_builder
             .add_sampled_image(normal_texture.image.clone(), context.image_sampler.clone())
-            .unwrap();
-
-        Arc::new(set_builder.build().unwrap())
-    }
-
-    fn create_light_descriptor_set(
-        context: &Context,
-        light_graphics_pipeline: &Arc<GraphicsPipeline>,
-        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        gbuffer: &GBuffer,
-        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
-        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
-        shadow_framebuffer: &FramebufferWithAttachment,
-    ) -> Arc<PersistentDescriptorSet> {
-        let layout = light_graphics_pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(0)
-            .unwrap();
-
-        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-        set_builder
-            .add_buffer(camera_uniform_buffer.clone())
-            .unwrap();
-
-        set_builder
-            .add_sampled_image(
-                gbuffer.position_buffer.clone(),
-                context.attachment_sampler.clone(),
-            )
-            .unwrap();
-
-        set_builder
-            .add_sampled_image(
-                gbuffer.normals_buffer.clone(),
-                context.attachment_sampler.clone(),
-            )
-            .unwrap();
-
-        set_builder
-            .add_sampled_image(
-                gbuffer.albedo_buffer.clone(),
-                context.attachment_sampler.clone(),
-            )
-            .unwrap();
-
-        set_builder
-            .add_sampled_image(
-                shadow_framebuffer.attachment.clone(),
-                context.depth_sampler.clone(),
-            )
-            .unwrap();
-
-        set_builder
-            .add_buffer(light_space_uniform_buffer.clone())
-            .unwrap();
-
-        set_builder
-            .add_buffer(light_uniform_buffer.clone())
             .unwrap();
 
         Arc::new(set_builder.build().unwrap())

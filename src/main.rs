@@ -71,7 +71,6 @@ struct Application {
 
     gbuffer: GBuffer,
     scene_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
-    // ambient_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
     light_system: LightSystem,
 
     shadow_graphics_pipeline: Arc<GraphicsPipeline>,
@@ -123,8 +122,6 @@ impl Application {
             MODEL_PATHS.to_vec(),
             &gbuffer.pipeline,
             &shadow_graphics_pipeline,
-            &shadow_framebuffer,
-            &gbuffer,
         );
 
         let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
@@ -394,49 +391,6 @@ impl Application {
         ImageView::new(image).unwrap()
     }
 
-    /**
-     * Creates render pass which has color and depth attachments.
-     * Last attachment is resolve which can be attached to swap chain image used to output to screen.
-     */
-    // fn create_scene_render_pass(context: &Context) -> Arc<RenderPass> {
-    //     let color_format = context.swap_chain.format();
-    //     let depth_format = context.depth_format;
-    //     let sample_count = context.sample_count;
-
-    //     Arc::new(
-    //         single_pass_renderpass!(context.device.clone(),
-    //                 attachments: {
-    //                     multisample_color: {
-    //                         load: Clear,
-    //                         store: Store,
-    //                         format: color_format,
-    //                         samples: sample_count,
-    //                     },
-    //                     multisample_depth: {
-    //                         load: Clear,
-    //                         store: DontCare,
-    //                         format: depth_format,
-    //                         samples: sample_count,
-    //                         initial_layout: ImageLayout::Undefined,
-    //                         final_layout: ImageLayout::DepthStencilAttachmentOptimal,
-    //                     },
-    //                     resolve_color: {
-    //                         load: DontCare,
-    //                         store: Store,
-    //                         format: color_format,
-    //                         samples: 1,
-    //                     }
-    //                 },
-    //                 pass: {
-    //                     color: [multisample_color],
-    //                     depth_stencil: {multisample_depth},
-    //                     resolve: [resolve_color]
-    //                 }
-    //         )
-    //         .unwrap(),
-    //     )
-    // }
-
     fn create_shadow_render_pass(context: &Context) -> Arc<RenderPass> {
         let depth_format = context.depth_format;
 
@@ -462,12 +416,6 @@ impl Application {
     fn recreate_swap_chain(&mut self) {
         self.context.recreate_swap_chain();
 
-        // let offscreen_render_pass = Self::create_scene_render_pass(&self.context);
-        // self.scene_framebuffers =
-        //     Self::create_scene_framebuffers(&self.context, &offscreen_render_pass);
-        // self.scene_graphics_pipeline =
-        //     Self::create_scene_graphics_pipeline(&self.context, &offscreen_render_pass);
-
         // TODO: recreate shadow framebuffer and graphics pipeline
 
         self.screen_frame.recreate_swap_chain(&self.context);
@@ -475,57 +423,6 @@ impl Application {
         self.create_scene_command_buffers();
         self.create_shadow_command_buffers();
     }
-
-    // /**
-    //  * Creates graphics pipeline from the given render pass, and vertex/fragment shaders.
-    //  */
-    // fn create_scene_graphics_pipeline(
-    //     context: &Context,
-    //     render_pass: &Arc<RenderPass>,
-    // ) -> Arc<GraphicsPipeline> {
-    //     let vert_shader_module =
-    //         renderer::shaders::model_vertex_shader::Shader::load(context.device.clone()).unwrap();
-    //     let frag_shader_module =
-    //         renderer::shaders::model_fragment_shader::Shader::load(context.device.clone()).unwrap();
-
-    //     let dimensions_u32 = context.swap_chain.dimensions();
-    //     let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-    //     let viewport = Viewport {
-    //         origin: [0.0, 0.0],
-    //         dimensions,
-    //         depth_range: 0.0..1.0,
-    //     };
-
-    //     let pipeline = Arc::new(
-    //         GraphicsPipeline::start()
-    //             .vertex_input(
-    //                 BuffersDefinition::new()
-    //                     .vertex::<Vertex>()
-    //                     .instance::<InstanceData>(),
-    //             )
-    //             .vertex_shader(vert_shader_module.main_entry_point(), ())
-    //             .triangle_list()
-    //             .primitive_restart(false)
-    //             .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-    //             .fragment_shader(frag_shader_module.main_entry_point(), ())
-    //             .depth_clamp(false)
-    //             // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
-    //             .polygon_mode_fill() // = default
-    //             .line_width(1.0) // = default
-    //             // TODO: just to make developing easier we render both faces of models
-    //             .cull_mode_back()
-    //             .front_face_counter_clockwise()
-    //             // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
-    //             .blend_pass_through()
-    //             .depth_stencil(DepthStencil::simple_depth_test())
-    //             .viewports_dynamic_scissors_irrelevant(1)
-    //             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-    //             .build(context.device.clone())
-    //             .unwrap(),
-    //     );
-
-    //     pipeline
-    // }
 
     fn create_shadow_graphics_pipeline(
         context: &Context,
@@ -574,56 +471,6 @@ impl Application {
 
         pipeline
     }
-
-    /**
-     * This function created frame buffer for each swap chain image.
-     *
-     * It contains 3 attachments (color, depth, resolve) where resolve is swap chain image which is used to output to screen.
-     */
-    // fn create_scene_framebuffers(
-    //     context: &Context,
-    //     render_pass: &Arc<RenderPass>,
-    // ) -> Vec<FramebufferWithAttachment> {
-    //     let depth_image = Self::create_depth_image(&context);
-    //     let color_image = Self::create_color_image(&context);
-
-    //     let mut framebuffers = Vec::new();
-
-    //     for _i in 0..context.swap_chain.num_images() {
-    //         let resolve_image = ImageView::new(
-    //             AttachmentImage::with_usage(
-    //                 context.device.clone(),
-    //                 context.swap_chain.dimensions(),
-    //                 context.swap_chain.format(),
-    //                 ImageUsage {
-    //                     sampled: true,
-    //                     ..ImageUsage::none()
-    //                 },
-    //             )
-    //             .unwrap(),
-    //         )
-    //         .unwrap();
-
-    //         let framebuffer: Arc<FramebufferT> = Arc::new(
-    //             Framebuffer::start(render_pass.clone())
-    //                 .add(color_image.clone())
-    //                 .unwrap()
-    //                 .add(depth_image.clone())
-    //                 .unwrap()
-    //                 .add(resolve_image.clone())
-    //                 .unwrap()
-    //                 .build()
-    //                 .unwrap(),
-    //         );
-
-    //         framebuffers.push(FramebufferWithAttachment {
-    //             framebuffer,
-    //             attachment: resolve_image,
-    //         });
-    //     }
-
-    //     framebuffers
-    // }
 
     fn create_shadow_framebuffer(
         context: &Context,
@@ -736,118 +583,6 @@ impl Application {
 
         self.scene_command_buffers = command_buffers;
     }
-
-    // fn create_ambient_command_buffers(&mut self) {
-    //     let dimensions_u32 = self.context.swap_chain.dimensions();
-    //     let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-
-    //     let viewport = Viewport {
-    //         origin: [0.0, 0.0],
-    //         dimensions,
-    //         depth_range: 0.0..1.0,
-    //     };
-
-    //     let instance_data_buffers = self.create_instance_data_buffers();
-
-    //     let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
-
-    //     for _i in 0..self.context.swap_chain.num_images() {
-    //         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
-    //             self.context.device.clone(),
-    //             self.context.graphics_queue.family(),
-    //             CommandBufferUsage::SimultaneousUse,
-    //             self.light_system.pipeline.subpass().clone(),
-    //         )
-    //         .unwrap();
-
-    //         builder.set_viewport(0, [viewport.clone()]);
-
-    //         builder.bind_pipeline_graphics(self.light_system.pipeline.clone());
-
-    //         builder.bind_descriptor_sets(
-    //             PipelineBindPoint::Graphics,
-    //             self.light_system.pipeline.layout().clone(),
-    //             0,
-    //             self.scene.light_descriptor_set.clone(),
-    //         );
-
-    //         for mesh in self.scene.meshes.values() {
-    //             // if there is no instance_data_buffer it means we have 0 instances for this mesh
-    //             if let Some(instance_data_buffer) = instance_data_buffers.get(&mesh.id) {
-    //                 builder
-    //                     .bind_vertex_buffers(
-    //                         0,
-    //                         (mesh.vertex_buffer.clone(), instance_data_buffer.clone()),
-    //                     )
-    //                     .bind_index_buffer(mesh.index_buffer.clone())
-    //                     .draw_indexed(mesh.index_count, instance_data_buffer.len() as u32, 0, 0, 0)
-    //                     .unwrap();
-    //             }
-    //         }
-
-    //         let command_buffer = Arc::new(builder.build().unwrap());
-
-    //         command_buffers.push(command_buffer);
-    //     }
-
-    //     self.ambient_command_buffers = command_buffers;
-    // }
-
-    // fn create_ssao_command_buffers(&mut self) {
-    //     let dimensions_u32 = self.context.swap_chain.dimensions();
-    //     let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-
-    //     let viewport = Viewport {
-    //         origin: [0.0, 0.0],
-    //         dimensions,
-    //         depth_range: 0.0..1.0,
-    //     };
-
-    //     let instance_data_buffers = self.create_instance_data_buffers();
-
-    //     let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
-
-    //     for _i in 0..self.context.swap_chain.num_images() {
-    //         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
-    //             self.context.device.clone(),
-    //             self.context.graphics_queue.family(),
-    //             CommandBufferUsage::SimultaneousUse,
-    //             self.ssao.pipeline.subpass().clone(),
-    //         )
-    //         .unwrap();
-
-    //         builder.set_viewport(0, [viewport.clone()]);
-
-    //         builder.bind_pipeline_graphics(self.ssao.pipeline.clone());
-
-    //         builder.bind_descriptor_sets(
-    //             PipelineBindPoint::Graphics,
-    //             self.ssao.pipeline.layout().clone(),
-    //             0,
-    //             self.ssao.descriptor_set.clone(),
-    //         );
-
-    //         for mesh in self.scene.meshes.values() {
-    //             // if there is no instance_data_buffer it means we have 0 instances for this mesh
-    //             if let Some(instance_data_buffer) = instance_data_buffers.get(&mesh.id) {
-    //                 builder
-    //                     .bind_vertex_buffers(
-    //                         0,
-    //                         (mesh.vertex_buffer.clone(), instance_data_buffer.clone()),
-    //                     )
-    //                     .bind_index_buffer(mesh.index_buffer.clone())
-    //                     .draw_indexed(mesh.index_count, instance_data_buffer.len() as u32, 0, 0, 0)
-    //                     .unwrap();
-    //             }
-    //         }
-
-    //         let command_buffer = Arc::new(builder.build().unwrap());
-
-    //         command_buffers.push(command_buffer);
-    //     }
-
-    //     self.ssao_command_buffers = command_buffers;
-    // }
 
     fn create_shadow_command_buffers(&mut self) {
         let viewport = Viewport {

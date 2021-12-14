@@ -20,7 +20,6 @@ pub struct GBuffer {
     pub depth_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
 
     pub render_pass: Arc<RenderPass>,
-    // pub lighting_subpass: Subpass,
     pub framebuffer: Arc<FramebufferT>,
     pub pipeline: Arc<GraphicsPipeline>,
 }
@@ -43,8 +42,6 @@ impl GBuffer {
 
         let pipeline = Self::create_pipeline(context, &render_pass, &target);
 
-        // let lighting_subpass = Subpass::from(render_pass.clone(), 1).unwrap();
-
         GBuffer {
             position_buffer,
             normals_buffer,
@@ -52,7 +49,6 @@ impl GBuffer {
             depth_buffer,
 
             render_pass,
-            // lighting_subpass,
             framebuffer,
             pipeline,
         }
@@ -233,9 +229,6 @@ impl GBuffer {
         let dimensions = target.image().dimensions().width_height();
 
         let usage = ImageUsage {
-            // transient_attachment: true,
-            // input_attachment: true,
-            // NOTE: for debugging
             sampled: true,
             ..ImageUsage::none()
         };
