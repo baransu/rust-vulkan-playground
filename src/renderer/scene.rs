@@ -375,7 +375,7 @@ impl Scene {
     }
 
     pub fn dir_light_position() -> Vec3 {
-        Vec3::new(-0.2, -1.0, -0.3) * -10.0
+        Vec3::new(0.0, 10.0, 0.0) * 5.0
     }
 
     fn create_light_uniform_buffer(

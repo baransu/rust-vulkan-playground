@@ -30,7 +30,8 @@ void main() {
 	vec3 b = normalize(cross(f_normal, f_tangent));
 	vec3 n = cross(t, b);
 
-	out_normal = normalize(texture(normal_sampler, f_uv).rgb);
+	out_normal = texture(normal_sampler, f_uv).rgb;
+	out_normal = normalize(out_normal * 2.0 - 1.0);
 	out_normal = out_normal.x * t + out_normal.y * b + out_normal.z * n;
 
 	out_albedo.rgb = f_material_diffuse.rgb * texture(diffuse_sampler, f_uv).rgb;

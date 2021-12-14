@@ -95,9 +95,10 @@ vec3 calc_dir_light(DirectionalLight light, vec3 normal, vec3 view_dir, float f_
 	vec3 diffuse  = light.diffuse * diff;
 	vec3 specular = light.specular * spec * f_specular;
 
-	float shadow = shadow_calculation_pcf(f_position_light_space, normal, light_dir);       
+	// float shadow = shadow_calculation_pcf(f_position_light_space, normal, light_dir);       
 
-	return (1.0 - shadow) * (diffuse + specular);   
+	// return (1.0 - shadow) * (diffuse + specular);   
+	return (diffuse + specular);   
 }
 
 vec3 calc_point_light(PointLight light, vec3 normal, vec3 f_position, float f_specular, vec3 view_dir) {
@@ -132,16 +133,16 @@ void main() {
 	vec3 diffuse = texture(u_albedo, f_uv).rgb;
 	float f_specular = texture(u_albedo, f_uv).a;
 
-	vec3 view_dir = normalize(camera.position - f_position);
+	vec3 view_dir = normalize(-f_position);
 
 	// phase 1: ambient occlusion
 	float ambient_occlusion = texture(ssao_sampler, f_uv).r;
-	vec3 ambient = vec3(0.3 * diffuse * ambient_occlusion);
+	vec3 ambient = vec3(0.3 * ambient_occlusion);
 
 	vec3 result = ambient;
 
 	// phase 2: directional light with shadows
-	result = calc_dir_light(light.dir_light, f_normal, view_dir, f_specular, f_position_light_space);
+	result += calc_dir_light(light.dir_light, f_normal, view_dir, f_specular, f_position_light_space);
 
 	// phase 3: point lights
 	for(int i = 0; i < light.point_lights_count; i++)
