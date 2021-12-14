@@ -24,13 +24,15 @@ layout(location = 0) in vec2 f_uv;
 // out
 layout(location = 0) out float out_color;
 
-const vec2 noise_scale = vec2(800.0/4.0, 600.0/4.0);
-
 void main() {
 	vec3 f_position = texture(u_position, f_uv).xyz;
 	vec3 f_normal = normalize(texture(u_normals, f_uv).rgb);
 
-	vec3 random_vec = texture(noise_sampler, f_uv * noise_scale).xyz;  
+	ivec2 tex_dim = textureSize(u_position, 0);
+	ivec2 noise_dim = textureSize(noise_sampler, 0);
+	const vec2 noise_uv = vec2(float(tex_dim.x)/float(noise_dim.x), float(tex_dim.y)/(noise_dim.y)) * f_uv;  
+
+	vec3 random_vec = texture(noise_sampler, noise_uv).xyz;
 
 	vec3 tangent   = normalize(random_vec - f_normal * dot(random_vec, f_normal));
 	vec3 bitangent = cross(f_normal, tangent);
@@ -46,7 +48,7 @@ void main() {
 			sample_pos = f_position + sample_pos * SSAO_RADIUS; 
 
 			vec4 offset = vec4(sample_pos, 1.0);
-			offset      = camera.proj * offset;    // from view to clip-space
+			offset      = camera.proj * offset;   // from view to clip-space
 			offset.xyz /= offset.w;               // perspective divide
 			offset.xyz  = offset.xyz * 0.5 + 0.5; // transform to range 0.0 - 1.0  
 
@@ -57,7 +59,6 @@ void main() {
 	}  
 
 	occlusion = 1.0 - (occlusion / SAMPLES_SIZE);
-
 
 	out_color = pow(occlusion, 2.0);
 }
