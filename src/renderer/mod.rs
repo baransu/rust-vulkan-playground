@@ -7,5 +7,6 @@ pub mod scene;
 pub mod screen_frame;
 pub mod shaders;
 pub mod skybox_pass;
+pub mod ssao;
 pub mod texture;
 pub mod vertex;

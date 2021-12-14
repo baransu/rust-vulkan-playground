@@ -20,7 +20,7 @@ pub struct GBuffer {
     pub depth_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
 
     pub render_pass: Arc<RenderPass>,
-    pub lighting_subpass: Subpass,
+    // pub lighting_subpass: Subpass,
     pub framebuffer: Arc<FramebufferT>,
     pub pipeline: Arc<GraphicsPipeline>,
 }
@@ -35,7 +35,6 @@ impl GBuffer {
         let render_pass = Self::create_render_pass(context);
         let framebuffer = Self::create_framebuffer(
             &render_pass,
-            &target,
             &position_buffer,
             &normals_buffer,
             &albedo_buffer,
@@ -44,7 +43,7 @@ impl GBuffer {
 
         let pipeline = Self::create_pipeline(context, &render_pass, &target);
 
-        let lighting_subpass = Subpass::from(render_pass.clone(), 1).unwrap();
+        // let lighting_subpass = Subpass::from(render_pass.clone(), 1).unwrap();
 
         GBuffer {
             position_buffer,
@@ -53,7 +52,7 @@ impl GBuffer {
             depth_buffer,
 
             render_pass,
-            lighting_subpass,
+            // lighting_subpass,
             framebuffer,
             pipeline,
         }
@@ -61,15 +60,12 @@ impl GBuffer {
 
     fn create_framebuffer(
         render_pass: &Arc<RenderPass>,
-        target: &GBufferTarget,
         position_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
         normals_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
         albedo_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
         depth_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
     ) -> Arc<FramebufferT> {
         let framebuffer = Framebuffer::start(render_pass.clone())
-            .add(target.clone())
-            .unwrap()
             .add(position_buffer.clone())
             .unwrap()
             .add(normals_buffer.clone())
@@ -85,32 +81,24 @@ impl GBuffer {
     }
 
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
-        let color_format = context.swap_chain.format();
-
         Arc::new(
-            vulkano::ordered_passes_renderpass!(context.device.clone(),
+            vulkano::single_pass_renderpass!(context.device.clone(),
                 attachments: {
-                            final_color: {
-                                load: Clear,
-                                store: Store,
-                                format: color_format,
-                                samples: 1,
-                            },
                             position: {
                                 load: Clear,
-                                store: DontCare,
+                                store: Store,
                                 format: Format::R16G16B16A16_SFLOAT,
                                 samples: 1,
                             },
                             normals: {
                                 load: Clear,
-                                store: DontCare,
+                                store: Store,
                                 format: Format::R16G16B16A16_SFLOAT,
                                 samples: 1,
                             },
                             albedo: {
                                 load: Clear,
-                                store: DontCare,
+                                store: Store,
                                 format: Format::R16G16B16A16_SFLOAT,
                                 samples: 1,
                             },
@@ -121,18 +109,10 @@ impl GBuffer {
                                 samples: 1,
                             }
                         },
-                passes: [
-                                {
-                                    color: [position, normals, albedo],
-                                    depth_stencil: {depth},
-                                    input: []
-                                },
-                                {
-                                    color: [final_color],
-                                    depth_stencil: {},
-                                    input: [position, normals, albedo]
-                                }
-                            ]
+                pass: {
+                    color: [position, normals, albedo],
+                    depth_stencil: {depth}
+                }
             )
             .unwrap(),
         )
@@ -254,7 +234,7 @@ impl GBuffer {
 
         let usage = ImageUsage {
             // transient_attachment: true,
-            input_attachment: true,
+            // input_attachment: true,
             // NOTE: for debugging
             sampled: true,
             ..ImageUsage::none()

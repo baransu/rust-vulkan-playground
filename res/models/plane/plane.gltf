@@ -22,9 +22,12 @@
         {
             "doubleSided" : true,
             "name" : "Brick",
+            "normalTexture" : {
+                "index" : 0
+            },
             "pbrMetallicRoughness" : {
                 "baseColorTexture" : {
-                    "index" : 0
+                    "index" : 1
                 },
                 "metallicFactor" : 0,
                 "roughnessFactor" : 0.5
@@ -51,13 +54,22 @@
         {
             "sampler" : 0,
             "source" : 0
+        },
+        {
+            "sampler" : 0,
+            "source" : 1
         }
     ],
     "images" : [
         {
-            "mimeType" : "image/png",
-            "name" : "wood",
-            "uri" : "wood.png"
+            "mimeType" : "image/jpeg",
+            "name" : "New_Graph_normal",
+            "uri" : "New_Graph_normal.jpg"
+        },
+        {
+            "mimeType" : "image/jpeg",
+            "name" : "New_Graph_basecolor",
+            "uri" : "New_Graph_basecolor.jpg"
         }
     ],
     "accessors" : [

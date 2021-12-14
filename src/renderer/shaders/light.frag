@@ -28,10 +28,9 @@ layout(binding = 0) uniform CameraUniformBufferObject {
 } camera;
 
 // The `color_input` parameter of the `draw` method.
-layout(input_attachment_index = 0, set = 0, binding = 1) uniform subpassInput u_position;
-layout(input_attachment_index = 0, set = 0, binding = 2) uniform subpassInput u_normals;
-layout(input_attachment_index = 0, set = 0, binding = 3) uniform subpassInput u_albedo;
-
+layout(binding = 1) uniform sampler2D u_position;
+layout(binding = 2) uniform sampler2D u_normals;
+layout(binding = 3) uniform sampler2D u_albedo;
 layout(binding = 4) uniform sampler2D shadow_sampler;
 
 // duplicated definition in model.vert and shaders.rs
@@ -44,6 +43,8 @@ layout(binding = 6) uniform LightUniformBufferObject {
 	DirectionalLight dir_light;
 	int point_lights_count;
 } light;
+
+layout(location = 0) in vec2 f_uv;
 
 layout(location = 0) out vec4 out_color;
 
@@ -126,10 +127,10 @@ vec3 calc_point_light(PointLight light, vec3 normal, vec3 f_position, float f_sp
 }
 
 void main() {
-	vec3 f_position = subpassLoad(u_position).xyz;
-	vec3 f_normal = subpassLoad(u_normals).rgb;
+	vec3 f_position = texture(u_position, f_uv).xyz;
+	vec3 f_normal = texture(u_normals, f_uv).rgb;
 	vec4 f_position_light_space = light_space.matrix * vec4(f_position, 1.0);
-	float f_specular = subpassLoad(u_albedo).a;
+	float f_specular = texture(u_albedo, f_uv).a;
 
 	vec3 view_dir = normalize(camera.position - f_position);
 
@@ -141,7 +142,7 @@ void main() {
     result += calc_point_light(light.point_lights[i], f_normal, f_position, f_specular, view_dir);
 
 	// phase 3: texture
-	vec4 color = vec4(result * subpassLoad(u_albedo).rgb,  1.0);
+	vec4 color = vec4(result * texture(u_albedo, f_uv).rgb,  1.0);
 
 	// phase 4: exposure tone mapping
 	float exposure = 1.0;

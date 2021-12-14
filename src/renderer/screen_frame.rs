@@ -16,7 +16,7 @@ use crate::FramebufferWithAttachment;
 use super::context::Context;
 
 #[derive(Default, Debug, Clone)]
-struct ScreenQuadVertex {
+pub struct ScreenQuadVertex {
     position: [f32; 2],
     uv: [f32; 2],
 }
@@ -29,10 +29,10 @@ impl ScreenQuadVertex {
 
 vulkano::impl_vertex!(ScreenQuadVertex, position, uv);
 
-struct ScreenFrameQuadBuffers {
-    index_buffer: Arc<ImmutableBuffer<[u16]>>,
-    vertex_buffer: Arc<ImmutableBuffer<[ScreenQuadVertex]>>,
-    indices_length: u32,
+pub struct ScreenFrameQuadBuffers {
+    pub index_buffer: Arc<ImmutableBuffer<[u16]>>,
+    pub vertex_buffer: Arc<ImmutableBuffer<[ScreenQuadVertex]>>,
+    pub indices_length: u32,
 }
 
 impl ScreenFrameQuadBuffers {
@@ -76,7 +76,7 @@ pub struct ScreenFrame {
     pub framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
     pub command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
     descriptor_sets: Vec<Arc<PersistentDescriptorSet>>,
-    screen_quad_buffers: ScreenFrameQuadBuffers,
+    pub screen_quad_buffers: ScreenFrameQuadBuffers,
 }
 
 impl ScreenFrame {
@@ -273,7 +273,6 @@ impl ScreenFrame {
                 .front_face_clockwise()
                 // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
                 .blend_pass_through()
-                // .depth_stencil(DepthStencil::simple_depth_test())
                 .viewports_dynamic_scissors_irrelevant(1)
                 .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
                 // .build(context.device.clone())
