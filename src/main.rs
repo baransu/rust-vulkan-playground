@@ -10,8 +10,10 @@ use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
     camera::Camera,
     context::Context,
+    cubemap_generation_pass::{
+        irradiance_convolution_fs, prefilterenvmap_fs, CubemapGenerationPass,
+    },
     gbuffer::GBuffer,
-    irradiance_pass::IrradiancePass,
     light_system::LightSystem,
     mesh::{GameObject, InstanceData, Material, Transform},
     scene::Scene,
@@ -108,7 +110,8 @@ struct Application {
     ssao: Ssao,
     ssao_blur: SsaoBlur,
 
-    irradiance_convolution: IrradiancePass,
+    irradiance_convolution: CubemapGenerationPass,
+    prefilterenvmap: CubemapGenerationPass,
 }
 
 impl Application {
@@ -135,8 +138,28 @@ impl Application {
         let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);
 
         let texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
-        let irradiance_convolution = IrradiancePass::initialize(&context, &texture.image);
-        let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, &texture.image);
+
+        let irradiance_convolution_fs_mod =
+            irradiance_convolution_fs::Shader::load(context.device.clone()).unwrap();
+        let irradiance_convolution = CubemapGenerationPass::initialize(
+            &context,
+            &texture.image,
+            irradiance_convolution_fs_mod.main_entry_point(),
+        );
+
+        let prefilterenvmap_fs_mod =
+            prefilterenvmap_fs::Shader::load(context.device.clone()).unwrap();
+        let prefilterenvmap = CubemapGenerationPass::initialize(
+            &context,
+            &irradiance_convolution.cube_attachment_view,
+            prefilterenvmap_fs_mod.main_entry_point(),
+        );
+
+        let skybox = SkyboxPass::initialize(
+            &context,
+            &gbuffer.render_pass,
+            &prefilterenvmap.cube_attachment_view,
+        );
 
         let light_system = LightSystem::initialize(
             &context,
@@ -297,7 +320,7 @@ impl Application {
         );
 
         let shadow_framebuffer_texture_id = imgui_renderer
-            .register_attachment_image_texture(
+            .register_texture(
                 &context,
                 &shadow_framebuffer.attachment,
                 TextureUsage {
@@ -310,7 +333,7 @@ impl Application {
             .unwrap();
 
         let gbuffer_position_texture_id = imgui_renderer
-            .register_attachment_image_texture(
+            .register_texture(
                 &context,
                 &gbuffer.position_buffer,
                 TextureUsage {
@@ -325,7 +348,7 @@ impl Application {
             .unwrap();
 
         let gbuffer_normals_texture_id = imgui_renderer
-            .register_attachment_image_texture(
+            .register_texture(
                 &context,
                 &gbuffer.normals_buffer,
                 TextureUsage {
@@ -338,7 +361,7 @@ impl Application {
             .unwrap();
 
         let gbuffer_albedo_texture_id = imgui_renderer
-            .register_attachment_image_texture(
+            .register_texture(
                 &context,
                 &gbuffer.albedo_buffer,
                 TextureUsage {
@@ -351,7 +374,7 @@ impl Application {
             .unwrap();
 
         let gbuffer_metalic_texture_id = imgui_renderer
-            .register_attachment_image_texture(
+            .register_texture(
                 &context,
                 &gbuffer.metalic_roughness_buffer,
                 TextureUsage {
@@ -364,7 +387,7 @@ impl Application {
             .unwrap();
 
         let ssao_texture_id = imgui_renderer
-            .register_attachment_image_texture(
+            .register_texture(
                 &context,
                 &ssao_blur.target,
                 TextureUsage {
@@ -377,7 +400,7 @@ impl Application {
             .unwrap();
 
         let irradiance_color_texture_id = imgui_renderer
-            .register_storage_image_texture(
+            .register_texture(
                 &context,
                 &irradiance_convolution.color_attachment_view,
                 TextureUsage {
@@ -430,6 +453,7 @@ impl Application {
             ssao_blur,
 
             irradiance_convolution,
+            prefilterenvmap,
         };
 
         app.create_scene_command_buffers();
@@ -996,14 +1020,8 @@ impl Application {
 
         let original_rotation = self.camera.rotation;
 
-        self.irradiance_convolution
-            .draw(&self.context)
-            .execute(self.context.graphics_queue.clone())
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None)
-            .unwrap();
+        self.irradiance_convolution.execute(&self.context);
+        self.prefilterenvmap.execute(&self.context);
 
         self.context
             .event_loop

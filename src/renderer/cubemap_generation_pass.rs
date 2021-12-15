@@ -1,25 +1,24 @@
 use std::{f32::consts::PI, sync::Arc};
 
 use glam::{Mat4, Vec3};
-use gltf::accessor::Dimensions;
+
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        SecondaryAutoCommandBuffer, SubpassContents,
+        PrimaryCommandBuffer, SubpassContents,
     },
     descriptor_set::PersistentDescriptorSet,
     format::{ClearValue, Format},
     image::{
         view::{ImageView, ImageViewType},
-        AttachmentImage, ImageCreateFlags, ImageDimensions, ImageUsage, ImmutableImage,
+        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, ImmutableImage,
         StorageImage,
     },
     pipeline::{
         shader::GraphicsEntryPoint, viewport::Viewport, GraphicsPipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
-    sampler::Filter,
     single_pass_renderpass,
     sync::GpuFuture,
 };
@@ -27,21 +26,18 @@ use vulkano::{
 use crate::FramebufferT;
 
 use super::{
-    camera::Camera,
     context::Context,
     shaders::CameraUniformBufferObject,
     skybox_pass::{SkyboxPass, SkyboxVertex},
-    texture::Texture,
 };
 
 const DIM: f32 = 64.0;
 
-pub struct IrradiancePass {
+pub struct CubemapGenerationPass {
     pipeline: Arc<GraphicsPipeline>,
     vertex_buffer: Arc<ImmutableBuffer<[SkyboxVertex]>>,
     descriptor_set: Arc<PersistentDescriptorSet>,
     pub uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-    // pub command_buffer: Arc<SecondaryAutoCommandBuffer>,
     pub cube_attachment: Arc<StorageImage>,
     pub cube_attachment_view: Arc<ImageView<Arc<StorageImage>>>,
     pub color_attachment: Arc<StorageImage>,
@@ -50,19 +46,24 @@ pub struct IrradiancePass {
     pub framebuffer: Arc<FramebufferT>,
 }
 
-impl IrradiancePass {
-    pub fn initialize(
+impl CubemapGenerationPass {
+    pub fn initialize<T>(
         context: &Context,
-        texture: &Arc<ImageView<Arc<ImmutableImage>>>,
-    ) -> IrradiancePass {
+        input_image: &Arc<T>,
+        fragment_shader_entry_point: GraphicsEntryPoint,
+    ) -> CubemapGenerationPass
+    where
+        T: ImageViewAbstract + 'static,
+    {
         let render_pass = Self::create_render_pass(context);
-        let pipeline = Self::create_graphics_pipeline(context, &render_pass);
+        let pipeline =
+            Self::create_graphics_pipeline(context, &render_pass, fragment_shader_entry_point);
 
         let vertex_buffer = SkyboxPass::create_vertex_buffer(context);
         let uniform_buffer = Self::create_uniform_buffer(context);
 
         let descriptor_set =
-            Self::create_descriptor_set(context, &pipeline, &uniform_buffer, &texture);
+            Self::create_descriptor_set(context, &pipeline, &uniform_buffer, &input_image);
 
         let cube_attachment = Self::create_cube_attachment(context);
         let color_attachment = Self::create_color_attachment(context);
@@ -76,7 +77,7 @@ impl IrradiancePass {
 
         let framebuffer = Self::create_framebuffer(&render_pass, &color_attachment_view);
 
-        IrradiancePass {
+        CubemapGenerationPass {
             uniform_buffer,
             pipeline,
             vertex_buffer,
@@ -163,7 +164,7 @@ impl IrradiancePass {
         )
     }
 
-    pub fn draw(&self, context: &Context) -> PrimaryAutoCommandBuffer {
+    pub fn execute(&self, context: &Context) {
         let mut builder = AutoCommandBufferBuilder::primary(
             context.device.clone(),
             context.graphics_queue.family(),
@@ -173,13 +174,20 @@ impl IrradiancePass {
 
         let mats = matrices();
 
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [DIM, DIM],
-            depth_range: 0.0..1.0,
-        };
+        // let num_mips = (DIM.floor().log2() + 1.0) as u32;
 
+        // TODO: vulkano is not supporting mipmaps for StorageImage right now
+        // for m in 0..num_mips {
+        let m = 0;
         for f in 0..6 {
+            let width = DIM * 0.5_f32.powf(m as f32);
+            let height = DIM * 0.5_f32.powf(m as f32);
+            let viewport = Viewport {
+                origin: [0.0, 0.0],
+                dimensions: [width, height],
+                depth_range: 0.0..1.0,
+            };
+
             Self::update_uniform_buffer(&self.uniform_buffer, &mut builder, &mats[f]);
 
             builder
@@ -218,23 +226,31 @@ impl IrradiancePass {
                     destination,
                     [0, 0, 0],
                     f as u32,
-                    0,
-                    [DIM as u32, DIM as u32, 1],
+                    m,
+                    [width as u32, height as u32, 1],
                     1,
                 )
                 .unwrap();
         }
+        // }
 
-        builder.build().unwrap()
+        builder
+            .build()
+            .unwrap()
+            .execute(context.graphics_queue.clone())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None)
+            .unwrap();
     }
 
     fn create_graphics_pipeline(
         context: &Context,
         render_pass: &Arc<RenderPass>,
+        fragment_shader_entry_point: GraphicsEntryPoint,
     ) -> Arc<GraphicsPipeline> {
         let vert_shader_module = vs::Shader::load(context.device.clone()).unwrap();
-        let frag_shader_module =
-            irradiance_convolution_fs::Shader::load(context.device.clone()).unwrap();
 
         let viewport = Viewport {
             origin: [0.0, 0.0],
@@ -249,7 +265,7 @@ impl IrradiancePass {
                 .triangle_list()
                 .primitive_restart(false)
                 .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(frag_shader_module.main_entry_point(), ())
+                .fragment_shader(fragment_shader_entry_point, ())
                 .front_face_counter_clockwise()
                 .viewports_dynamic_scissors_irrelevant(1)
                 .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
@@ -260,12 +276,15 @@ impl IrradiancePass {
         pipeline
     }
 
-    fn create_descriptor_set(
+    fn create_descriptor_set<T>(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        image: &Arc<ImageView<Arc<ImmutableImage>>>,
-    ) -> Arc<PersistentDescriptorSet> {
+        input_image: &Arc<T>,
+    ) -> Arc<PersistentDescriptorSet>
+    where
+        T: ImageViewAbstract + 'static,
+    {
         let layout = graphics_pipeline
             .layout()
             .descriptor_set_layouts()
@@ -277,7 +296,7 @@ impl IrradiancePass {
         set_builder.add_buffer(uniform_buffer.clone()).unwrap();
 
         set_builder
-            .add_sampled_image(image.clone(), context.image_sampler.clone())
+            .add_sampled_image(input_image.clone(), context.image_sampler.clone())
             .unwrap();
 
         Arc::new(set_builder.build().unwrap())
@@ -345,6 +364,13 @@ pub mod irradiance_convolution_fs {
     }
 }
 
+pub mod prefilterenvmap_fs {
+    vulkano_shaders::shader! {
+        ty: "fragment",
+        path: "src/renderer/shaders/prefilterenvmap.frag"
+    }
+}
+
 fn matrices() -> [Mat4; 6] {
     [
         Mat4::look_at_rh(Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0), -Vec3::Y),
@@ -353,7 +379,7 @@ fn matrices() -> [Mat4; 6] {
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
         Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0), Vec3::Z),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)),
-        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0), -Vec3::Z),
+        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, -1.0, 0.0), -Vec3::Z),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f)),
         Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0), -Vec3::Y),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f)),

@@ -6,7 +6,7 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
-    image::{view::ImageView, ImmutableImage},
+    image::{view::ImageView, ImageViewAbstract, ImmutableImage},
     pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
     render_pass::{RenderPass, Subpass},
     sync::GpuFuture,
@@ -38,11 +38,14 @@ pub struct SkyboxPass {
 }
 
 impl SkyboxPass {
-    pub fn initialize(
+    pub fn initialize<T>(
         context: &Context,
         render_pass: &Arc<RenderPass>,
-        texture: &Arc<ImageView<Arc<ImmutableImage>>>,
-    ) -> SkyboxPass {
+        texture: &Arc<T>,
+    ) -> SkyboxPass
+    where
+        T: ImageViewAbstract + 'static,
+    {
         let graphics_pipeline = Self::create_graphics_pipeline(context, &render_pass);
 
         let vertex_buffer = Self::create_vertex_buffer(context);
@@ -179,12 +182,15 @@ impl SkyboxPass {
         pipeline
     }
 
-    fn create_descriptor_set(
+    fn create_descriptor_set<T>(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        image: &Arc<ImageView<Arc<ImmutableImage>>>,
-    ) -> Arc<PersistentDescriptorSet> {
+        image: &Arc<T>,
+    ) -> Arc<PersistentDescriptorSet>
+    where
+        T: ImageViewAbstract + 'static,
+    {
         let layout = graphics_pipeline
             .layout()
             .descriptor_set_layouts()

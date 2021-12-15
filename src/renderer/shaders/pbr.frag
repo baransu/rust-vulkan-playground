@@ -64,7 +64,6 @@ void main() {
 	vec3 albedo = pow(raw_albedo, vec3(2.2));
 
 	vec3 Normal = texture(u_normals, f_uv).xyz;
-	// TODO: is this the correct pos?
 	vec3 Position = texture(u_position, f_uv).xyz;
 
 	vec3 color = vec3(0.0);
@@ -78,7 +77,8 @@ void main() {
 		vec3 R = reflect(-V, N);
 
 		vec4 metalic_roughness = texture(u_metalic_roughness, f_uv);
-		float ao = metalic_roughness.r;
+		// TODO: fix ssao so we don't need to load ao from texture
+		float ao = 1.0; // metalic_roughness.r;
 		float roughness = metalic_roughness.g;
 		float metallic = metalic_roughness.b;
 

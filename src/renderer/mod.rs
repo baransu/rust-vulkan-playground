@@ -1,7 +1,7 @@
 pub mod camera;
 pub mod context;
+pub mod cubemap_generation_pass;
 pub mod gbuffer;
-pub mod irradiance_pass;
 pub mod light_system;
 pub mod mesh;
 pub mod scene;

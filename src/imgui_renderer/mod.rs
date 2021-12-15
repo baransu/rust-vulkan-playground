@@ -377,26 +377,15 @@ impl Renderer {
         &mut self.textures
     }
 
-    pub fn register_attachment_image_texture(
+    pub fn register_texture<T>(
         &mut self,
         context: &Context,
-        image: &Arc<ImageView<Arc<AttachmentImage>>>,
+        image: &Arc<T>,
         usage: TextureUsage,
-    ) -> Result<TextureId, Box<dyn std::error::Error>> {
-        let sampler = Sampler::simple_repeat_linear_no_mipmap(context.device.clone());
-
-        let usage = Self::create_texture_usage_buffer(context, usage);
-        let texture_id = self.textures.insert((image.clone(), sampler, usage));
-
-        Ok(texture_id)
-    }
-
-    pub fn register_storage_image_texture(
-        &mut self,
-        context: &Context,
-        image: &Arc<ImageView<Arc<StorageImage>>>,
-        usage: TextureUsage,
-    ) -> Result<TextureId, Box<dyn std::error::Error>> {
+    ) -> Result<TextureId, Box<dyn std::error::Error>>
+    where
+        T: ImageViewAbstract + 'static,
+    {
         let sampler = Sampler::simple_repeat_linear_no_mipmap(context.device.clone());
 
         let usage = Self::create_texture_usage_buffer(context, usage);
