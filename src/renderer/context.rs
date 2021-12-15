@@ -120,6 +120,7 @@ impl Context {
 
         let surface = WindowBuilder::new()
             .with_title("Vulkan")
+            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
             .build_vk_surface(&event_loop, instance.clone())
             .unwrap();
 

@@ -279,9 +279,9 @@ impl ScreenFrame {
                 .with_auto_layout(context.device.clone(), |set_descs| {
                     // Modify the auto-generated layout by setting an immutable sampler to
                     // set 0 binding 0.
-                    set_descs[0].set_immutable_samplers(0, [context.image_sampler.clone()]);
+                    set_descs[0].set_immutable_samplers(0, [context.attachment_sampler.clone()]);
                     // set 0 binding 1.
-                    set_descs[0].set_immutable_samplers(1, [context.image_sampler.clone()]);
+                    set_descs[0].set_immutable_samplers(1, [context.attachment_sampler.clone()]);
                     // set 0 binding 2.
                     set_descs[0].set_immutable_samplers(2, [context.depth_sampler.clone()]);
                 })

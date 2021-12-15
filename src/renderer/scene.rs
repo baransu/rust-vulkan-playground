@@ -12,15 +12,12 @@ use vulkano::{
     sync::GpuFuture,
 };
 
-use crate::{renderer::texture::Texture, FramebufferWithAttachment};
+use crate::renderer::texture::Texture;
 
 use super::{
     camera::Camera,
     context::Context,
-    gbuffer::GBuffer,
-    light_system::{
-        LightSystem, LightUniformBufferObject, ShaderDirectionalLight, ShaderPointLight,
-    },
+    light_system::{LightUniformBufferObject, ShaderDirectionalLight, ShaderPointLight},
     mesh::{GameObject, Mesh},
     shaders::{CameraUniformBufferObject, LightSpaceUniformBufferObject},
     vertex::Vertex,
@@ -125,7 +122,7 @@ impl Scene {
 
         for node in document.nodes() {
             if let Some(mesh) = node.mesh() {
-                for primitive in mesh.primitives() {
+                for (idx, primitive) in mesh.primitives().enumerate() {
                     let material = primitive.material();
                     let pbr = material.pbr_metallic_roughness();
 
@@ -201,7 +198,10 @@ impl Scene {
                         );
 
                         let mesh = Mesh {
-                            id: node.name().unwrap().to_string(),
+                            id: node
+                                .name()
+                                .unwrap_or(format!("sponza-{}", idx).as_str())
+                                .to_string(),
                             vertex_buffer,
                             index_buffer,
                             index_count: indices.len() as u32,
@@ -357,15 +357,15 @@ impl Scene {
         let mut lights = Vec::new();
         for _i in 0..5 {
             let position = Vec3::new(
-                rng.gen_range(-10.0..10.0),
-                rng.gen_range(1.0..10.0),
-                rng.gen_range(-10.0..10.0),
+                rng.gen_range(-5.0..5.0),
+                rng.gen_range(1.0..5.0),
+                rng.gen_range(-5.0..5.0),
             );
 
             let color = Vec3::new(
-                rng.gen_range(0.0..0.75),
-                rng.gen_range(0.0..0.75),
-                rng.gen_range(0.0..0.75),
+                rng.gen_range(0.0..1.0),
+                rng.gen_range(0.0..1.0),
+                rng.gen_range(0.0..1.0),
             );
 
             lights.push(PointLight { position, color });
@@ -375,7 +375,7 @@ impl Scene {
     }
 
     pub fn dir_light_position() -> Vec3 {
-        Vec3::new(-0.2, -1.0, -0.3) * -10.0
+        Vec3::new(0.0, 10.0, 0.0) * 5.0
     }
 
     fn create_light_uniform_buffer(
@@ -418,7 +418,7 @@ impl Scene {
             _dummy0: [0, 0, 0, 0],
             ambient: Vec3::ZERO.to_array(),
             _dummy1: [0, 0, 0, 0],
-            diffuse: (Vec3::ONE * 0.25).to_array(),
+            diffuse: (Vec3::ONE * 0.1).to_array(),
             _dummy2: [0, 0, 0, 0],
             specular: Vec3::ZERO.to_array(),
         };

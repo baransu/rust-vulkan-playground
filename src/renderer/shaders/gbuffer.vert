@@ -40,5 +40,5 @@ void main() {
 	f_material_specular = material_specular;
 
 	f_tangent = vec3(model * vec4(tangent.xyz, 0.0));
-	f_normal = vec3(model * vec4(normal, 0.0));
+	f_normal = vec3(model * vec4(normalize(normal), 0.0));
 }

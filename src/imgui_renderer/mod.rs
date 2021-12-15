@@ -421,6 +421,7 @@ impl Renderer {
                 depth: 0,
                 normal: 0,
                 position: 0,
+                rgb: 0,
             },
         );
 

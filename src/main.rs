@@ -45,10 +45,11 @@ use winit::{
     event_loop::ControlFlow,
 };
 
-const MODEL_PATHS: [&str; 3] = [
+const MODEL_PATHS: [&str; 4] = [
     "res/models/damaged_helmet/scene.gltf",
     "res/models/plane/plane.gltf",
     "res/models/cube/cube.gltf",
+    "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf",
 ];
 
 const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
@@ -138,47 +139,60 @@ impl Application {
             &ssao_blur.target,
         );
 
-        let count = 10;
-        let start = -(count / 2);
-        let end = count / 2;
+        // let count = 10;
+        // let start = -(count / 2);
+        // let end = count / 2;
 
-        // Helmets
-        for x in start..end {
-            for z in start..end {
-                let translation = Vec3::new(x as f32 * 2.0, 2.0, z as f32 * 2.0);
-                let material = Material {
-                    // diffuse: Vec3::new(
-                    //     rng.gen_range(0.0..1.0),
-                    //     rng.gen_range(0.0..1.0),
-                    //     rng.gen_range(0.0..1.0),
-                    // ),
-                    ..Default::default()
-                };
+        // // Helmets
+        // for x in start..end {
+        //     for z in start..end {
+        //         let translation = Vec3::new(x as f32 * 2.0, 2.0, z as f32 * 2.0);
+        //         let material = Material {
+        //             // diffuse: Vec3::new(
+        //             //     rng.gen_range(0.0..1.0),
+        //             //     rng.gen_range(0.0..1.0),
+        //             //     rng.gen_range(0.0..1.0),
+        //             // ),
+        //             ..Default::default()
+        //         };
 
-                let game_object = GameObject::new(
-                    "damaged_helmet",
-                    Transform {
-                        translation,
-                        rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
-                        scale: Vec3::ONE,
-                    },
-                    material,
-                );
+        //         let game_object = GameObject::new(
+        //             "damaged_helmet",
+        //             Transform {
+        //                 translation,
+        //                 rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
+        //                 scale: Vec3::ONE,
+        //             },
+        //             material,
+        //         );
 
-                scene.add_game_object(game_object);
-            }
+        //         scene.add_game_object(game_object);
+        //     }
+        // }
+
+        // // Plane
+        // scene.add_game_object(GameObject::new(
+        //     "Plane",
+        //     Transform {
+        //         rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+        //         scale: Vec3::ONE * 25.0,
+        //         translation: Vec3::new(0.0, 0.0, -5.0),
+        //     },
+        //     Default::default(),
+        // ));
+
+        for idx in 0..102 {
+            // Plane
+            scene.add_game_object(GameObject::new(
+                format!("sponza-{}", idx).as_str(),
+                Transform {
+                    rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+                    scale: Vec3::ONE * 0.01,
+                    translation: Vec3::new(0.0, 0.0, 0.0),
+                },
+                Default::default(),
+            ));
         }
-
-        // Plane
-        scene.add_game_object(GameObject::new(
-            "Plane",
-            Transform {
-                rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
-                scale: Vec3::ONE * 25.0,
-                translation: Vec3::new(0.0, 0.0, -5.0),
-            },
-            Default::default(),
-        ));
 
         // point light cubes for reference
         for light in scene.point_lights.clone() {
@@ -261,6 +275,7 @@ impl Application {
                     depth: 1,
                     normal: 0,
                     position: 0,
+                    rgb: 0,
                 },
             )
             .unwrap();
@@ -275,6 +290,7 @@ impl Application {
                     // so we need to convert them to [0,1]
                     normal: 0,
                     position: 1,
+                    rgb: 0,
                 },
             )
             .unwrap();
@@ -287,6 +303,7 @@ impl Application {
                     depth: 0,
                     normal: 1,
                     position: 0,
+                    rgb: 0,
                 },
             )
             .unwrap();
@@ -299,6 +316,7 @@ impl Application {
                     depth: 0,
                     normal: 0,
                     position: 0,
+                    rgb: 1,
                 },
             )
             .unwrap();
@@ -311,6 +329,7 @@ impl Application {
                     depth: 1,
                     normal: 0,
                     position: 0,
+                    rgb: 0,
                 },
             )
             .unwrap();
