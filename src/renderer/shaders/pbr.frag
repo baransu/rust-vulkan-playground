@@ -113,7 +113,7 @@ void main() {
 			Lo += (kD * albedo / PI + specular) * radiance * NdotL;
 		}
 
-		vec3 kS = fresnelSchlick(max(dot(N, V), 0.0), F0);
+		vec3 kS = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
     vec3 kD = 1.0 - kS;
     kD *= 1.0 - metallic; 
     vec3 irradiance = texture(irradianceMap, N).rgb;

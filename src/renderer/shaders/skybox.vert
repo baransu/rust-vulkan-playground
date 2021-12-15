@@ -1,12 +1,12 @@
 #version 450
 
-layout(location = 0) in vec3 position;
-
 layout(binding = 0) uniform CameraUniformBufferObject {
 	mat4 view;
 	mat4 proj;
 	mat4 position;
 } camera;
+
+layout(location = 0) in vec3 position;
 
 layout(location = 0) out vec3 WorldPos;
 

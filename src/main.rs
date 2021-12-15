@@ -25,7 +25,7 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        SecondaryAutoCommandBuffer, SubpassContents,
+        PrimaryCommandBuffer, SecondaryAutoCommandBuffer, SubpassContents,
     },
     device::Device,
     format::ClearValue,
@@ -103,6 +103,7 @@ struct Application {
     gbuffer_albedo_texture_id: TextureId,
     gbuffer_metalic_texture_id: TextureId,
     ssao_texture_id: TextureId,
+    irradiance_color_texture_id: TextureId,
 
     ssao: Ssao,
     ssao_blur: SsaoBlur,
@@ -135,11 +136,7 @@ impl Application {
 
         let texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
         let irradiance_convolution = IrradiancePass::initialize(&context, &texture.image);
-        let skybox = SkyboxPass::initialize(
-            &context,
-            &gbuffer.render_pass,
-            &irradiance_convolution.cube_attachment_view,
-        );
+        let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, &texture.image);
 
         let light_system = LightSystem::initialize(
             &context,
@@ -379,6 +376,19 @@ impl Application {
             )
             .unwrap();
 
+        let irradiance_color_texture_id = imgui_renderer
+            .register_storage_image_texture(
+                &context,
+                &irradiance_convolution.color_attachment_view,
+                TextureUsage {
+                    depth: 0,
+                    normal: 0,
+                    position: 0,
+                    rgb: 0,
+                },
+            )
+            .unwrap();
+
         let mut app = Self {
             context,
 
@@ -414,6 +424,7 @@ impl Application {
             gbuffer_normals_texture_id,
             gbuffer_metalic_texture_id,
             ssao_texture_id,
+            irradiance_color_texture_id,
 
             ssao,
             ssao_blur,
@@ -722,6 +733,7 @@ impl Application {
         let gbuffer_normals_texture_id = self.gbuffer_normals_texture_id;
         let gbuffer_metalic_texture_id = self.gbuffer_metalic_texture_id;
         let ssao_texture_id = self.ssao_texture_id;
+        let irradiance_color_texture_id = self.irradiance_color_texture_id;
 
         let camera_pos = self.camera.position;
 
@@ -737,6 +749,9 @@ impl Application {
                     camera_pos.x, camera_pos.y, camera_pos.z
                 ));
                 ui.separator();
+
+                Image::new(irradiance_color_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("Irradiance color");
 
                 Image::new(gbuffer_metalic_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("GBuffer metalic");
@@ -981,20 +996,9 @@ impl Application {
 
         let original_rotation = self.camera.rotation;
 
-        let (_image_index, _suboptimal, acquire_future) =
-            match acquire_next_image(self.context.swap_chain.clone(), None) {
-                Ok(r) => r,
-                Err(AcquireError::OutOfDate) => {
-                    self.recreate_swap_chain = true;
-                    return;
-                }
-                Err(err) => panic!("{:?}", err),
-            };
-
-        let command_buffer = self.irradiance_convolution.draw(&self.context);
-
-        acquire_future
-            .then_execute(self.context.graphics_queue.clone(), command_buffer)
+        self.irradiance_convolution
+            .draw(&self.context)
+            .execute(self.context.graphics_queue.clone())
             .unwrap()
             .then_signal_fence_and_flush()
             .unwrap()

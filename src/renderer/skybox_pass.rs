@@ -6,7 +6,7 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
-    image::{view::ImageView, ImmutableImage, StorageImage},
+    image::{view::ImageView, ImmutableImage},
     pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
     render_pass::{RenderPass, Subpass},
     sync::GpuFuture,
@@ -41,7 +41,7 @@ impl SkyboxPass {
     pub fn initialize(
         context: &Context,
         render_pass: &Arc<RenderPass>,
-        texture: &Arc<ImageView<Arc<StorageImage>>>,
+        texture: &Arc<ImageView<Arc<ImmutableImage>>>,
     ) -> SkyboxPass {
         let graphics_pipeline = Self::create_graphics_pipeline(context, &render_pass);
 
@@ -165,14 +165,11 @@ impl SkyboxPass {
                 .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
                 .fragment_shader(frag_shader_module.main_entry_point(), ())
                 .depth_clamp(false)
-                // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
                 .polygon_mode_fill() // = default
                 .line_width(1.0) // = default
                 .cull_mode_back()
                 .front_face_counter_clockwise()
-                // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
                 .blend_pass_through()
-                // .depth_stencil(DepthStencil::simple_depth_test())
                 .viewports_dynamic_scissors_irrelevant(1)
                 .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
                 .build(context.device.clone())
@@ -186,7 +183,7 @@ impl SkyboxPass {
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        image: &Arc<ImageView<Arc<StorageImage>>>,
+        image: &Arc<ImageView<Arc<ImmutableImage>>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()

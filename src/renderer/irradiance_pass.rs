@@ -44,8 +44,8 @@ pub struct IrradiancePass {
     // pub command_buffer: Arc<SecondaryAutoCommandBuffer>,
     pub cube_attachment: Arc<StorageImage>,
     pub cube_attachment_view: Arc<ImageView<Arc<StorageImage>>>,
-    pub color_attachment: Arc<AttachmentImage>,
-    pub color_attachment_view: Arc<ImageView<Arc<AttachmentImage>>>,
+    pub color_attachment: Arc<StorageImage>,
+    pub color_attachment_view: Arc<ImageView<Arc<StorageImage>>>,
     pub render_pass: Arc<RenderPass>,
     pub framebuffer: Arc<FramebufferT>,
 }
@@ -93,17 +93,13 @@ impl IrradiancePass {
     fn create_uniform_buffer(
         context: &Context,
     ) -> Arc<CpuAccessibleBuffer<CameraUniformBufferObject>> {
-        let camera: Camera = Default::default();
+        let identity = Mat4::IDENTITY.to_cols_array_2d();
 
-        let dim = context.swap_chain.dimensions();
-        let mut uniform_buffer_data =
-            camera.get_skybox_uniform_data([dim[0] as f32, dim[1] as f32]);
-
-        // TODO: this have to be set to matrix for correct face
-        uniform_buffer_data.view = Mat4::IDENTITY.to_cols_array_2d();
-
-        uniform_buffer_data.proj =
-            Mat4::perspective_rh(PI / 2.0, 1.0, 0.1, 512.0).to_cols_array_2d();
+        let uniform_buffer_data = CameraUniformBufferObject {
+            view: identity,
+            proj: identity,
+            position: Vec3::ONE.to_array(),
+        };
 
         let buffer = CpuAccessibleBuffer::from_data(
             context.device.clone(),
@@ -136,7 +132,7 @@ impl IrradiancePass {
 
     fn create_framebuffer(
         render_pass: &Arc<RenderPass>,
-        target: &Arc<ImageView<Arc<AttachmentImage>>>,
+        target: &Arc<ImageView<Arc<StorageImage>>>,
     ) -> Arc<FramebufferT> {
         let framebuffer = Framebuffer::start(render_pass.clone())
             .add(target.clone())
@@ -154,7 +150,7 @@ impl IrradiancePass {
                         color: {
                             load: Clear,
                             store: Store,
-                            format: Format::R16G16B16A16_SFLOAT,
+                            format: Format::R32G32B32A32_SFLOAT,
                             samples: 1,
                         }
                     },
@@ -190,7 +186,7 @@ impl IrradiancePass {
                 .begin_render_pass(
                     self.framebuffer.clone(),
                     SubpassContents::Inline,
-                    vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
+                    vec![ClearValue::Float([1.0, 0.0, 0.0, 1.0])],
                 )
                 .unwrap();
 
@@ -254,15 +250,7 @@ impl IrradiancePass {
                 .primitive_restart(false)
                 .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
                 .fragment_shader(frag_shader_module.main_entry_point(), ())
-                .depth_clamp(false)
-                // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
-                .polygon_mode_fill() // = default
-                .line_width(1.0) // = default
-                .cull_mode_back()
                 .front_face_counter_clockwise()
-                // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
-                .blend_pass_through()
-                // .depth_stencil(DepthStencil::simple_depth_test())
                 .viewports_dynamic_scissors_irrelevant(1)
                 .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
                 .build(context.device.clone())
@@ -289,24 +277,30 @@ impl IrradiancePass {
         set_builder.add_buffer(uniform_buffer.clone()).unwrap();
 
         set_builder
-            .add_sampled_image(image.clone(), context.attachment_sampler.clone())
+            .add_sampled_image(image.clone(), context.image_sampler.clone())
             .unwrap();
 
         Arc::new(set_builder.build().unwrap())
     }
 
-    fn create_color_attachment(context: &Context) -> Arc<AttachmentImage> {
-        AttachmentImage::with_usage(
+    fn create_color_attachment(context: &Context) -> Arc<StorageImage> {
+        StorageImage::with_usage(
             context.device.clone(),
-            [DIM as u32, DIM as u32],
-            Format::R16G16B16A16_SFLOAT,
+            ImageDimensions::Dim2d {
+                width: DIM as u32,
+                height: DIM as u32,
+                // TODO: what are array_layers?
+                array_layers: 1,
+            },
+            Format::R32G32B32A32_SFLOAT,
             ImageUsage {
                 color_attachment: true,
                 transfer_source: true,
-                transfer_destination: true,
                 sampled: true,
                 ..ImageUsage::none()
             },
+            ImageCreateFlags::none(),
+            [context.graphics_queue.family()].iter().cloned(),
         )
         .unwrap()
     }
@@ -320,9 +314,8 @@ impl IrradiancePass {
                 // TODO: what are array_layers?
                 array_layers: 6,
             },
-            Format::R16G16B16A16_SFLOAT,
+            Format::R32G32B32A32_SFLOAT,
             ImageUsage {
-                transfer_source: true,
                 transfer_destination: true,
                 color_attachment: true,
                 sampled: true,
@@ -354,30 +347,17 @@ pub mod irradiance_convolution_fs {
 
 fn matrices() -> [Mat4; 6] {
     [
-        // POSITIVE_X
-        Mat4::from_rotation_y(90.0_f32.to_radians())
-            * Mat4::from_rotation_x(180.0_f32.to_radians()),
-        // glm::rotate(glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-
-        // NEGATIVE_X
-        Mat4::from_rotation_y(-90.0_f32.to_radians())
-            * Mat4::from_rotation_x(180.0_f32.to_radians()),
-        // glm::rotate(glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f)), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-
-        // POSITIVE_Y
-        Mat4::from_rotation_x(-90.0_f32.to_radians()),
-        // glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-
-        // NEGATIVE_Y
-        Mat4::from_rotation_x(90.0_f32.to_radians()),
-        // glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-
-        // POSITIVE_Z
-        Mat4::from_rotation_x(180.0_f32.to_radians()),
-        // glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-
-        // NEGATIVE_Z
-        Mat4::from_rotation_z(180.0_f32.to_radians()),
-        // glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0), -Vec3::Y),
+        // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(-1.0, 0.0, 0.0), -Vec3::Y),
+        // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0), Vec3::Z),
+        // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)),
+        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0), -Vec3::Z),
+        // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f)),
+        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0), -Vec3::Y),
+        // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 0.0, -1.0), -Vec3::Y),
+        // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))
     ]
 }
