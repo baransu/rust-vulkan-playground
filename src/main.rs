@@ -996,7 +996,9 @@ impl Application {
         acquire_future
             .then_execute(self.context.graphics_queue.clone(), command_buffer)
             .unwrap()
-            .flush()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None)
             .unwrap();
 
         self.context

@@ -19,6 +19,7 @@ use vulkano::{
         shader::GraphicsEntryPoint, viewport::Viewport, GraphicsPipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
+    sampler::Filter,
     single_pass_renderpass,
     sync::GpuFuture,
 };
