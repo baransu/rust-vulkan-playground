@@ -38,6 +38,8 @@ impl LightSystem {
         gbuffer: &GBuffer,
         ssao_target: &Arc<ImageView<Arc<AttachmentImage>>>,
         irradiance_map: &Arc<ImageView<Arc<StorageImage>>>,
+        prefilter_map: &Arc<ImageView<Arc<StorageImage>>>,
+        brdf: &Arc<ImageView<Arc<StorageImage>>>,
     ) -> LightSystem {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
 
@@ -55,6 +57,8 @@ impl LightSystem {
             &shadow_framebuffer,
             &ssao_target,
             &irradiance_map,
+            &prefilter_map,
+            &brdf,
         );
 
         let command_buffers =
@@ -79,6 +83,8 @@ impl LightSystem {
         shadow_framebuffer: &FramebufferWithAttachment,
         ssao_target: &Arc<ImageView<Arc<AttachmentImage>>>,
         irradiance_map: &Arc<ImageView<Arc<StorageImage>>>,
+        prefilter_map: &Arc<ImageView<Arc<StorageImage>>>,
+        brdf: &Arc<ImageView<Arc<StorageImage>>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = light_graphics_pipeline
             .layout()
@@ -133,6 +139,14 @@ impl LightSystem {
 
         set_builder
             .add_sampled_image(irradiance_map.clone(), context.attachment_sampler.clone())
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(prefilter_map.clone(), context.attachment_sampler.clone())
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(brdf.clone(), context.attachment_sampler.clone())
             .unwrap();
 
         set_builder

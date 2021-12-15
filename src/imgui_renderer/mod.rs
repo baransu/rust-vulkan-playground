@@ -12,7 +12,7 @@ use vulkano::{
 };
 
 use vulkano::format::Format;
-use vulkano::image::{AttachmentImage, ImageUsage, ImmutableImage, StorageImage};
+use vulkano::image::{AttachmentImage, ImageUsage, ImmutableImage};
 use vulkano::pipeline::viewport::Scissor;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::render_pass::Subpass;

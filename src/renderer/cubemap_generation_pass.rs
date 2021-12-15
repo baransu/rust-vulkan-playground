@@ -12,8 +12,7 @@ use vulkano::{
     format::{ClearValue, Format},
     image::{
         view::{ImageView, ImageViewType},
-        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, ImmutableImage,
-        StorageImage,
+        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, StorageImage,
     },
     pipeline::{
         shader::GraphicsEntryPoint, viewport::Viewport, GraphicsPipeline, PipelineBindPoint,

@@ -31,13 +31,15 @@ layout(binding = 4) uniform sampler2D u_metalic_roughness;
 layout(binding = 5) uniform sampler2D ssao_sampler;
 layout(binding = 6) uniform sampler2D shadow_sampler;
 layout(binding = 7) uniform samplerCube irradianceMap;
+layout(binding = 8) uniform samplerCube prefilterMap;
+layout(binding = 9) uniform sampler2D   brdfLUT;  
 
 // duplicated definition in model.vert and shaders.rs
-layout(binding = 8)	uniform LightSpaceUniformBufferObject {
+layout(binding = 10)	uniform LightSpaceUniformBufferObject {
 	mat4 matrix;
 } light_space;
 
-layout(binding = 9) uniform LightUniformBufferObject { 
+layout(binding = 11) uniform LightUniformBufferObject { 
 	PointLight point_lights[MAX_POINT_LIGHTS];
 	DirectionalLight dir_light;
 	int point_lights_count;
@@ -113,12 +115,20 @@ void main() {
 			Lo += (kD * albedo / PI + specular) * radiance * NdotL;
 		}
 
-		vec3 kS = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
-    vec3 kD = 1.0 - kS;
-    kD *= 1.0 - metallic; 
+		vec3 F = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
+		vec3 kS = F;
+		vec3 kD = 1.0 - kS;
+		kD *= 1.0 - metallic;
+
     vec3 irradiance = texture(irradianceMap, N).rgb;
     vec3 diffuse    = irradiance * albedo;
-    vec3 ambient    = (kD * diffuse) * ao;
+
+		 const float MAX_REFLECTION_LOD = 4.0;
+    vec3 prefilteredColor = textureLod(prefilterMap, R,roughness * MAX_REFLECTION_LOD).rgb;    
+		vec2 brdf = texture(brdfLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
+		vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
+
+		vec3 ambient = (kD * diffuse + specular) * ao;
 
 		color = ambient + Lo;
 	}

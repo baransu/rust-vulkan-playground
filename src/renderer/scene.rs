@@ -2,7 +2,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use glam::{Mat4, Vec3};
 use gltf::Semantic;
-use rand::Rng;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},

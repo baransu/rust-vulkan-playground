@@ -8,6 +8,7 @@ use imgui::*;
 use imgui_renderer::{shaders::TextureUsage, Renderer};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
+    brdf::BRDFPass,
     camera::Camera,
     context::Context,
     cubemap_generation_pass::{
@@ -27,7 +28,7 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        PrimaryCommandBuffer, SecondaryAutoCommandBuffer, SubpassContents,
+        SecondaryAutoCommandBuffer, SubpassContents,
     },
     device::Device,
     format::ClearValue,
@@ -105,13 +106,14 @@ struct Application {
     gbuffer_albedo_texture_id: TextureId,
     gbuffer_metalic_texture_id: TextureId,
     ssao_texture_id: TextureId,
-    irradiance_color_texture_id: TextureId,
+    brdf_texture_id: TextureId,
 
     ssao: Ssao,
     ssao_blur: SsaoBlur,
 
     irradiance_convolution: CubemapGenerationPass,
     prefilterenvmap: CubemapGenerationPass,
+    brdf: BRDFPass,
 }
 
 impl Application {
@@ -155,6 +157,8 @@ impl Application {
             prefilterenvmap_fs_mod.main_entry_point(),
         );
 
+        let brdf = BRDFPass::initialize(&context);
+
         let skybox = SkyboxPass::initialize(
             &context,
             &gbuffer.render_pass,
@@ -171,6 +175,8 @@ impl Application {
             &gbuffer,
             &ssao_blur.target,
             &irradiance_convolution.cube_attachment_view,
+            &prefilterenvmap.cube_attachment_view,
+            &brdf.color_attachment_view,
         );
 
         // let count = 10;
@@ -399,10 +405,10 @@ impl Application {
             )
             .unwrap();
 
-        let irradiance_color_texture_id = imgui_renderer
+        let brdf_texture_id = imgui_renderer
             .register_texture(
                 &context,
-                &irradiance_convolution.color_attachment_view,
+                &brdf.color_attachment_view,
                 TextureUsage {
                     depth: 0,
                     normal: 0,
@@ -447,13 +453,14 @@ impl Application {
             gbuffer_normals_texture_id,
             gbuffer_metalic_texture_id,
             ssao_texture_id,
-            irradiance_color_texture_id,
+            brdf_texture_id,
 
             ssao,
             ssao_blur,
 
             irradiance_convolution,
             prefilterenvmap,
+            brdf,
         };
 
         app.create_scene_command_buffers();
@@ -757,7 +764,7 @@ impl Application {
         let gbuffer_normals_texture_id = self.gbuffer_normals_texture_id;
         let gbuffer_metalic_texture_id = self.gbuffer_metalic_texture_id;
         let ssao_texture_id = self.ssao_texture_id;
-        let irradiance_color_texture_id = self.irradiance_color_texture_id;
+        let brdf_texture_id = self.brdf_texture_id;
 
         let camera_pos = self.camera.position;
 
@@ -774,8 +781,8 @@ impl Application {
                 ));
                 ui.separator();
 
-                Image::new(irradiance_color_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("Irradiance color");
+                Image::new(brdf_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("BRDF");
 
                 Image::new(gbuffer_metalic_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("GBuffer metalic");
@@ -1022,6 +1029,7 @@ impl Application {
 
         self.irradiance_convolution.execute(&self.context);
         self.prefilterenvmap.execute(&self.context);
+        self.brdf.execute(&self.context);
 
         self.context
             .event_loop
