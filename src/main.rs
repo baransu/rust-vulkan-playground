@@ -34,10 +34,10 @@ use vulkano::{
     format::ClearValue,
     image::{view::ImageView, AttachmentImage, ImageUsage},
     pipeline::{
-        depth_stencil::DepthStencil, vertex::BuffersDefinition, viewport::Viewport,
-        GraphicsPipeline, PipelineBindPoint,
+        graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
-    render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass},
+    render_pass::{Framebuffer, RenderPass, Subpass},
     single_pass_renderpass,
     swapchain::{acquire_next_image, AcquireError},
     sync::{self, GpuFuture},
@@ -65,11 +65,9 @@ const RENDER_SKYBOX: bool = true;
 
 const SHADOW_MAP_DIM: f32 = 2048.0;
 
-pub type FramebufferT = dyn FramebufferAbstract + Send + Sync;
-
 pub struct FramebufferWithAttachment {
-    framebuffer: Arc<FramebufferT>,
-    attachment: Arc<ImageView<Arc<AttachmentImage>>>,
+    framebuffer: Arc<Framebuffer>,
+    attachment: Arc<ImageView<AttachmentImage>>,
 }
 
 struct Application {
@@ -142,19 +140,18 @@ impl Application {
         let texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
 
         let irradiance_convolution_fs_mod =
-            irradiance_convolution_fs::Shader::load(context.device.clone()).unwrap();
+            irradiance_convolution_fs::load(context.device.clone()).unwrap();
         let irradiance_convolution = CubemapGenerationPass::initialize(
             &context,
             &texture.image,
-            irradiance_convolution_fs_mod.main_entry_point(),
+            irradiance_convolution_fs_mod.entry_point("main").unwrap(),
         );
 
-        let prefilterenvmap_fs_mod =
-            prefilterenvmap_fs::Shader::load(context.device.clone()).unwrap();
+        let prefilterenvmap_fs_mod = prefilterenvmap_fs::load(context.device.clone()).unwrap();
         let prefilterenvmap = CubemapGenerationPass::initialize(
             &context,
             &irradiance_convolution.cube_attachment_view,
-            prefilterenvmap_fs_mod.main_entry_point(),
+            prefilterenvmap_fs_mod.entry_point("main").unwrap(),
         );
 
         let brdf = BRDFPass::initialize(&context);
@@ -469,7 +466,7 @@ impl Application {
         app
     }
 
-    fn create_shadow_depth_image(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
+    fn create_shadow_depth_image(context: &Context) -> Arc<ImageView<AttachmentImage>> {
         let image = AttachmentImage::with_usage(
             context.device.clone(),
             [SHADOW_MAP_DIM as u32, SHADOW_MAP_DIM as u32],
@@ -485,7 +482,7 @@ impl Application {
         ImageView::new(image).unwrap()
     }
 
-    fn create_gbuffer_target(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
+    fn create_gbuffer_target(context: &Context) -> Arc<ImageView<AttachmentImage>> {
         let image = AttachmentImage::with_usage(
             context.device.clone(),
             context.swap_chain.dimensions(),
@@ -503,23 +500,21 @@ impl Application {
     fn create_shadow_render_pass(context: &Context) -> Arc<RenderPass> {
         let depth_format = context.depth_format;
 
-        Arc::new(
-            single_pass_renderpass!(context.device.clone(),
-                    attachments: {
-                        depth: {
-                            load: Clear,
-                            store: Store,
-                            format: depth_format,
-                            samples: 1,
-                        }
-                    },
-                    pass: {
-                        color: [],
-                        depth_stencil: {depth}
+        single_pass_renderpass!(context.device.clone(),
+                attachments: {
+                    depth: {
+                        load: Clear,
+                        store: Store,
+                        format: depth_format,
+                        samples: 1,
                     }
-            )
-            .unwrap(),
+                },
+                pass: {
+                    color: [],
+                    depth_stencil: {depth}
+                }
         )
+        .unwrap()
     }
 
     fn recreate_swap_chain(&mut self) {
@@ -538,10 +533,9 @@ impl Application {
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
         let vert_shader_module =
-            renderer::shaders::shadow_vertex_shader::Shader::load(context.device.clone()).unwrap();
+            renderer::shaders::shadow_vertex_shader::load(context.device.clone()).unwrap();
         let frag_shader_module =
-            renderer::shaders::shadow_fragment_shader::Shader::load(context.device.clone())
-                .unwrap();
+            renderer::shaders::shadow_fragment_shader::load(context.device.clone()).unwrap();
 
         let viewport = Viewport {
             origin: [0.0, 0.0],
@@ -549,36 +543,32 @@ impl Application {
             depth_range: 0.0..1.0,
         };
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input(
-                    BuffersDefinition::new()
-                        .vertex::<Vertex>()
-                        .instance::<InstanceData>(),
-                )
-                .vertex_shader(vert_shader_module.main_entry_point(), ())
-                .triangle_list()
-                .primitive_restart(false)
-                .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(frag_shader_module.main_entry_point(), ())
-                .depth_clamp(false)
-                // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
-                .polygon_mode_fill() // = default
-                .line_width(1.0) // = default
-                // NOTE: when we render shadows we render inners of the models (via front_face_clockwise and cull_mode_front)
-                // this is to reduce peter panning as described in learnopengl.com/Advanced-Lighting/Shadows/Shadow-Mapping
-                .cull_mode_front()
-                .front_face_clockwise()
-                // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
-                .blend_pass_through()
-                .depth_stencil(DepthStencil::simple_depth_test())
-                .viewports_dynamic_scissors_irrelevant(1)
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(context.device.clone())
-                .unwrap(),
-        );
-
-        pipeline
+        GraphicsPipeline::start()
+            .vertex_input_state(
+                BuffersDefinition::new()
+                    .vertex::<Vertex>()
+                    .instance::<InstanceData>(),
+            )
+            .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
+            .triangle_list()
+            .primitive_restart(false)
+            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .fragment_shader(frag_shader_module.entry_point("main").unwrap(), ())
+            .depth_clamp(false)
+            // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
+            .polygon_mode_fill() // = default
+            .line_width(1.0) // = default
+            // NOTE: when we render shadows we render inners of the models (via front_face_clockwise and cull_mode_front)
+            // this is to reduce peter panning as described in learnopengl.com/Advanced-Lighting/Shadows/Shadow-Mapping
+            .cull_mode_front()
+            .front_face_clockwise()
+            // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
+            .blend_pass_through()
+            .depth_stencil_simple_depth()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(context.device.clone())
+            .unwrap()
     }
 
     fn create_shadow_framebuffer(
@@ -587,13 +577,11 @@ impl Application {
     ) -> FramebufferWithAttachment {
         let depth_image = Self::create_shadow_depth_image(&context);
 
-        let framebuffer: Arc<FramebufferT> = Arc::new(
-            Framebuffer::start(render_pass.clone())
-                .add(depth_image.clone())
-                .unwrap()
-                .build()
-                .unwrap(),
-        );
+        let framebuffer: Arc<Framebuffer> = Framebuffer::start(render_pass.clone())
+            .add(depth_image.clone())
+            .unwrap()
+            .build()
+            .unwrap();
 
         FramebufferWithAttachment {
             framebuffer,

@@ -2,26 +2,27 @@ use std::sync::Arc;
 
 use vulkano::{
     format::Format,
-    image::{view::ImageView, AttachmentImage, ImageUsage, ImageViewAbstract},
-    pipeline::{vertex::BuffersDefinition, viewport::Viewport, GraphicsPipeline},
+    image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract},
+    pipeline::{
+        graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
+        GraphicsPipeline,
+    },
     render_pass::{Framebuffer, RenderPass, Subpass},
 };
 
-use crate::FramebufferT;
-
 use super::{context::Context, mesh::InstanceData, vertex::Vertex};
 
-pub type GBufferTarget = Arc<ImageView<Arc<AttachmentImage>>>;
+pub type GBufferTarget = Arc<ImageView<AttachmentImage>>;
 
 pub struct GBuffer {
-    pub position_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
-    pub normals_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
-    pub albedo_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
-    pub depth_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
-    pub metalic_roughness_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
+    pub position_buffer: Arc<ImageView<AttachmentImage>>,
+    pub normals_buffer: Arc<ImageView<AttachmentImage>>,
+    pub albedo_buffer: Arc<ImageView<AttachmentImage>>,
+    pub depth_buffer: Arc<ImageView<AttachmentImage>>,
+    pub metalic_roughness_buffer: Arc<ImageView<AttachmentImage>>,
 
     pub render_pass: Arc<RenderPass>,
-    pub framebuffer: Arc<FramebufferT>,
+    pub framebuffer: Arc<Framebuffer>,
     pub pipeline: Arc<GraphicsPipeline>,
 }
 
@@ -60,13 +61,13 @@ impl GBuffer {
 
     fn create_framebuffer(
         render_pass: &Arc<RenderPass>,
-        position_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
-        normals_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
-        albedo_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
-        metalic_roughness_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
-        depth_buffer: &Arc<ImageView<Arc<AttachmentImage>>>,
-    ) -> Arc<FramebufferT> {
-        let framebuffer = Framebuffer::start(render_pass.clone())
+        position_buffer: &Arc<ImageView<AttachmentImage>>,
+        normals_buffer: &Arc<ImageView<AttachmentImage>>,
+        albedo_buffer: &Arc<ImageView<AttachmentImage>>,
+        metalic_roughness_buffer: &Arc<ImageView<AttachmentImage>>,
+        depth_buffer: &Arc<ImageView<AttachmentImage>>,
+    ) -> Arc<Framebuffer> {
+        Framebuffer::start(render_pass.clone())
             .add(position_buffer.clone())
             .unwrap()
             .add(normals_buffer.clone())
@@ -78,53 +79,49 @@ impl GBuffer {
             .add(depth_buffer.clone())
             .unwrap()
             .build()
-            .unwrap();
-
-        Arc::new(framebuffer)
+            .unwrap()
     }
 
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
-        Arc::new(
-            vulkano::single_pass_renderpass!(context.device.clone(),
-                attachments: {
-                            position: {
-                                load: Clear,
-                                store: Store,
-                                format: Format::R16G16B16A16_SFLOAT,
-                                samples: 1,
-                            },
-                            normals: {
-                                load: Clear,
-                                store: Store,
-                                format: Format::R16G16B16A16_SFLOAT,
-                                samples: 1,
-                            },
-                            albedo: {
-                                load: Clear,
-                                store: Store,
-                                format: Format::R16G16B16A16_SFLOAT,
-                                samples: 1,
-                            },
-                            metalic_roughness: {
-                                load: Clear,
-                                store: Store,
-                                format: Format::R16G16B16A16_SFLOAT,
-                                samples: 1,
-                            },
-                            depth: {
-                                load: Clear,
-                                store: DontCare,
-                                format: context.depth_format,
-                                samples: 1,
-                            }
+        vulkano::single_pass_renderpass!(context.device.clone(),
+            attachments: {
+                        position: {
+                            load: Clear,
+                            store: Store,
+                            format: Format::R16G16B16A16_SFLOAT,
+                            samples: 1,
                         },
-                pass: {
-                    color: [position, normals, albedo, metalic_roughness],
-                    depth_stencil: {depth}
-                }
-            )
-            .unwrap(),
+                        normals: {
+                            load: Clear,
+                            store: Store,
+                            format: Format::R16G16B16A16_SFLOAT,
+                            samples: 1,
+                        },
+                        albedo: {
+                            load: Clear,
+                            store: Store,
+                            format: Format::R16G16B16A16_SFLOAT,
+                            samples: 1,
+                        },
+                        metalic_roughness: {
+                            load: Clear,
+                            store: Store,
+                            format: Format::R16G16B16A16_SFLOAT,
+                            samples: 1,
+                        },
+                        depth: {
+                            load: Clear,
+                            store: DontCare,
+                            format: context.depth_format,
+                            samples: 1,
+                        }
+                    },
+            pass: {
+                color: [position, normals, albedo, metalic_roughness],
+                depth_stencil: {depth}
+            }
         )
+        .unwrap()
     }
 
     fn create_pipeline(
@@ -132,9 +129,8 @@ impl GBuffer {
         render_pass: &Arc<RenderPass>,
         target: &GBufferTarget,
     ) -> Arc<GraphicsPipeline> {
-        let vs = super::shaders::model_vertex_shader::Shader::load(context.device.clone()).unwrap();
-        let fs =
-            super::shaders::model_fragment_shader::Shader::load(context.device.clone()).unwrap();
+        let vs = super::shaders::model_vertex_shader::load(context.device.clone()).unwrap();
+        let fs = super::shaders::model_fragment_shader::load(context.device.clone()).unwrap();
 
         let dimensions = target.image().dimensions().width_height();
 
@@ -144,32 +140,28 @@ impl GBuffer {
             depth_range: 0.0..1.0,
         };
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input(
-                    BuffersDefinition::new()
-                        .vertex::<Vertex>()
-                        .instance::<InstanceData>(),
-                )
-                .vertex_shader(vs.main_entry_point(), ())
-                .triangle_list()
-                .primitive_restart(false)
-                .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(fs.main_entry_point(), ())
-                .depth_stencil_simple_depth()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(context.device.clone())
-                .unwrap(),
-        );
-
-        pipeline
+        GraphicsPipeline::start()
+            .vertex_input_state(
+                BuffersDefinition::new()
+                    .vertex::<Vertex>()
+                    .instance::<InstanceData>(),
+            )
+            .vertex_shader(vs.entry_point("main").unwrap(), ())
+            .triangle_list()
+            .primitive_restart(false)
+            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .fragment_shader(fs.entry_point("main").unwrap(), ())
+            .depth_stencil_simple_depth()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(context.device.clone())
+            .unwrap()
     }
 
     fn create_position_buffer(
         context: &Context,
         target: &GBufferTarget,
-    ) -> Arc<ImageView<Arc<AttachmentImage>>> {
+    ) -> Arc<ImageView<AttachmentImage>> {
         let (usage, dimensions) = Self::usage_dimensions(target);
 
         ImageView::new(
@@ -187,7 +179,7 @@ impl GBuffer {
     fn create_normals_buffer(
         context: &Context,
         target: &GBufferTarget,
-    ) -> Arc<ImageView<Arc<AttachmentImage>>> {
+    ) -> Arc<ImageView<AttachmentImage>> {
         let (usage, dimensions) = Self::usage_dimensions(target);
 
         ImageView::new(
@@ -205,7 +197,7 @@ impl GBuffer {
     fn create_albedo_buffer(
         context: &Context,
         target: &GBufferTarget,
-    ) -> Arc<ImageView<Arc<AttachmentImage>>> {
+    ) -> Arc<ImageView<AttachmentImage>> {
         let (usage, dimensions) = Self::usage_dimensions(target);
 
         ImageView::new(
@@ -223,7 +215,7 @@ impl GBuffer {
     fn create_metalic_roughness_buffer(
         context: &Context,
         target: &GBufferTarget,
-    ) -> Arc<ImageView<Arc<AttachmentImage>>> {
+    ) -> Arc<ImageView<AttachmentImage>> {
         let (usage, dimensions) = Self::usage_dimensions(target);
 
         ImageView::new(
@@ -241,7 +233,7 @@ impl GBuffer {
     fn create_depth_buffer(
         context: &Context,
         target: &GBufferTarget,
-    ) -> Arc<ImageView<Arc<AttachmentImage>>> {
+    ) -> Arc<ImageView<AttachmentImage>> {
         let (usage, dimensions) = Self::usage_dimensions(target);
 
         ImageView::new(

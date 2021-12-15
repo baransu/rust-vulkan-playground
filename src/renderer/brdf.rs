@@ -6,13 +6,16 @@ use vulkano::{
     },
     format::{ClearValue, Format},
     image::{view::ImageView, ImageCreateFlags, ImageDimensions, ImageUsage, StorageImage},
-    pipeline::{viewport::Viewport, GraphicsPipeline},
+    pipeline::{
+        graphics::{
+            input_assembly::InputAssemblyState, vertex_input::BuffersDefinition, viewport::Viewport,
+        },
+        GraphicsPipeline,
+    },
     render_pass::{Framebuffer, RenderPass, Subpass},
     single_pass_renderpass,
     sync::GpuFuture,
 };
-
-use crate::FramebufferT;
 
 use super::{
     context::Context,
@@ -24,9 +27,9 @@ const DIM: f32 = 512.0;
 pub struct BRDFPass {
     pipeline: Arc<GraphicsPipeline>,
     screen_quad_buffers: ScreenFrameQuadBuffers,
-    pub color_attachment_view: Arc<ImageView<Arc<StorageImage>>>,
+    pub color_attachment_view: Arc<ImageView<StorageImage>>,
     pub render_pass: Arc<RenderPass>,
-    pub framebuffer: Arc<FramebufferT>,
+    pub framebuffer: Arc<Framebuffer>,
 }
 
 impl BRDFPass {
@@ -52,35 +55,31 @@ impl BRDFPass {
 
     fn create_framebuffer(
         render_pass: &Arc<RenderPass>,
-        target: &Arc<ImageView<Arc<StorageImage>>>,
-    ) -> Arc<FramebufferT> {
-        let framebuffer = Framebuffer::start(render_pass.clone())
+        target: &Arc<ImageView<StorageImage>>,
+    ) -> Arc<Framebuffer> {
+        Framebuffer::start(render_pass.clone())
             .add(target.clone())
             .unwrap()
             .build()
-            .unwrap();
-
-        Arc::new(framebuffer)
+            .unwrap()
     }
 
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
-        Arc::new(
-            single_pass_renderpass!(context.device.clone(),
-                    attachments: {
-                        color: {
-                            load: Clear,
-                            store: Store,
-                            format: Format::R16G16B16A16_SFLOAT,
-                            samples: 1,
-                        }
-                    },
-                    pass: {
-                        color: [color],
-                        depth_stencil: {}
+        single_pass_renderpass!(context.device.clone(),
+                attachments: {
+                    color: {
+                        load: Clear,
+                        store: Store,
+                        format: Format::R16G16B16A16_SFLOAT,
+                        samples: 1,
                     }
-            )
-            .unwrap(),
+                },
+                pass: {
+                    color: [color],
+                    depth_stencil: {}
+                }
         )
+        .unwrap()
     }
 
     pub fn execute(&self, context: &Context) {
@@ -130,8 +129,8 @@ impl BRDFPass {
         context: &Context,
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module = vs::Shader::load(context.device.clone()).unwrap();
-        let frag_shader_module = fs::Shader::load(context.device.clone()).unwrap();
+        let vert_shader_module = vs::load(context.device.clone()).unwrap();
+        let frag_shader_module = fs::load(context.device.clone()).unwrap();
 
         let viewport = Viewport {
             origin: [0.0, 0.0],
@@ -139,22 +138,19 @@ impl BRDFPass {
             depth_range: 0.0..1.0,
         };
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<ScreenQuadVertex>()
-                .vertex_shader(vert_shader_module.main_entry_point(), ())
-                .triangle_list()
-                .primitive_restart(false)
-                .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(frag_shader_module.main_entry_point(), ())
-                .front_face_counter_clockwise()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(context.device.clone())
-                .unwrap(),
-        );
-
-        pipeline
+        GraphicsPipeline::start()
+            .vertex_input_state(BuffersDefinition::new().vertex::<ScreenQuadVertex>())
+            .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
+            .triangle_list()
+            .primitive_restart(false)
+            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .input_assembly_state(InputAssemblyState::new())
+            .fragment_shader(frag_shader_module.entry_point("main").unwrap(), ())
+            .front_face_counter_clockwise()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(context.device.clone())
+            .unwrap()
     }
 
     fn create_color_attachment(context: &Context) -> Arc<StorageImage> {

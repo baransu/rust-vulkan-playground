@@ -3,7 +3,9 @@ pub mod shaders;
 use vulkano::buffer::ImmutableBuffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor_set::PersistentDescriptorSet;
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::sync::GpuFuture;
 use vulkano::{
     buffer::{BufferAccess, BufferUsage, CpuBufferPool},
@@ -13,10 +15,9 @@ use vulkano::{
 
 use vulkano::format::Format;
 use vulkano::image::{AttachmentImage, ImageUsage, ImmutableImage};
-use vulkano::pipeline::viewport::Scissor;
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::graphics::viewport::{Scissor, Viewport};
+use vulkano::render_pass::Framebuffer;
 use vulkano::render_pass::Subpass;
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract};
 use vulkano::sampler::Sampler;
 
 use std::fmt;
@@ -77,8 +78,8 @@ pub struct Renderer {
     textures: Textures<Texture>,
     vrt_buffer_pool: CpuBufferPool<Vertex>,
     idx_buffer_pool: CpuBufferPool<u16>,
-    pub target: Arc<ImageView<Arc<AttachmentImage>>>,
-    framebuffer: Arc<dyn FramebufferAbstract + Send + Sync>,
+    pub target: Arc<ImageView<AttachmentImage>>,
+    framebuffer: Arc<Framebuffer>,
 }
 
 impl Renderer {
@@ -98,28 +99,26 @@ impl Renderer {
         context: &Context,
         imgui: &mut imgui::Context,
     ) -> Result<Renderer, Box<dyn std::error::Error>> {
-        let vs = shaders::vs::Shader::load(context.device.clone()).unwrap();
-        let fs = shaders::fs::Shader::load(context.device.clone()).unwrap();
+        let vs = shaders::vs::load(context.device.clone()).unwrap();
+        let fs = shaders::fs::load(context.device.clone()).unwrap();
 
         let format = context.swap_chain.format();
-        let render_pass = Arc::new(
-            vulkano::single_pass_renderpass!(
-                context.device.clone(),
-                attachments: {
-                    color: {
-                        load: Clear,
-                        store: Store,
-                        format: format,
-                        samples: 1,
-                    }
-                },
-                pass: {
-                    color: [color],
-                    depth_stencil: {}
+        let render_pass = vulkano::single_pass_renderpass!(
+            context.device.clone(),
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: Store,
+                    format: format,
+                    samples: 1,
                 }
-            )
-            .unwrap(),
-        );
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
+        )
+        .unwrap();
 
         let dimensions_u32 = context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
@@ -129,18 +128,17 @@ impl Renderer {
             depth_range: 0.0..1.0,
         };
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vertex>()
-                .vertex_shader(vs.main_entry_point(), ())
-                .triangle_list()
-                .viewports(vec![viewport])
-                .viewports_scissors_dynamic(1)
-                .fragment_shader(fs.main_entry_point(), ())
-                .blend_alpha_blending()
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(context.device.clone())?,
-        );
+        let pipeline = GraphicsPipeline::start()
+            .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+            .vertex_shader(vs.entry_point("main").unwrap(), ())
+            .triangle_list()
+            .viewports(vec![viewport])
+            .viewports_scissors_dynamic(1)
+            .input_assembly_state(InputAssemblyState::new())
+            .fragment_shader(fs.entry_point("main").unwrap(), ())
+            .blend_alpha_blending()
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(context.device.clone())?;
 
         let textures = Textures::new();
 
@@ -169,13 +167,11 @@ impl Renderer {
         )
         .unwrap();
 
-        let framebuffer = Arc::new(
-            Framebuffer::start(render_pass.clone())
-                .add(target.clone())
-                .unwrap()
-                .build()
-                .unwrap(),
-        );
+        let framebuffer = Framebuffer::start(render_pass.clone())
+            .add(target.clone())
+            .unwrap()
+            .build()
+            .unwrap();
 
         Ok(Renderer {
             pipeline,
@@ -318,7 +314,7 @@ impl Renderer {
 
                             set_builder.add_buffer(usage.clone())?;
 
-                            let set = Arc::new(set_builder.build()?);
+                            let set = set_builder.build()?;
 
                             cmd_buf_builder
                                 .bind_descriptor_sets(

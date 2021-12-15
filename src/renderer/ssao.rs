@@ -10,12 +10,10 @@ use vulkano::{
     image::{
         view::ImageView, AttachmentImage, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount,
     },
-    pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
+    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{Framebuffer, RenderPass, Subpass},
     sync::GpuFuture,
 };
-
-use crate::FramebufferT;
 
 use super::{
     context::Context,
@@ -28,10 +26,10 @@ const SAMPLES_SIZE: usize = 64;
 
 pub struct Ssao {
     pub render_pass: Arc<RenderPass>,
-    pub framebuffer: Arc<FramebufferT>,
+    pub framebuffer: Arc<Framebuffer>,
     pub pipeline: Arc<GraphicsPipeline>,
 
-    pub target: Arc<ImageView<Arc<AttachmentImage>>>,
+    pub target: Arc<ImageView<AttachmentImage>>,
 
     pub descriptor_set: Arc<PersistentDescriptorSet>,
 
@@ -81,9 +79,8 @@ impl Ssao {
     }
 
     fn create_pipeline(context: &Context, render_pass: &Arc<RenderPass>) -> Arc<GraphicsPipeline> {
-        let vs =
-            screen_vertex_shader::Shader::load(context.graphics_queue.device().clone()).unwrap();
-        let fs = fs::Shader::load(context.device.clone()).unwrap();
+        let vs = screen_vertex_shader::load(context.graphics_queue.device().clone()).unwrap();
+        let fs = fs::load(context.device.clone()).unwrap();
 
         let dimensions = context.swap_chain.dimensions();
 
@@ -93,22 +90,18 @@ impl Ssao {
             depth_range: 0.0..1.0,
         };
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<ScreenQuadVertex>()
-                .vertex_shader(vs.main_entry_point(), ())
-                .triangle_list()
-                .primitive_restart(false)
-                .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(fs.main_entry_point(), ())
-                .blend_pass_through()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(context.device.clone())
-                .unwrap(),
-        );
-
-        pipeline
+        GraphicsPipeline::start()
+            .vertex_input_single_buffer::<ScreenQuadVertex>()
+            .vertex_shader(vs.entry_point("main").unwrap(), ())
+            .triangle_list()
+            .primitive_restart(false)
+            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .fragment_shader(fs.entry_point("main").unwrap(), ())
+            .blend_pass_through()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(context.device.clone())
+            .unwrap()
     }
 
     fn create_command_buffers(
@@ -160,42 +153,38 @@ impl Ssao {
     }
 
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
-        Arc::new(
-            vulkano::single_pass_renderpass!(context.device.clone(),
-                    attachments: {
-                                            color: {
-                                                    load: Clear,
-                                                    store: Store,
-                                                    format: Format::R16G16B16A16_SFLOAT,
-                                                    samples: 1,
-                                            }
+        vulkano::single_pass_renderpass!(context.device.clone(),
+                attachments: {
+                                        color: {
+                                                load: Clear,
+                                                store: Store,
+                                                format: Format::R16G16B16A16_SFLOAT,
+                                                samples: 1,
+                                        }
 
-                                    },
-                    pass: {
-                                                            color: [color],
-                                                            depth_stencil: {}
-                            }
+                                },
+                pass: {
+                                                        color: [color],
+                                                        depth_stencil: {}
+                        }
 
 
-            )
-            .unwrap(),
         )
+        .unwrap()
     }
 
     fn create_framebuffer(
         render_pass: &Arc<RenderPass>,
-        target: &Arc<ImageView<Arc<AttachmentImage>>>,
-    ) -> Arc<FramebufferT> {
-        let framebuffer = Framebuffer::start(render_pass.clone())
+        target: &Arc<ImageView<AttachmentImage>>,
+    ) -> Arc<Framebuffer> {
+        Framebuffer::start(render_pass.clone())
             .add(target.clone())
             .unwrap()
             .build()
-            .unwrap();
-
-        Arc::new(framebuffer)
+            .unwrap()
     }
 
-    fn create_attachment(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
+    fn create_attachment(context: &Context) -> Arc<ImageView<AttachmentImage>> {
         let dimensions = context.swap_chain.dimensions();
 
         let usage = ImageUsage {
@@ -221,7 +210,7 @@ impl Ssao {
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         gbuffer: &GBuffer,
         ssao_unfirm_buffer: &Arc<CpuAccessibleBuffer<SsaoUniformBufferObject>>,
-        noise_texture: &Arc<ImageView<Arc<ImmutableImage>>>,
+        noise_texture: &Arc<ImageView<ImmutableImage>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -255,7 +244,7 @@ impl Ssao {
 
         set_builder.add_buffer(ssao_unfirm_buffer.clone()).unwrap();
 
-        Arc::new(set_builder.build().unwrap())
+        set_builder.build().unwrap()
     }
 
     fn create_uniform_buffer(
@@ -298,7 +287,7 @@ impl Ssao {
         buffer
     }
 
-    fn create_noise_texture(context: &Context) -> Arc<ImageView<Arc<ImmutableImage>>> {
+    fn create_noise_texture(context: &Context) -> Arc<ImageView<ImmutableImage>> {
         let mut rng = rand::thread_rng();
         let mut data = Vec::with_capacity(4 * 4 * 3);
 

@@ -7,7 +7,7 @@ use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     device::Queue,
-    pipeline::GraphicsPipeline,
+    pipeline::{GraphicsPipeline, Pipeline},
     sync::GpuFuture,
 };
 
@@ -295,7 +295,7 @@ impl Scene {
             )
             .unwrap();
 
-        Arc::new(set_builder.build().unwrap())
+        set_builder.build().unwrap()
     }
 
     fn create_shadow_descriptor_set(
@@ -314,7 +314,7 @@ impl Scene {
             .add_buffer(light_space_uniform_buffer.clone())
             .unwrap();
 
-        Arc::new(set_builder.build().unwrap())
+        set_builder.build().unwrap()
     }
 
     fn create_camera_uniform_buffer(

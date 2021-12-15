@@ -14,15 +14,12 @@ use vulkano::{
         view::{ImageView, ImageViewType},
         ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, StorageImage,
     },
-    pipeline::{
-        shader::GraphicsEntryPoint, viewport::Viewport, GraphicsPipeline, PipelineBindPoint,
-    },
+    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{Framebuffer, RenderPass, Subpass},
+    shader::EntryPoint,
     single_pass_renderpass,
     sync::GpuFuture,
 };
-
-use crate::FramebufferT;
 
 use super::{
     context::Context,
@@ -38,18 +35,18 @@ pub struct CubemapGenerationPass {
     descriptor_set: Arc<PersistentDescriptorSet>,
     pub uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     pub cube_attachment: Arc<StorageImage>,
-    pub cube_attachment_view: Arc<ImageView<Arc<StorageImage>>>,
+    pub cube_attachment_view: Arc<ImageView<StorageImage>>,
     pub color_attachment: Arc<StorageImage>,
-    pub color_attachment_view: Arc<ImageView<Arc<StorageImage>>>,
+    pub color_attachment_view: Arc<ImageView<StorageImage>>,
     pub render_pass: Arc<RenderPass>,
-    pub framebuffer: Arc<FramebufferT>,
+    pub framebuffer: Arc<Framebuffer>,
 }
 
 impl CubemapGenerationPass {
     pub fn initialize<T>(
         context: &Context,
         input_image: &Arc<T>,
-        fragment_shader_entry_point: GraphicsEntryPoint,
+        fragment_shader_entry_point: EntryPoint,
     ) -> CubemapGenerationPass
     where
         T: ImageViewAbstract + 'static,
@@ -132,35 +129,31 @@ impl CubemapGenerationPass {
 
     fn create_framebuffer(
         render_pass: &Arc<RenderPass>,
-        target: &Arc<ImageView<Arc<StorageImage>>>,
-    ) -> Arc<FramebufferT> {
-        let framebuffer = Framebuffer::start(render_pass.clone())
+        target: &Arc<ImageView<StorageImage>>,
+    ) -> Arc<Framebuffer> {
+        Framebuffer::start(render_pass.clone())
             .add(target.clone())
             .unwrap()
             .build()
-            .unwrap();
-
-        Arc::new(framebuffer)
+            .unwrap()
     }
 
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
-        Arc::new(
-            single_pass_renderpass!(context.device.clone(),
-                    attachments: {
-                        color: {
-                            load: Clear,
-                            store: Store,
-                            format: Format::R32G32B32A32_SFLOAT,
-                            samples: 1,
-                        }
-                    },
-                    pass: {
-                        color: [color],
-                        depth_stencil: {}
+        single_pass_renderpass!(context.device.clone(),
+                attachments: {
+                    color: {
+                        load: Clear,
+                        store: Store,
+                        format: Format::R32G32B32A32_SFLOAT,
+                        samples: 1,
                     }
-            )
-            .unwrap(),
+                },
+                pass: {
+                    color: [color],
+                    depth_stencil: {}
+                }
         )
+        .unwrap()
     }
 
     pub fn execute(&self, context: &Context) {
@@ -247,9 +240,9 @@ impl CubemapGenerationPass {
     fn create_graphics_pipeline(
         context: &Context,
         render_pass: &Arc<RenderPass>,
-        fragment_shader_entry_point: GraphicsEntryPoint,
+        fragment_shader_entry_point: EntryPoint,
     ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module = vs::Shader::load(context.device.clone()).unwrap();
+        let vert_shader_module = vs::load(context.device.clone()).unwrap();
 
         let viewport = Viewport {
             origin: [0.0, 0.0],
@@ -257,22 +250,18 @@ impl CubemapGenerationPass {
             depth_range: 0.0..1.0,
         };
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<SkyboxVertex>()
-                .vertex_shader(vert_shader_module.main_entry_point(), ())
-                .triangle_list()
-                .primitive_restart(false)
-                .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(fragment_shader_entry_point, ())
-                .front_face_counter_clockwise()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(context.device.clone())
-                .unwrap(),
-        );
-
-        pipeline
+        GraphicsPipeline::start()
+            .vertex_input_single_buffer::<SkyboxVertex>()
+            .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
+            .triangle_list()
+            .primitive_restart(false)
+            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .fragment_shader(fragment_shader_entry_point, ())
+            .front_face_counter_clockwise()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(context.device.clone())
+            .unwrap()
     }
 
     fn create_descriptor_set<T>(
@@ -298,7 +287,7 @@ impl CubemapGenerationPass {
             .add_sampled_image(input_image.clone(), context.image_sampler.clone())
             .unwrap();
 
-        Arc::new(set_builder.build().unwrap())
+        set_builder.build().unwrap()
     }
 
     fn create_color_attachment(context: &Context) -> Arc<StorageImage> {

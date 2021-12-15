@@ -7,7 +7,7 @@ use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     image::ImageViewAbstract,
-    pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
+    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{RenderPass, Subpass},
     sync::GpuFuture,
 };
@@ -147,8 +147,8 @@ impl SkyboxPass {
         context: &Context,
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module = vs::Shader::load(context.device.clone()).unwrap();
-        let frag_shader_module = fs::Shader::load(context.device.clone()).unwrap();
+        let vert_shader_module = vs::load(context.device.clone()).unwrap();
+        let frag_shader_module = fs::load(context.device.clone()).unwrap();
 
         // TODO: add that to context as util or something
         let dimensions_u32 = context.swap_chain.dimensions();
@@ -159,27 +159,23 @@ impl SkyboxPass {
             depth_range: 0.0..1.0,
         };
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<SkyboxVertex>()
-                .vertex_shader(vert_shader_module.main_entry_point(), ())
-                .triangle_list()
-                .primitive_restart(false)
-                .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(frag_shader_module.main_entry_point(), ())
-                .depth_clamp(false)
-                .polygon_mode_fill() // = default
-                .line_width(1.0) // = default
-                .cull_mode_back()
-                .front_face_counter_clockwise()
-                .blend_pass_through()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(context.device.clone())
-                .unwrap(),
-        );
-
-        pipeline
+        GraphicsPipeline::start()
+            .vertex_input_single_buffer::<SkyboxVertex>()
+            .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
+            .triangle_list()
+            .primitive_restart(false)
+            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .fragment_shader(frag_shader_module.entry_point("main").unwrap(), ())
+            .depth_clamp(false)
+            .polygon_mode_fill() // = default
+            .line_width(1.0) // = default
+            .cull_mode_back()
+            .front_face_counter_clockwise()
+            .blend_pass_through()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(context.device.clone())
+            .unwrap()
     }
 
     fn create_descriptor_set<T>(
@@ -205,7 +201,7 @@ impl SkyboxPass {
             .add_sampled_image(image.clone(), context.image_sampler.clone())
             .unwrap();
 
-        Arc::new(set_builder.build().unwrap())
+        set_builder.build().unwrap()
     }
 
     pub fn create_vertex_buffer(context: &Context) -> Arc<ImmutableBuffer<[SkyboxVertex]>> {

@@ -23,7 +23,7 @@ use vulkano::{
 use super::context::Context;
 
 pub struct Texture {
-    pub image: Arc<ImageView<Arc<ImmutableImage>>>,
+    pub image: Arc<ImageView<ImmutableImage>>,
 }
 
 impl Texture {
@@ -225,7 +225,7 @@ impl Texture {
     fn create_image_view(
         context: &Context,
         image: &DynamicImage,
-    ) -> Arc<ImageView<Arc<ImmutableImage>>> {
+    ) -> Arc<ImageView<ImmutableImage>> {
         let width = image.width();
         let height = image.height();
 
