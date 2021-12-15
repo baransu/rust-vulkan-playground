@@ -2,14 +2,15 @@
 
 layout(location = 0) in vec3 position;
 
-layout(binding = 0) uniform SceneUniformBufferObject {
+layout(binding = 0) uniform CameraUniformBufferObject {
 	mat4 view;
 	mat4 proj;
-} scene;
+	mat4 position;
+} camera;
 
 layout(location = 0) out vec3 WorldPos;
 
 void main() {
 	WorldPos = position;
-	gl_Position = scene.proj * scene.view * vec4(position, 1.0);
+	gl_Position = camera.proj * camera.view * vec4(position, 1.0);
 }	

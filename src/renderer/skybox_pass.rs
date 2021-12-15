@@ -6,6 +6,7 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
+    image::{view::ImageView, ImmutableImage, StorageImage},
     pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
     render_pass::{RenderPass, Subpass},
     sync::GpuFuture,
@@ -33,7 +34,6 @@ pub struct SkyboxPass {
     vertex_buffer: Arc<ImmutableBuffer<[SkyboxVertex]>>,
     descriptor_set: Arc<PersistentDescriptorSet>,
     pub uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-    pub texture: Texture,
     pub command_buffer: Arc<SecondaryAutoCommandBuffer>,
 }
 
@@ -41,13 +41,11 @@ impl SkyboxPass {
     pub fn initialize(
         context: &Context,
         render_pass: &Arc<RenderPass>,
-        skybox_path: &str,
+        texture: &Arc<ImageView<Arc<StorageImage>>>,
     ) -> SkyboxPass {
         let graphics_pipeline = Self::create_graphics_pipeline(context, &render_pass);
 
         let vertex_buffer = Self::create_vertex_buffer(context);
-
-        let texture = Self::load_skybox_texture(context, skybox_path);
 
         let uniform_buffer = Self::create_uniform_buffer(context);
 
@@ -66,7 +64,6 @@ impl SkyboxPass {
             graphics_pipeline,
             vertex_buffer,
             descriptor_set,
-            texture,
             command_buffer,
         }
     }
@@ -189,7 +186,7 @@ impl SkyboxPass {
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        texture: &Texture,
+        image: &Arc<ImageView<Arc<StorageImage>>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -199,12 +196,10 @@ impl SkyboxPass {
 
         let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-        let image = texture.image.clone();
-
         set_builder.add_buffer(uniform_buffer.clone()).unwrap();
 
         set_builder
-            .add_sampled_image(image, context.image_sampler.clone())
+            .add_sampled_image(image.clone(), context.image_sampler.clone())
             .unwrap();
 
         Arc::new(set_builder.build().unwrap())
@@ -224,7 +219,7 @@ impl SkyboxPass {
         vertex_buffer
     }
 
-    fn load_skybox_texture(context: &Context, path: &str) -> Texture {
+    pub fn load_skybox_texture(context: &Context, path: &str) -> Texture {
         let ktx_file = BufReader::new(File::open(path).unwrap());
         let ktx: Decoder<BufReader<File>> = ktx::Decoder::new(ktx_file).unwrap();
 

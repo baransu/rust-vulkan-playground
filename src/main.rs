@@ -50,6 +50,7 @@ const MODEL_PATHS: [&str; 3] = [
     "res/models/damaged_helmet/scene.gltf",
     "res/models/plane/plane.gltf",
     "res/models/cube/cube.gltf",
+    // "res/models/sphere/sphere.gltf",
     // "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf",
 ];
 
@@ -100,6 +101,7 @@ struct Application {
     gbuffer_position_texture_id: TextureId,
     gbuffer_normals_texture_id: TextureId,
     gbuffer_albedo_texture_id: TextureId,
+    gbuffer_metalic_texture_id: TextureId,
     ssao_texture_id: TextureId,
 
     ssao: Ssao,
@@ -131,9 +133,13 @@ impl Application {
         let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
         let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);
 
-        let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, SKYBOX_PATH);
-
-        let irradiance_convolution = IrradiancePass::initialize(&context, &skybox.texture);
+        let texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
+        let irradiance_convolution = IrradiancePass::initialize(&context, &texture.image);
+        let skybox = SkyboxPass::initialize(
+            &context,
+            &gbuffer.render_pass,
+            &irradiance_convolution.cube_attachment_view,
+        );
 
         let light_system = LightSystem::initialize(
             &context,
@@ -144,7 +150,7 @@ impl Application {
             &scene.light_space_uniform_buffer,
             &gbuffer,
             &ssao_blur.target,
-            &irradiance_convolution.attachment,
+            &irradiance_convolution.cube_attachment_view,
         );
 
         // let count = 10;
@@ -177,6 +183,16 @@ impl Application {
         //         scene.add_game_object(game_object);
         //     }
         // }
+
+        // scene.add_game_object(GameObject::new(
+        //     "Sphere",
+        //     Transform {
+        //         translation: Vec3::ZERO,
+        //         rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+        //         scale: Vec3::ONE,
+        //     },
+        //     Default::default(),
+        // ));
 
         scene.add_game_object(GameObject::new(
             "damaged_helmet",
@@ -337,6 +353,19 @@ impl Application {
             )
             .unwrap();
 
+        let gbuffer_metalic_texture_id = imgui_renderer
+            .register_attachment_image_texture(
+                &context,
+                &gbuffer.metalic_roughness_buffer,
+                TextureUsage {
+                    depth: 0,
+                    normal: 0,
+                    position: 0,
+                    rgb: 1,
+                },
+            )
+            .unwrap();
+
         let ssao_texture_id = imgui_renderer
             .register_attachment_image_texture(
                 &context,
@@ -383,6 +412,7 @@ impl Application {
             gbuffer_albedo_texture_id,
             gbuffer_position_texture_id,
             gbuffer_normals_texture_id,
+            gbuffer_metalic_texture_id,
             ssao_texture_id,
 
             ssao,
@@ -690,6 +720,7 @@ impl Application {
         let gbuffer_position_texture_id = self.gbuffer_position_texture_id;
         let gbuffer_albedo_texture_id = self.gbuffer_albedo_texture_id;
         let gbuffer_normals_texture_id = self.gbuffer_normals_texture_id;
+        let gbuffer_metalic_texture_id = self.gbuffer_metalic_texture_id;
         let ssao_texture_id = self.ssao_texture_id;
 
         let camera_pos = self.camera.position;
@@ -706,6 +737,9 @@ impl Application {
                     camera_pos.x, camera_pos.y, camera_pos.z
                 ));
                 ui.separator();
+
+                Image::new(gbuffer_metalic_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("GBuffer metalic");
 
                 Image::new(gbuffer_position_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("GBuffer position");
@@ -957,26 +991,7 @@ impl Application {
                 Err(err) => panic!("{:?}", err),
             };
 
-        let mut builder = AutoCommandBufferBuilder::primary(
-            self.context.device.clone(),
-            self.context.graphics_queue.family(),
-            CommandBufferUsage::SimultaneousUse,
-        )
-        .unwrap();
-
-        builder
-            .begin_render_pass(
-                self.irradiance_convolution.framebuffer.clone(),
-                SubpassContents::SecondaryCommandBuffers,
-                vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
-            )
-            .unwrap()
-            .execute_commands(self.irradiance_convolution.command_buffer.clone())
-            .unwrap()
-            .end_render_pass()
-            .unwrap();
-
-        let command_buffer = builder.build().unwrap();
+        let command_buffer = self.irradiance_convolution.draw(&self.context);
 
         acquire_future
             .then_execute(self.context.graphics_queue.clone(), command_buffer)

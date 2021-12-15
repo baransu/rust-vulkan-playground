@@ -31,6 +31,8 @@ impl Texture {
         let width = image.pixel_width();
         let height = image.pixel_height();
 
+        println!("Loading cubemap texture: {}x{}", width, height);
+
         let image_rgba = image.read_textures().next().unwrap().to_vec();
 
         let dimensions = ImageDimensions::Dim2d {
@@ -47,7 +49,6 @@ impl Texture {
             let usage = ImageUsage {
                 transfer_destination: true,
                 transfer_source: false,
-
                 sampled: true,
                 ..ImageUsage::none()
             };
@@ -109,8 +110,6 @@ impl Texture {
             let cb = cbb.build().unwrap();
 
             let future = cb.execute(context.graphics_queue.clone()).unwrap();
-
-            // image.initialized.store(true, Ordering::Relaxed);
 
             (image, future)
         };

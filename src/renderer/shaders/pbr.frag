@@ -49,7 +49,7 @@ layout(location = 0) out vec4 out_color;
 
 #define PI 3.1415926535897932384626433832795
 
-vec3 fresnelShlick(float cosTheta,  vec3 F0);
+vec3 fresnelSchlick(float cosTheta,  vec3 F0);
 float DistributionGGX(vec3 N, vec3 H, float roughness);
 float GeometryShlickGGX(float NdotV, float roughness); 
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness);
@@ -75,6 +75,7 @@ void main() {
 	} else {
 		vec3 N = normalize(Normal);
 		vec3 V = normalize(camera.position - Position);
+		vec3 R = reflect(-V, N);
 
 		vec4 metalic_roughness = texture(u_metalic_roughness, f_uv);
 		float ao = metalic_roughness.r;
@@ -91,13 +92,12 @@ void main() {
 			vec3 H = normalize(V + L);
 
 			float distance = length(light.position - Position);
-			float attenuation = 1.0 / (light.constant_ + light.linear * distance + light.quadratic * distance * distance);
+			float attenuation = 1.0 / (distance * distance);
 			vec3 radiance = light.color * attenuation;
-
-			vec3 F = fresnelShlick(max(dot(H, V), 0.0), F0);
 
 			float NDF = DistributionGGX(N, H, roughness);
 			float G = GeometrySmith(N, V, L, roughness);
+			vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
 
 			vec3 numerator = NDF * G * F;
 			float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
@@ -109,12 +109,13 @@ void main() {
 			kD *= 1.0 - metallic;
 
 			float NdotL = max(dot(N, L), 0.0);
+
 			Lo += (kD * albedo / PI + specular) * radiance * NdotL;
 		}
 
-		vec3 kS = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
+		vec3 kS = fresnelSchlick(max(dot(N, V), 0.0), F0);
     vec3 kD = 1.0 - kS;
-    kD *= 1.0 - metallic;	  
+    kD *= 1.0 - metallic; 
     vec3 irradiance = texture(irradianceMap, N).rgb;
     vec3 diffuse    = irradiance * albedo;
     vec3 ambient    = (kD * diffuse) * ao;
@@ -131,7 +132,7 @@ void main() {
 	out_color = vec4(color, 1.0);
 }
 
-vec3 fresnelShlick(float cosTheta,  vec3 F0) {
+vec3 fresnelSchlick(float cosTheta,  vec3 F0) {
 	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 

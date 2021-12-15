@@ -371,10 +371,11 @@ impl Scene {
     }
 
     fn gen_point_lights() -> Vec<PointLight> {
-        vec![PointLight {
-            position: Vec3::new(0.0, 5.0, 0.0),
-            color: Vec3::new(1.0, 1.0, 1.0),
-        }]
+        // vec![PointLight {
+        //     position: Vec3::new(0.0, 5.0, 0.0),
+        //     color: Vec3::new(1.0, 1.0, 1.0),
+        // }]
+        vec![]
     }
 
     pub fn dir_light_position() -> Vec3 {
