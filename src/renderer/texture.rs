@@ -15,7 +15,8 @@ use vulkano::{
     image::{
         immutable::SubImage,
         view::{ImageView, ImageViewType},
-        ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, ImmutableImage, MipmapsCount,
+        ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, ImmutableImage,
+        MipmapsCount,
     },
     sync::GpuFuture,
 };
@@ -23,13 +24,15 @@ use vulkano::{
 use super::context::Context;
 
 pub struct Texture {
-    pub image: Arc<ImageView<Arc<ImmutableImage>>>,
+    pub image: Arc<ImageView<ImmutableImage>>,
 }
 
 impl Texture {
     pub fn from_ktx(context: &Context, image: Decoder<BufReader<File>>) -> Texture {
         let width = image.pixel_width();
         let height = image.pixel_height();
+
+        println!("Loading cubemap texture: {}x{}", width, height);
 
         let image_rgba = image.read_textures().next().unwrap().to_vec();
 
@@ -47,7 +50,6 @@ impl Texture {
             let usage = ImageUsage {
                 transfer_destination: true,
                 transfer_source: false,
-
                 sampled: true,
                 ..ImageUsage::none()
             };
@@ -109,8 +111,6 @@ impl Texture {
             let cb = cbb.build().unwrap();
 
             let future = cb.execute(context.graphics_queue.clone()).unwrap();
-
-            // image.initialized.store(true, Ordering::Relaxed);
 
             (image, future)
         };
@@ -226,7 +226,7 @@ impl Texture {
     fn create_image_view(
         context: &Context,
         image: &DynamicImage,
-    ) -> Arc<ImageView<Arc<ImmutableImage>>> {
+    ) -> Arc<ImageView<ImmutableImage>> {
         let width = image.width();
         let height = image.height();
 

@@ -8,8 +8,10 @@ use imgui::*;
 use imgui_renderer::{shaders::TextureUsage, Renderer};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
+    brdf::BRDFPass,
     camera::Camera,
     context::Context,
+    cubemap_gen_pass::{irradiance_convolution_fs, prefilterenvmap_fs, CubemapGenPass},
     gbuffer::GBuffer,
     light_system::LightSystem,
     mesh::{GameObject, InstanceData, Material, Transform},
@@ -30,10 +32,10 @@ use vulkano::{
     format::ClearValue,
     image::{view::ImageView, AttachmentImage, ImageUsage},
     pipeline::{
-        depth_stencil::DepthStencil, vertex::BuffersDefinition, viewport::Viewport,
-        GraphicsPipeline, PipelineBindPoint,
+        graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
-    render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass},
+    render_pass::{Framebuffer, RenderPass, Subpass},
     single_pass_renderpass,
     swapchain::{acquire_next_image, AcquireError},
     sync::{self, GpuFuture},
@@ -45,26 +47,26 @@ use winit::{
     event_loop::ControlFlow,
 };
 
-const MODEL_PATHS: [&str; 4] = [
+const MODEL_PATHS: [&str; 1] = [
     "res/models/damaged_helmet/scene.gltf",
-    "res/models/plane/plane.gltf",
-    "res/models/cube/cube.gltf",
-    "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf",
+    // "res/models/plane/plane.gltf",
+    // "res/models/cube/cube.gltf",
+    // "res/models/sphere/sphere.gltf",
+    // "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf",
+    // "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
 ];
 
-const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
+// const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
 // const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
-// const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
+const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
-const RENDER_SKYBOX: bool = false;
+const RENDER_SKYBOX: bool = true;
 
 const SHADOW_MAP_DIM: f32 = 2048.0;
 
-pub type FramebufferT = dyn FramebufferAbstract + Send + Sync;
-
 pub struct FramebufferWithAttachment {
-    framebuffer: Arc<FramebufferT>,
-    attachment: Arc<ImageView<Arc<AttachmentImage>>>,
+    framebuffer: Arc<Framebuffer>,
+    attachment: Arc<ImageView<AttachmentImage>>,
 }
 
 struct Application {
@@ -99,10 +101,16 @@ struct Application {
     gbuffer_position_texture_id: TextureId,
     gbuffer_normals_texture_id: TextureId,
     gbuffer_albedo_texture_id: TextureId,
+    gbuffer_metalic_texture_id: TextureId,
     ssao_texture_id: TextureId,
+    brdf_texture_id: TextureId,
 
     ssao: Ssao,
     ssao_blur: SsaoBlur,
+
+    irradiance_convolution: CubemapGenPass,
+    prefilterenvmap: CubemapGenPass,
+    brdf: BRDFPass,
 }
 
 impl Application {
@@ -128,6 +136,33 @@ impl Application {
         let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
         let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);
 
+        let skybox_texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
+
+        let irradiance_convolution_fs_mod =
+            irradiance_convolution_fs::load(context.device.clone()).unwrap();
+        let irradiance_convolution = CubemapGenPass::initialize(
+            &context,
+            &skybox_texture.image,
+            irradiance_convolution_fs_mod.entry_point("main").unwrap(),
+            64.0,
+        );
+
+        let prefilterenvmap_fs_mod = prefilterenvmap_fs::load(context.device.clone()).unwrap();
+        let prefilterenvmap = CubemapGenPass::initialize(
+            &context,
+            &skybox_texture.image,
+            prefilterenvmap_fs_mod.entry_point("main").unwrap(),
+            512.0,
+        );
+
+        let brdf = BRDFPass::initialize(&context);
+
+        let skybox = SkyboxPass::initialize(
+            &context,
+            &gbuffer.render_pass,
+            &skybox_texture.image, // .cube_attachment_view,
+        );
+
         let light_system = LightSystem::initialize(
             &context,
             &gbuffer_target,
@@ -137,6 +172,9 @@ impl Application {
             &scene.light_space_uniform_buffer,
             &gbuffer,
             &ssao_blur.target,
+            &irradiance_convolution.cube_attachment_view,
+            &prefilterenvmap.cube_attachment_view,
+            &brdf.color_attachment_view,
         );
 
         // let count = 10;
@@ -170,7 +208,37 @@ impl Application {
         //     }
         // }
 
-        // // Plane
+        // scene.add_game_object(GameObject::new(
+        //     "Sphere",
+        //     Transform {
+        //         translation: Vec3::ZERO,
+        //         rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+        //         scale: Vec3::ONE,
+        //     },
+        //     Default::default(),
+        // ));
+
+        scene.add_game_object(GameObject::new(
+            "damaged_helmet",
+            Transform {
+                translation: Vec3::ZERO,
+                rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
+                scale: Vec3::ONE,
+            },
+            Default::default(),
+        ));
+
+        scene.add_game_object(GameObject::new(
+            "WaterBottle",
+            Transform {
+                translation: Vec3::ZERO,
+                rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+                scale: Vec3::ONE * 5.0,
+            },
+            Default::default(),
+        ));
+
+        // Plane
         // scene.add_game_object(GameObject::new(
         //     "Plane",
         //     Transform {
@@ -181,18 +249,18 @@ impl Application {
         //     Default::default(),
         // ));
 
-        for idx in 0..102 {
-            // Plane
-            scene.add_game_object(GameObject::new(
-                format!("sponza-{}", idx).as_str(),
-                Transform {
-                    rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
-                    scale: Vec3::ONE * 0.01,
-                    translation: Vec3::new(0.0, 0.0, 0.0),
-                },
-                Default::default(),
-            ));
-        }
+        // sponza
+        // for idx in 0..102 {
+        //     scene.add_game_object(GameObject::new(
+        //         format!("sponza-{}", idx).as_str(),
+        //         Transform {
+        //             rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+        //             scale: Vec3::ONE * 0.01,
+        //             translation: Vec3::new(0.0, 0.0, 0.0),
+        //         },
+        //         Default::default(),
+        //     ));
+        // }
 
         // point light cubes for reference
         for light in scene.point_lights.clone() {
@@ -226,8 +294,6 @@ impl Application {
         let previous_frame_end = Some(Self::create_sync_objects(&context.device));
 
         let camera = Default::default();
-
-        let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, SKYBOX_PATH);
 
         let mut imgui = imgui::Context::create();
         imgui.set_ini_filename(None);
@@ -321,12 +387,38 @@ impl Application {
             )
             .unwrap();
 
+        let gbuffer_metalic_texture_id = imgui_renderer
+            .register_texture(
+                &context,
+                &gbuffer.metalic_roughness_buffer,
+                TextureUsage {
+                    depth: 0,
+                    normal: 0,
+                    position: 0,
+                    rgb: 1,
+                },
+            )
+            .unwrap();
+
         let ssao_texture_id = imgui_renderer
             .register_texture(
                 &context,
                 &ssao_blur.target,
                 TextureUsage {
                     depth: 1,
+                    normal: 0,
+                    position: 0,
+                    rgb: 0,
+                },
+            )
+            .unwrap();
+
+        let brdf_texture_id = imgui_renderer
+            .register_texture(
+                &context,
+                &brdf.color_attachment_view,
+                TextureUsage {
+                    depth: 0,
                     normal: 0,
                     position: 0,
                     rgb: 0,
@@ -367,10 +459,16 @@ impl Application {
             gbuffer_albedo_texture_id,
             gbuffer_position_texture_id,
             gbuffer_normals_texture_id,
+            gbuffer_metalic_texture_id,
             ssao_texture_id,
+            brdf_texture_id,
 
             ssao,
             ssao_blur,
+
+            irradiance_convolution,
+            prefilterenvmap,
+            brdf,
         };
 
         app.create_scene_command_buffers();
@@ -379,7 +477,7 @@ impl Application {
         app
     }
 
-    fn create_shadow_depth_image(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
+    fn create_shadow_depth_image(context: &Context) -> Arc<ImageView<AttachmentImage>> {
         let image = AttachmentImage::with_usage(
             context.device.clone(),
             [SHADOW_MAP_DIM as u32, SHADOW_MAP_DIM as u32],
@@ -395,7 +493,7 @@ impl Application {
         ImageView::new(image).unwrap()
     }
 
-    fn create_gbuffer_target(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
+    fn create_gbuffer_target(context: &Context) -> Arc<ImageView<AttachmentImage>> {
         let image = AttachmentImage::with_usage(
             context.device.clone(),
             context.swap_chain.dimensions(),
@@ -413,23 +511,21 @@ impl Application {
     fn create_shadow_render_pass(context: &Context) -> Arc<RenderPass> {
         let depth_format = context.depth_format;
 
-        Arc::new(
-            single_pass_renderpass!(context.device.clone(),
-                    attachments: {
-                        depth: {
-                            load: Clear,
-                            store: Store,
-                            format: depth_format,
-                            samples: 1,
-                        }
-                    },
-                    pass: {
-                        color: [],
-                        depth_stencil: {depth}
+        single_pass_renderpass!(context.device.clone(),
+                attachments: {
+                    depth: {
+                        load: Clear,
+                        store: Store,
+                        format: depth_format,
+                        samples: 1,
                     }
-            )
-            .unwrap(),
+                },
+                pass: {
+                    color: [],
+                    depth_stencil: {depth}
+                }
         )
+        .unwrap()
     }
 
     fn recreate_swap_chain(&mut self) {
@@ -448,10 +544,9 @@ impl Application {
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
         let vert_shader_module =
-            renderer::shaders::shadow_vertex_shader::Shader::load(context.device.clone()).unwrap();
+            renderer::shaders::shadow_vertex_shader::load(context.device.clone()).unwrap();
         let frag_shader_module =
-            renderer::shaders::shadow_fragment_shader::Shader::load(context.device.clone())
-                .unwrap();
+            renderer::shaders::shadow_fragment_shader::load(context.device.clone()).unwrap();
 
         let viewport = Viewport {
             origin: [0.0, 0.0],
@@ -459,36 +554,32 @@ impl Application {
             depth_range: 0.0..1.0,
         };
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input(
-                    BuffersDefinition::new()
-                        .vertex::<Vertex>()
-                        .instance::<InstanceData>(),
-                )
-                .vertex_shader(vert_shader_module.main_entry_point(), ())
-                .triangle_list()
-                .primitive_restart(false)
-                .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(frag_shader_module.main_entry_point(), ())
-                .depth_clamp(false)
-                // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
-                .polygon_mode_fill() // = default
-                .line_width(1.0) // = default
-                // NOTE: when we render shadows we render inners of the models (via front_face_clockwise and cull_mode_front)
-                // this is to reduce peter panning as described in learnopengl.com/Advanced-Lighting/Shadows/Shadow-Mapping
-                .cull_mode_front()
-                .front_face_clockwise()
-                // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
-                .blend_pass_through()
-                .depth_stencil(DepthStencil::simple_depth_test())
-                .viewports_dynamic_scissors_irrelevant(1)
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(context.device.clone())
-                .unwrap(),
-        );
-
-        pipeline
+        GraphicsPipeline::start()
+            .vertex_input_state(
+                BuffersDefinition::new()
+                    .vertex::<Vertex>()
+                    .instance::<InstanceData>(),
+            )
+            .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
+            .triangle_list()
+            .primitive_restart(false)
+            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .fragment_shader(frag_shader_module.entry_point("main").unwrap(), ())
+            .depth_clamp(false)
+            // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
+            .polygon_mode_fill() // = default
+            .line_width(1.0) // = default
+            // NOTE: when we render shadows we render inners of the models (via front_face_clockwise and cull_mode_front)
+            // this is to reduce peter panning as described in learnopengl.com/Advanced-Lighting/Shadows/Shadow-Mapping
+            .cull_mode_front()
+            .front_face_clockwise()
+            // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
+            .blend_pass_through()
+            .depth_stencil_simple_depth()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(context.device.clone())
+            .unwrap()
     }
 
     fn create_shadow_framebuffer(
@@ -497,13 +588,11 @@ impl Application {
     ) -> FramebufferWithAttachment {
         let depth_image = Self::create_shadow_depth_image(&context);
 
-        let framebuffer: Arc<FramebufferT> = Arc::new(
-            Framebuffer::start(render_pass.clone())
-                .add(depth_image.clone())
-                .unwrap()
-                .build()
-                .unwrap(),
-        );
+        let framebuffer: Arc<Framebuffer> = Framebuffer::start(render_pass.clone())
+            .add(depth_image.clone())
+            .unwrap()
+            .build()
+            .unwrap();
 
         FramebufferWithAttachment {
             framebuffer,
@@ -672,7 +761,11 @@ impl Application {
         let gbuffer_position_texture_id = self.gbuffer_position_texture_id;
         let gbuffer_albedo_texture_id = self.gbuffer_albedo_texture_id;
         let gbuffer_normals_texture_id = self.gbuffer_normals_texture_id;
+        let gbuffer_metalic_texture_id = self.gbuffer_metalic_texture_id;
         let ssao_texture_id = self.ssao_texture_id;
+        let brdf_texture_id = self.brdf_texture_id;
+
+        let camera_pos = self.camera.position;
 
         // Here we create a window with a specific size, and force it to always have a vertical scrollbar visible
         Window::new("Debug")
@@ -681,13 +774,17 @@ impl Application {
             .build(&ui, || {
                 let fps = 1.0 / delta_time;
                 ui.text(format!("FPS: {:.2}", fps));
+                ui.text(format!(
+                    "Camera: ({:.2}, {:.2}, {:.2})",
+                    camera_pos.x, camera_pos.y, camera_pos.z
+                ));
                 ui.separator();
 
-                Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("SSAO with Blur");
+                Image::new(brdf_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("BRDF");
 
-                Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("Directional light shadow map");
+                Image::new(gbuffer_metalic_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("GBuffer metalic");
 
                 Image::new(gbuffer_position_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("GBuffer position");
@@ -697,6 +794,12 @@ impl Application {
 
                 Image::new(gbuffer_albedo_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("GBuffer albedo");
+
+                Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("SSAO with Blur");
+
+                Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("Directional light shadow map");
             });
 
         let draw_data = ui.render();
@@ -778,6 +881,8 @@ impl Application {
                     // normals
                     ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
                     // albedo
+                    ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
+                    // metalic_roughness
                     ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
                     // depth
                     ClearValue::Depth(1.0),
@@ -920,6 +1025,10 @@ impl Application {
         let mut rotation_y = 0.0;
 
         let original_rotation = self.camera.rotation;
+
+        self.irradiance_convolution.execute(&self.context);
+        self.prefilterenvmap.execute(&self.context);
+        self.brdf.execute(&self.context);
 
         self.context
             .event_loop

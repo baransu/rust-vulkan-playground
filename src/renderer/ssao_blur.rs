@@ -5,11 +5,9 @@ use vulkano::{
     descriptor_set::PersistentDescriptorSet,
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageUsage},
-    pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
+    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{Framebuffer, RenderPass, Subpass},
 };
-
-use crate::FramebufferT;
 
 use super::{
     context::Context,
@@ -19,10 +17,10 @@ use super::{
 
 pub struct SsaoBlur {
     pub render_pass: Arc<RenderPass>,
-    pub framebuffer: Arc<FramebufferT>,
+    pub framebuffer: Arc<Framebuffer>,
     pub pipeline: Arc<GraphicsPipeline>,
 
-    pub target: Arc<ImageView<Arc<AttachmentImage>>>,
+    pub target: Arc<ImageView<AttachmentImage>>,
 
     pub descriptor_set: Arc<PersistentDescriptorSet>,
 
@@ -30,7 +28,7 @@ pub struct SsaoBlur {
 }
 
 impl SsaoBlur {
-    pub fn initialize(context: &Context, ssao: &Arc<ImageView<Arc<AttachmentImage>>>) -> SsaoBlur {
+    pub fn initialize(context: &Context, ssao: &Arc<ImageView<AttachmentImage>>) -> SsaoBlur {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
 
         let render_pass = Self::create_render_pass(context);
@@ -59,9 +57,8 @@ impl SsaoBlur {
     }
 
     fn create_pipeline(context: &Context, render_pass: &Arc<RenderPass>) -> Arc<GraphicsPipeline> {
-        let vs =
-            screen_vertex_shader::Shader::load(context.graphics_queue.device().clone()).unwrap();
-        let fs = fs::Shader::load(context.device.clone()).unwrap();
+        let vs = screen_vertex_shader::load(context.graphics_queue.device().clone()).unwrap();
+        let fs = fs::load(context.device.clone()).unwrap();
 
         let dimensions = context.swap_chain.dimensions();
 
@@ -71,22 +68,18 @@ impl SsaoBlur {
             depth_range: 0.0..1.0,
         };
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<ScreenQuadVertex>()
-                .vertex_shader(vs.main_entry_point(), ())
-                .triangle_list()
-                .primitive_restart(false)
-                .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(fs.main_entry_point(), ())
-                .blend_pass_through()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(context.device.clone())
-                .unwrap(),
-        );
-
-        pipeline
+        GraphicsPipeline::start()
+            .vertex_input_single_buffer::<ScreenQuadVertex>()
+            .vertex_shader(vs.entry_point("main").unwrap(), ())
+            .triangle_list()
+            .primitive_restart(false)
+            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .fragment_shader(fs.entry_point("main").unwrap(), ())
+            .blend_pass_through()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(context.device.clone())
+            .unwrap()
     }
 
     fn create_command_buffers(
@@ -138,42 +131,38 @@ impl SsaoBlur {
     }
 
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
-        Arc::new(
-            vulkano::single_pass_renderpass!(context.device.clone(),
-                    attachments: {
-                                            color: {
-                                                    load: Clear,
-                                                    store: Store,
-                                                    format: Format::R16G16B16A16_SFLOAT,
-                                                    samples: 1,
-                                            }
+        vulkano::single_pass_renderpass!(context.device.clone(),
+                attachments: {
+                                        color: {
+                                                load: Clear,
+                                                store: Store,
+                                                format: Format::R16G16B16A16_SFLOAT,
+                                                samples: 1,
+                                        }
 
-                                    },
-                    pass: {
-                                                            color: [color],
-                                                            depth_stencil: {}
-                            }
+                                },
+                pass: {
+                                                        color: [color],
+                                                        depth_stencil: {}
+                        }
 
 
-            )
-            .unwrap(),
         )
+        .unwrap()
     }
 
     fn create_framebuffer(
         render_pass: &Arc<RenderPass>,
-        target: &Arc<ImageView<Arc<AttachmentImage>>>,
-    ) -> Arc<FramebufferT> {
-        let framebuffer = Framebuffer::start(render_pass.clone())
+        target: &Arc<ImageView<AttachmentImage>>,
+    ) -> Arc<Framebuffer> {
+        Framebuffer::start(render_pass.clone())
             .add(target.clone())
             .unwrap()
             .build()
-            .unwrap();
-
-        Arc::new(framebuffer)
+            .unwrap()
     }
 
-    fn create_attachment(context: &Context) -> Arc<ImageView<Arc<AttachmentImage>>> {
+    fn create_attachment(context: &Context) -> Arc<ImageView<AttachmentImage>> {
         let dimensions = context.swap_chain.dimensions();
 
         let usage = ImageUsage {
@@ -196,7 +185,7 @@ impl SsaoBlur {
     fn create_descriptor_set(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        ssao: &Arc<ImageView<Arc<AttachmentImage>>>,
+        ssao: &Arc<ImageView<AttachmentImage>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -210,7 +199,7 @@ impl SsaoBlur {
             .add_sampled_image(ssao.clone(), context.attachment_sampler.clone())
             .unwrap();
 
-        Arc::new(set_builder.build().unwrap())
+        set_builder.build().unwrap()
     }
 }
 

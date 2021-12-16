@@ -5,8 +5,8 @@ use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     image::{view::ImageView, AttachmentImage},
-    pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
-    render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass},
+    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
+    render_pass::{Framebuffer, RenderPass, Subpass},
     single_pass_renderpass,
     sync::GpuFuture,
 };
@@ -73,7 +73,7 @@ impl ScreenFrameQuadBuffers {
  */
 pub struct ScreenFrame {
     graphics_pipeline: Arc<GraphicsPipeline>,
-    pub framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
+    pub framebuffers: Vec<Arc<Framebuffer>>,
     pub command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
     descriptor_sets: Vec<Arc<PersistentDescriptorSet>>,
     pub screen_quad_buffers: ScreenFrameQuadBuffers,
@@ -82,9 +82,9 @@ pub struct ScreenFrame {
 impl ScreenFrame {
     pub fn initialize(
         context: &Context,
-        scene_frame: &Arc<ImageView<Arc<AttachmentImage>>>,
+        scene_frame: &Arc<ImageView<AttachmentImage>>,
         shadow_framebuffer: &FramebufferWithAttachment,
-        ui_frame: &Arc<ImageView<Arc<AttachmentImage>>>,
+        ui_frame: &Arc<ImageView<AttachmentImage>>,
     ) -> ScreenFrame {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
 
@@ -182,9 +182,9 @@ impl ScreenFrame {
     fn create_descriptor_sets(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        scene_frame: &Arc<ImageView<Arc<AttachmentImage>>>,
+        scene_frame: &Arc<ImageView<AttachmentImage>>,
         shadow_framebuffer: &FramebufferWithAttachment,
-        ui_frame: &Arc<ImageView<Arc<AttachmentImage>>>,
+        ui_frame: &Arc<ImageView<AttachmentImage>>,
     ) -> Vec<Arc<PersistentDescriptorSet>> {
         let mut descriptor_sets = Vec::new();
 
@@ -204,7 +204,7 @@ impl ScreenFrame {
                 .add_image(shadow_framebuffer.attachment.clone())
                 .unwrap();
 
-            descriptor_sets.push(Arc::new(set_builder.build().unwrap()));
+            descriptor_sets.push(set_builder.build().unwrap());
         }
 
         descriptor_sets
@@ -217,22 +217,18 @@ impl ScreenFrame {
     fn create_framebuffers_from_swap_chain_images(
         context: &Context,
         render_pass: &Arc<RenderPass>,
-    ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
+    ) -> Vec<Arc<Framebuffer>> {
         context
             .swap_chain_images
             .iter()
             .map(|swapchain_image| {
                 let image = ImageView::new(swapchain_image.clone()).unwrap();
 
-                let framebuffer: Arc<dyn FramebufferAbstract + Send + Sync> = Arc::new(
-                    Framebuffer::start(render_pass.clone())
-                        .add(image.clone())
-                        .unwrap()
-                        .build()
-                        .unwrap(),
-                );
-
-                framebuffer
+                Framebuffer::start(render_pass.clone())
+                    .add(image.clone())
+                    .unwrap()
+                    .build()
+                    .unwrap()
             })
             .collect::<Vec<_>>()
     }
@@ -245,9 +241,9 @@ impl ScreenFrame {
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
         let vert_shader_module =
-            super::shaders::screen_vertex_shader::Shader::load(context.device.clone()).unwrap();
+            super::shaders::screen_vertex_shader::load(context.device.clone()).unwrap();
         let frag_shader_module =
-            super::shaders::screen_fragment_shader::Shader::load(context.device.clone()).unwrap();
+            super::shaders::screen_fragment_shader::load(context.device.clone()).unwrap();
 
         let dimensions_u32 = context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
@@ -257,60 +253,54 @@ impl ScreenFrame {
             depth_range: 0.0..1.0,
         };
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<ScreenQuadVertex>()
-                .vertex_shader(vert_shader_module.main_entry_point(), ())
-                .triangle_list()
-                .primitive_restart(false)
-                .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(frag_shader_module.main_entry_point(), ())
-                .depth_clamp(false)
-                // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
-                .polygon_mode_fill() // = default
-                .line_width(1.0) // = default
-                .cull_mode_back()
-                .front_face_clockwise()
-                // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
-                .blend_pass_through()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                // .build(context.device.clone())
-                .with_auto_layout(context.device.clone(), |set_descs| {
-                    // Modify the auto-generated layout by setting an immutable sampler to
-                    // set 0 binding 0.
-                    set_descs[0].set_immutable_samplers(0, [context.attachment_sampler.clone()]);
-                    // set 0 binding 1.
-                    set_descs[0].set_immutable_samplers(1, [context.attachment_sampler.clone()]);
-                    // set 0 binding 2.
-                    set_descs[0].set_immutable_samplers(2, [context.depth_sampler.clone()]);
-                })
-                .unwrap(),
-        );
-
-        pipeline
+        GraphicsPipeline::start()
+            .vertex_input_single_buffer::<ScreenQuadVertex>()
+            .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
+            .triangle_list()
+            .primitive_restart(false)
+            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .fragment_shader(frag_shader_module.entry_point("main").unwrap(), ())
+            .depth_clamp(false)
+            // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
+            .polygon_mode_fill() // = default
+            .line_width(1.0) // = default
+            .cull_mode_back()
+            .front_face_clockwise()
+            // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
+            .blend_pass_through()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            // .build(context.device.clone())
+            .with_auto_layout(context.device.clone(), |set_descs| {
+                // Modify the auto-generated layout by setting an immutable sampler to
+                // set 0 binding 0.
+                set_descs[0].set_immutable_samplers(0, [context.attachment_sampler.clone()]);
+                // set 0 binding 1.
+                set_descs[0].set_immutable_samplers(1, [context.attachment_sampler.clone()]);
+                // set 0 binding 2.
+                set_descs[0].set_immutable_samplers(2, [context.depth_sampler.clone()]);
+            })
+            .unwrap()
     }
 
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
         let color_format = context.swap_chain.format();
 
-        Arc::new(
-            single_pass_renderpass!(context.device.clone(),
-                    attachments: {
-                        color: {
-                            load: Clear,
-                            store: Store,
-                            format: color_format,
-                            samples: 1,
-                        }
-                    },
-                    pass: {
-                        color: [color],
-                        depth_stencil: {}
+        single_pass_renderpass!(context.device.clone(),
+                attachments: {
+                    color: {
+                        load: Clear,
+                        store: Store,
+                        format: color_format,
+                        samples: 1,
                     }
-            )
-            .unwrap(),
+                },
+                pass: {
+                    color: [color],
+                    depth_stencil: {}
+                }
         )
+        .unwrap()
     }
 }
 

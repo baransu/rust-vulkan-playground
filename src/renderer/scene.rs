@@ -2,13 +2,12 @@ use std::{collections::HashMap, sync::Arc};
 
 use glam::{Mat4, Vec3};
 use gltf::Semantic;
-use rand::Rng;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     device::Queue,
-    pipeline::GraphicsPipeline,
+    pipeline::{GraphicsPipeline, Pipeline},
     sync::GpuFuture,
 };
 
@@ -148,6 +147,16 @@ impl Scene {
                             Texture::empty(&context)
                         });
 
+                    let metalic_roughness_texture = pbr
+                        .metallic_roughness_texture()
+                        .map(|info| {
+                            Texture::from_gltf_texture(&context, path, &info.texture(), &buffers)
+                        })
+                        .unwrap_or_else(|| {
+                            // just a fillter image to make descriptor set happy
+                            Texture::empty(&context)
+                        });
+
                     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
                     if let Some(_accessor) = primitive.get(&Semantic::Positions) {
@@ -195,6 +204,7 @@ impl Scene {
                             &camera_uniform_buffer,
                             &diffuse_texture,
                             &normal_texture,
+                            &metalic_roughness_texture,
                         );
 
                         let mesh = Mesh {
@@ -256,6 +266,7 @@ impl Scene {
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         diffuse_texture: &Texture,
         normal_texture: &Texture,
+        metalic_roughness_texture: &Texture,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -277,7 +288,14 @@ impl Scene {
             .add_sampled_image(normal_texture.image.clone(), context.image_sampler.clone())
             .unwrap();
 
-        Arc::new(set_builder.build().unwrap())
+        set_builder
+            .add_sampled_image(
+                metalic_roughness_texture.image.clone(),
+                context.image_sampler.clone(),
+            )
+            .unwrap();
+
+        set_builder.build().unwrap()
     }
 
     fn create_shadow_descriptor_set(
@@ -296,7 +314,7 @@ impl Scene {
             .add_buffer(light_space_uniform_buffer.clone())
             .unwrap();
 
-        Arc::new(set_builder.build().unwrap())
+        set_builder.build().unwrap()
     }
 
     fn create_camera_uniform_buffer(
@@ -352,26 +370,11 @@ impl Scene {
     }
 
     fn gen_point_lights() -> Vec<PointLight> {
-        let mut rng = rand::thread_rng();
-
-        let mut lights = Vec::new();
-        for _i in 0..5 {
-            let position = Vec3::new(
-                rng.gen_range(-5.0..5.0),
-                rng.gen_range(1.0..5.0),
-                rng.gen_range(-5.0..5.0),
-            );
-
-            let color = Vec3::new(
-                rng.gen_range(0.0..1.0),
-                rng.gen_range(0.0..1.0),
-                rng.gen_range(0.0..1.0),
-            );
-
-            lights.push(PointLight { position, color });
-        }
-
-        lights
+        // vec![PointLight {
+        //     position: Vec3::new(0.0, 5.0, 0.0),
+        //     color: Vec3::new(1.0, 1.0, 1.0),
+        // }]
+        vec![]
     }
 
     pub fn dir_light_position() -> Vec3 {
@@ -383,14 +386,10 @@ impl Scene {
         point_lights: &Vec<PointLight>,
     ) -> Arc<CpuAccessibleBuffer<LightUniformBufferObject>> {
         let mut shader_point_lights: [ShaderPointLight; MAX_POINT_LIGHTS] = [ShaderPointLight {
-            position: Vec3::ZERO.to_array(),
+            color: Vec3::ZERO.to_array(),
             _dummy0: [0, 0, 0, 0],
-            ambient: Vec3::ZERO.to_array(),
-            _dummy1: [0, 0, 0, 0],
-            diffuse: Vec3::ZERO.to_array(),
-            _dummy2: [0, 0, 0, 0],
-            specular: Vec3::ZERO.to_array(),
-            _dummy3: [0, 0, 0, 0, 0, 0, 0, 0],
+            position: Vec3::ZERO.to_array(),
+            _dummy1: [0, 0, 0, 0, 0, 0, 0, 0],
             constant_: 0.0,
             linear: 0.0,
             quadratic: 0.0,
@@ -401,12 +400,8 @@ impl Scene {
             shader_point_lights[index] = ShaderPointLight {
                 position: light.position.to_array(),
                 _dummy0: [0, 0, 0, 0],
-                ambient: (light.color * 0.1).to_array(),
-                _dummy1: [0, 0, 0, 0],
-                diffuse: light.color.to_array(),
-                _dummy2: [0, 0, 0, 0],
-                specular: light.color.to_array(),
-                _dummy3: [0, 0, 0, 0, 0, 0, 0, 0],
+                color: light.color.to_array(),
+                _dummy1: [0, 0, 0, 0, 0, 0, 0, 0],
                 constant_: 1.0,
                 linear: 0.09,
                 quadratic: 0.032,
@@ -416,11 +411,7 @@ impl Scene {
         let dir_light = ShaderDirectionalLight {
             direction: Vec3::new(-0.2, -1.0, -0.3).to_array(),
             _dummy0: [0, 0, 0, 0],
-            ambient: Vec3::ZERO.to_array(),
-            _dummy1: [0, 0, 0, 0],
-            diffuse: (Vec3::ONE * 0.1).to_array(),
-            _dummy2: [0, 0, 0, 0],
-            specular: Vec3::ZERO.to_array(),
+            color: Vec3::ZERO.to_array(),
         };
 
         let buffer_data = LightUniformBufferObject {

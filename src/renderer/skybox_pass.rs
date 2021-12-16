@@ -6,15 +6,16 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
-    pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
+    image::ImageViewAbstract,
+    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{RenderPass, Subpass},
     sync::GpuFuture,
 };
 
 use super::{context::Context, shaders::CameraUniformBufferObject, texture::Texture};
 
-#[derive(Default, Debug, Clone)]
-struct SkyboxVertex {
+#[derive(Default, Debug, Clone, Copy)]
+pub struct SkyboxVertex {
     position: [f32; 3],
 }
 
@@ -33,21 +34,21 @@ pub struct SkyboxPass {
     vertex_buffer: Arc<ImmutableBuffer<[SkyboxVertex]>>,
     descriptor_set: Arc<PersistentDescriptorSet>,
     pub uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-    // texture: Texture,
     pub command_buffer: Arc<SecondaryAutoCommandBuffer>,
 }
 
 impl SkyboxPass {
-    pub fn initialize(
+    pub fn initialize<T>(
         context: &Context,
         render_pass: &Arc<RenderPass>,
-        skybox_path: &str,
-    ) -> SkyboxPass {
+        texture: &Arc<T>,
+    ) -> SkyboxPass
+    where
+        T: ImageViewAbstract + 'static,
+    {
         let graphics_pipeline = Self::create_graphics_pipeline(context, &render_pass);
 
         let vertex_buffer = Self::create_vertex_buffer(context);
-
-        let texture = Self::load_skybox_texture(context, skybox_path);
 
         let uniform_buffer = Self::create_uniform_buffer(context);
 
@@ -66,7 +67,6 @@ impl SkyboxPass {
             graphics_pipeline,
             vertex_buffer,
             descriptor_set,
-            // texture,
             command_buffer,
         }
     }
@@ -80,7 +80,7 @@ impl SkyboxPass {
         );
     }
 
-    fn create_uniform_buffer(
+    pub fn create_uniform_buffer(
         context: &Context,
     ) -> Arc<CpuAccessibleBuffer<CameraUniformBufferObject>> {
         let identity = Mat4::IDENTITY.to_cols_array_2d();
@@ -147,10 +147,8 @@ impl SkyboxPass {
         context: &Context,
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module =
-            super::shaders::skybox_vertex_shader::Shader::load(context.device.clone()).unwrap();
-        let frag_shader_module =
-            super::shaders::skybox_fragment_shader::Shader::load(context.device.clone()).unwrap();
+        let vert_shader_module = vs::load(context.device.clone()).unwrap();
+        let frag_shader_module = fs::load(context.device.clone()).unwrap();
 
         // TODO: add that to context as util or something
         let dimensions_u32 = context.swap_chain.dimensions();
@@ -161,38 +159,34 @@ impl SkyboxPass {
             depth_range: 0.0..1.0,
         };
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<SkyboxVertex>()
-                .vertex_shader(vert_shader_module.main_entry_point(), ())
-                .triangle_list()
-                .primitive_restart(false)
-                .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(frag_shader_module.main_entry_point(), ())
-                .depth_clamp(false)
-                // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
-                .polygon_mode_fill() // = default
-                .line_width(1.0) // = default
-                .cull_mode_back()
-                .front_face_counter_clockwise()
-                // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
-                .blend_pass_through()
-                // .depth_stencil(DepthStencil::simple_depth_test())
-                .viewports_dynamic_scissors_irrelevant(1)
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(context.device.clone())
-                .unwrap(),
-        );
-
-        pipeline
+        GraphicsPipeline::start()
+            .vertex_input_single_buffer::<SkyboxVertex>()
+            .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
+            .triangle_list()
+            .primitive_restart(false)
+            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .fragment_shader(frag_shader_module.entry_point("main").unwrap(), ())
+            .depth_clamp(false)
+            .polygon_mode_fill() // = default
+            .line_width(1.0) // = default
+            .cull_mode_back()
+            .front_face_clockwise()
+            .blend_pass_through()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(context.device.clone())
+            .unwrap()
     }
 
-    fn create_descriptor_set(
+    fn create_descriptor_set<T>(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-        texture: &Texture,
-    ) -> Arc<PersistentDescriptorSet> {
+        image: &Arc<T>,
+    ) -> Arc<PersistentDescriptorSet>
+    where
+        T: ImageViewAbstract + 'static,
+    {
         let layout = graphics_pipeline
             .layout()
             .descriptor_set_layouts()
@@ -201,18 +195,16 @@ impl SkyboxPass {
 
         let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-        let image = texture.image.clone();
-
         set_builder.add_buffer(uniform_buffer.clone()).unwrap();
 
         set_builder
-            .add_sampled_image(image, context.image_sampler.clone())
+            .add_sampled_image(image.clone(), context.image_sampler.clone())
             .unwrap();
 
-        Arc::new(set_builder.build().unwrap())
+        set_builder.build().unwrap()
     }
 
-    fn create_vertex_buffer(context: &Context) -> Arc<ImmutableBuffer<[SkyboxVertex]>> {
+    pub fn create_vertex_buffer(context: &Context) -> Arc<ImmutableBuffer<[SkyboxVertex]>> {
         let (vertex_buffer, future) = ImmutableBuffer::from_iter(
             skybox_vertices().clone(),
             BufferUsage::vertex_buffer(),
@@ -226,7 +218,7 @@ impl SkyboxPass {
         vertex_buffer
     }
 
-    fn load_skybox_texture(context: &Context, path: &str) -> Texture {
+    pub fn load_skybox_texture(context: &Context, path: &str) -> Texture {
         let ktx_file = BufReader::new(File::open(path).unwrap());
         let ktx: Decoder<BufReader<File>> = ktx::Decoder::new(ktx_file).unwrap();
 
@@ -236,41 +228,73 @@ impl SkyboxPass {
 
 fn skybox_vertices() -> [SkyboxVertex; 36] {
     [
-        SkyboxVertex::new(-1.0, 1.0, -1.0),
         SkyboxVertex::new(-1.0, -1.0, -1.0),
-        SkyboxVertex::new(1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
         SkyboxVertex::new(1.0, -1.0, -1.0),
         SkyboxVertex::new(1.0, 1.0, -1.0),
-        SkyboxVertex::new(-1.0, 1.0, -1.0),
-        SkyboxVertex::new(-1.0, -1.0, 1.0),
         SkyboxVertex::new(-1.0, -1.0, -1.0),
         SkyboxVertex::new(-1.0, 1.0, -1.0),
-        SkyboxVertex::new(-1.0, 1.0, -1.0),
-        SkyboxVertex::new(-1.0, 1.0, 1.0),
+        //
         SkyboxVertex::new(-1.0, -1.0, 1.0),
-        SkyboxVertex::new(1.0, -1.0, -1.0),
         SkyboxVertex::new(1.0, -1.0, 1.0),
         SkyboxVertex::new(1.0, 1.0, 1.0),
         SkyboxVertex::new(1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, 1.0, -1.0),
-        SkyboxVertex::new(1.0, -1.0, -1.0),
-        SkyboxVertex::new(-1.0, -1.0, 1.0),
         SkyboxVertex::new(-1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, -1.0, 1.0),
         SkyboxVertex::new(-1.0, -1.0, 1.0),
-        SkyboxVertex::new(-1.0, 1.0, -1.0),
-        SkyboxVertex::new(1.0, 1.0, -1.0),
-        SkyboxVertex::new(1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, 1.0, 1.0),
+        //
         SkyboxVertex::new(-1.0, 1.0, 1.0),
         SkyboxVertex::new(-1.0, 1.0, -1.0),
         SkyboxVertex::new(-1.0, -1.0, -1.0),
+        SkyboxVertex::new(-1.0, -1.0, -1.0),
         SkyboxVertex::new(-1.0, -1.0, 1.0),
+        SkyboxVertex::new(-1.0, 1.0, 1.0),
+        //
+        SkyboxVertex::new(1.0, 1.0, 1.0),
         SkyboxVertex::new(1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
         SkyboxVertex::new(1.0, -1.0, -1.0),
-        SkyboxVertex::new(-1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
         SkyboxVertex::new(1.0, -1.0, 1.0),
+        //
+        SkyboxVertex::new(-1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, -1.0, 1.0),
+        SkyboxVertex::new(-1.0, -1.0, 1.0),
+        SkyboxVertex::new(-1.0, -1.0, -1.0),
+        //
+        SkyboxVertex::new(-1.0, 1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(-1.0, 1.0, -1.0),
+        SkyboxVertex::new(-1.0, 1.0, 1.0),
     ]
+}
+
+pub mod vs {
+    vulkano_shaders::shader! {
+        ty: "vertex",
+        path: "src/renderer/shaders/skybox.vert"
+    }
+}
+
+pub mod fs {
+    vulkano_shaders::shader! {
+                    ty: "fragment",
+                    src: "
+	#version 450
+
+	layout (binding = 1) uniform samplerCube skybox_texture;
+	
+	layout (location = 0) in vec3 inUV;
+	
+	// it's gbuffer albedo
+	layout (location = 2) out vec4 outFragColor;
+
+	void main() {
+		outFragColor = texture(skybox_texture, inUV);
+	}
+"
+    }
 }

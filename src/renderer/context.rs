@@ -435,8 +435,8 @@ impl Context {
     fn create_attachment_sampler(device: &Arc<Device>) -> Arc<Sampler> {
         Sampler::new(
             device.clone(),
-            Filter::Nearest,
-            Filter::Nearest,
+            Filter::Linear,
+            Filter::Linear,
             MipmapMode::Linear,
             SamplerAddressMode::ClampToEdge,
             SamplerAddressMode::ClampToEdge,

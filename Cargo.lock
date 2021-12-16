@@ -1479,9 +1479,8 @@ dependencies = [
 
 [[package]]
 name = "vulkano"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e0c9cc7471d065c6066b2a0daaae4232a100fdb6f0aad2a4b12652a2bd8ede0"
+version = "0.27.1"
+source = "git+https://github.com/baransu/vulkano?rev=c59ea93c#c59ea93c13f8398d19f9748cdf2e396cef67fbb9"
 dependencies = [
  "ash",
  "crossbeam-queue",
@@ -1503,10 +1502,11 @@ dependencies = [
 
 [[package]]
 name = "vulkano-shaders"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e097b198fe4fe15adeeae709a7d2d209259cfb9035c05e0c3726e34c1177a646"
+version = "0.27.1"
+source = "git+https://github.com/baransu/vulkano?rev=c59ea93c#c59ea93c13f8398d19f9748cdf2e396cef67fbb9"
 dependencies = [
+ "fnv",
+ "heck",
  "proc-macro2",
  "quote",
  "shaderc",
@@ -1516,9 +1516,8 @@ dependencies = [
 
 [[package]]
 name = "vulkano-win"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "822089905da2e341067d5ba1c5b5b18c30632151fa5ec41e528a9b5271be9730"
+version = "0.27.1"
+source = "git+https://github.com/baransu/vulkano?rev=c59ea93c#c59ea93c13f8398d19f9748cdf2e396cef67fbb9"
 dependencies = [
  "cocoa 0.20.2",
  "metal",

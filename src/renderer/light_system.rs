@@ -4,13 +4,20 @@ use vulkano::{
     buffer::CpuAccessibleBuffer,
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
-    image::{view::ImageView, AttachmentImage},
-    pipeline::{viewport::Viewport, GraphicsPipeline, PipelineBindPoint},
+    device,
+    image::{view::ImageView, AttachmentImage, StorageImage},
+    pipeline::{
+        graphics::{
+            input_assembly::InputAssemblyState, vertex_input::BuffersDefinition, viewport::Viewport,
+        },
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
+    },
     render_pass::{Framebuffer, RenderPass, Subpass},
+    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     single_pass_renderpass,
 };
 
-use crate::{FramebufferT, FramebufferWithAttachment};
+use crate::FramebufferWithAttachment;
 
 use super::{
     context::Context,
@@ -21,7 +28,7 @@ use super::{
 
 pub struct LightSystem {
     pub pipeline: Arc<GraphicsPipeline>,
-    pub framebuffer: Arc<FramebufferT>,
+    pub framebuffer: Arc<Framebuffer>,
     pub render_pass: Arc<RenderPass>,
 
     pub command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
@@ -36,7 +43,10 @@ impl LightSystem {
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
         light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         gbuffer: &GBuffer,
-        ssao_target: &Arc<ImageView<Arc<AttachmentImage>>>,
+        ssao_target: &Arc<ImageView<AttachmentImage>>,
+        irradiance_map: &Arc<ImageView<StorageImage>>,
+        prefilter_map: &Arc<ImageView<StorageImage>>,
+        brdf: &Arc<ImageView<StorageImage>>,
     ) -> LightSystem {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
 
@@ -53,6 +63,9 @@ impl LightSystem {
             &light_space_uniform_buffer,
             &shadow_framebuffer,
             &ssao_target,
+            &irradiance_map,
+            &prefilter_map,
+            &brdf,
         );
 
         let command_buffers =
@@ -75,7 +88,10 @@ impl LightSystem {
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
         light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         shadow_framebuffer: &FramebufferWithAttachment,
-        ssao_target: &Arc<ImageView<Arc<AttachmentImage>>>,
+        ssao_target: &Arc<ImageView<AttachmentImage>>,
+        irradiance_map: &Arc<ImageView<StorageImage>>,
+        prefilter_map: &Arc<ImageView<StorageImage>>,
+        brdf: &Arc<ImageView<StorageImage>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = light_graphics_pipeline
             .layout()
@@ -111,6 +127,13 @@ impl LightSystem {
             .unwrap();
 
         set_builder
+            .add_sampled_image(
+                gbuffer.metalic_roughness_buffer.clone(),
+                context.attachment_sampler.clone(),
+            )
+            .unwrap();
+
+        set_builder
             .add_sampled_image(ssao_target.clone(), context.attachment_sampler.clone())
             .unwrap();
 
@@ -122,6 +145,18 @@ impl LightSystem {
             .unwrap();
 
         set_builder
+            .add_sampled_image(irradiance_map.clone(), Self::create_sampler(context, 7.0))
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(prefilter_map.clone(), Self::create_sampler(context, 10.0))
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(brdf.clone(), Self::create_sampler(context, 1.0))
+            .unwrap();
+
+        set_builder
             .add_buffer(light_space_uniform_buffer.clone())
             .unwrap();
 
@@ -129,13 +164,29 @@ impl LightSystem {
             .add_buffer(light_uniform_buffer.clone())
             .unwrap();
 
-        Arc::new(set_builder.build().unwrap())
+        set_builder.build().unwrap()
+    }
+
+    fn create_sampler(context: &Context, mip: f32) -> Arc<Sampler> {
+        Sampler::new(
+            context.device.clone(),
+            Filter::Linear,
+            Filter::Linear,
+            MipmapMode::Linear,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            0.0,
+            1.0,
+            0.0,
+            mip,
+        )
+        .unwrap()
     }
 
     fn create_pipeline(context: &Context, render_pass: &Arc<RenderPass>) -> Arc<GraphicsPipeline> {
-        let vs =
-            screen_vertex_shader::Shader::load(context.graphics_queue.device().clone()).unwrap();
-        let fs = fs::Shader::load(context.graphics_queue.device().clone()).unwrap();
+        let vs = screen_vertex_shader::load(context.graphics_queue.device().clone()).unwrap();
+        let fs = fs::load(context.graphics_queue.device().clone()).unwrap();
 
         let dimensions = context.swap_chain.dimensions();
 
@@ -145,55 +196,50 @@ impl LightSystem {
             depth_range: 0.0..1.0,
         };
 
-        Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<ScreenQuadVertex>()
-                .vertex_shader(vs.main_entry_point(), ())
-                .triangle_list()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-                .fragment_shader(fs.main_entry_point(), ())
-                .cull_mode_back()
-                .front_face_clockwise()
-                .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                .build(context.device.clone())
-                .unwrap(),
-        )
+        GraphicsPipeline::start()
+            .vertex_input_state(BuffersDefinition::new().vertex::<ScreenQuadVertex>())
+            .vertex_shader(vs.entry_point("main").unwrap(), ())
+            .triangle_list()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .input_assembly_state(InputAssemblyState::new())
+            .fragment_shader(fs.entry_point("main").unwrap(), ())
+            .cull_mode_back()
+            .front_face_clockwise()
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(context.device.clone())
+            .unwrap()
     }
 
     fn create_framebuffer(
         render_pass: &Arc<RenderPass>,
         target: &GBufferTarget,
-    ) -> Arc<FramebufferT> {
-        let framebuffer = Framebuffer::start(render_pass.clone())
+    ) -> Arc<Framebuffer> {
+        Framebuffer::start(render_pass.clone())
             .add(target.clone())
             .unwrap()
             .build()
-            .unwrap();
-
-        Arc::new(framebuffer)
+            .unwrap()
     }
 
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
         let color_format = context.swap_chain.format();
 
-        Arc::new(
-            single_pass_renderpass!(context.device.clone(),
-                    attachments: {
-                        color: {
-                            load: Clear,
-                            store: Store,
-                            format: color_format,
-                            samples: 1,
-                        }
-                    },
-                    pass: {
-                        color: [color],
-                        depth_stencil: {}
+        single_pass_renderpass!(context.device.clone(),
+                attachments: {
+                    color: {
+                        load: Clear,
+                        store: Store,
+                        format: color_format,
+                        samples: 1,
                     }
-            )
-            .unwrap(),
+                },
+                pass: {
+                    color: [color],
+                    depth_stencil: {}
+                }
         )
+        .unwrap()
     }
 
     fn create_command_buffers(
@@ -248,7 +294,7 @@ impl LightSystem {
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "src/renderer/shaders/light.frag"
+        path: "src/renderer/shaders/pbr.frag"
     }
 }
 
