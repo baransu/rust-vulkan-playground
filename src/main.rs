@@ -11,9 +11,7 @@ use renderer::{
     brdf::BRDFPass,
     camera::Camera,
     context::Context,
-    cubemap_generation_pass::{
-        irradiance_convolution_fs, prefilterenvmap_fs, CubemapGenerationPass,
-    },
+    cubemap_gen_pass::{irradiance_convolution_fs, prefilterenvmap_fs, CubemapGenPass},
     gbuffer::GBuffer,
     light_system::LightSystem,
     mesh::{GameObject, InstanceData, Material, Transform},
@@ -109,8 +107,8 @@ struct Application {
     ssao: Ssao,
     ssao_blur: SsaoBlur,
 
-    irradiance_convolution: CubemapGenerationPass,
-    prefilterenvmap: CubemapGenerationPass,
+    irradiance_convolution: CubemapGenPass,
+    prefilterenvmap: CubemapGenPass,
     brdf: BRDFPass,
 }
 
@@ -137,30 +135,28 @@ impl Application {
         let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
         let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);
 
-        let texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
+        let skybox_texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
 
         let irradiance_convolution_fs_mod =
             irradiance_convolution_fs::load(context.device.clone()).unwrap();
-        let irradiance_convolution = CubemapGenerationPass::initialize(
+        let irradiance_convolution = CubemapGenPass::initialize(
             &context,
-            &texture.image,
+            &skybox_texture.image,
             irradiance_convolution_fs_mod.entry_point("main").unwrap(),
+            64.0,
         );
 
         let prefilterenvmap_fs_mod = prefilterenvmap_fs::load(context.device.clone()).unwrap();
-        let prefilterenvmap = CubemapGenerationPass::initialize(
+        let prefilterenvmap = CubemapGenPass::initialize(
             &context,
-            &irradiance_convolution.cube_attachment_view,
+            &skybox_texture.image,
             prefilterenvmap_fs_mod.entry_point("main").unwrap(),
+            512.0,
         );
 
         let brdf = BRDFPass::initialize(&context);
 
-        let skybox = SkyboxPass::initialize(
-            &context,
-            &gbuffer.render_pass,
-            &prefilterenvmap.cube_attachment_view,
-        );
+        let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, &skybox_texture.image);
 
         let light_system = LightSystem::initialize(
             &context,

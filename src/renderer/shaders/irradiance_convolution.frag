@@ -1,44 +1,42 @@
 #version 450
 
-layout (binding = 1) uniform samplerCube environmentMap;
+layout (binding = 1) uniform samplerCube samplerEnv;
 
-layout(location = 0) in vec3 WorldPos;
+// placeholder because we share same code 
+// for irradiance convolution and prefilter env map
+layout (binding = 2) uniform RoughnessBufferObject { 
+  float roughness;
+  uint numSamples;
+} consts;
 
-layout (location = 0) out vec4 FragColor;
+layout(location = 0) in vec3 inPos;
 
-const float PI = 3.14159265359;
+layout (location = 0) out vec4 outColor;
 
-void main() {
-	// The world vector acts as the normal of a tangent surface
-	// from the origin, aligned to WorldPos. Given this normal, calculate all
-	// incoming radiance of the environment. The result of this radiance
-	// is the radiance of light coming from -Normal direction, which is what
-	// we use in the PBR shader to sample irradiance.
-	vec3 N = normalize(WorldPos);
+#define PI 3.1415926535897932384626433832795
 
-	vec3 irradiance = vec3(0.0);   
-	
-	// tangent space calculation from origin point
-	vec3 up    = vec3(0.0, 1.0, 0.0);
+void main()
+{
+	const float deltaPhi = (2.0 * PI) / 180.0;
+	const float deltaTheta = (0.5 * PI) / 64.0;
+
+	const float TWO_PI = PI * 2.0;
+	const float HALF_PI = PI * 0.5;
+
+	vec3 N = normalize(inPos);
+	vec3 up = vec3(0.0, 1.0, 0.0);
 	vec3 right = normalize(cross(up, N));
-	up         = normalize(cross(N, right));
-			
-	float sampleDelta = 0.025;
-	float nrSamples = 0.0;
-	for(float phi = 0.0; phi < 2.0 * PI; phi += sampleDelta)
-	{
-			for(float theta = 0.0; theta < 0.5 * PI; theta += sampleDelta)
-			{
-					// spherical to cartesian (in tangent space)
-					vec3 tangentSample = vec3(sin(theta) * cos(phi),  sin(theta) * sin(phi), cos(theta));
-					// tangent space to world
-					vec3 sampleVec = tangentSample.x * right + tangentSample.y * up + tangentSample.z * N; 
+	up = cross(N, right);
 
-					irradiance += texture(environmentMap, sampleVec).rgb * cos(theta) * sin(theta);
-					nrSamples++;
-			}
+	vec3 color = vec3(0.0);
+	uint sampleCount = 0u;
+	for (float phi = 0.0; phi < TWO_PI; phi += deltaPhi) {
+		for (float theta = 0.0; theta < HALF_PI; theta += deltaTheta) {
+			vec3 tempVec = cos(phi) * right + sin(phi) * up;
+			vec3 sampleVector = cos(theta) * N + sin(theta) * tempVec;
+			color += texture(samplerEnv, sampleVector).rgb * cos(theta) * sin(theta);
+			sampleCount++;
+		}
 	}
-	irradiance = PI * irradiance * (1.0 / float(nrSamples));
-	
-	FragColor = vec4(irradiance, 1.0);
+	outColor = vec4(PI * color / float(sampleCount), 1.0);
 }

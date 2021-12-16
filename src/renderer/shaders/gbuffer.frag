@@ -14,7 +14,7 @@ layout(binding = 3) uniform sampler2D metalic_roughness_sampler;
 // in
 layout(location = 0) in vec2 f_uv;
 layout(location = 1) in vec3 f_normal;
-layout(location = 2) in vec3 f_tangent;
+layout(location = 2) in vec4 f_tangent;
 layout(location = 3) in vec3 f_position;
 layout(location = 4) in vec3 f_material_diffuse;
 layout(location = 5) in vec3 f_material_specular;
@@ -41,14 +41,9 @@ void main() {
 	// normal
 	vec3 tangentNormal = texture(normal_sampler, f_uv).xyz * 2.0 - 1.0;
 
-	vec3 Q1  = dFdx(f_position);
-	vec3 Q2  = dFdy(f_position);
-	vec2 st1 = dFdx(f_uv);
-	vec2 st2 = dFdy(f_uv);
-
-	vec3 N   = normalize(f_normal);
-	vec3 T  = normalize(Q1*st2.t - Q2*st1.t);
-	vec3 B  = -normalize(cross(N, T));
+	vec3 N  = normalize(f_normal);
+	vec3 T  = normalize(f_tangent.xyz);
+	vec3 B  = normalize(cross(N, T));
 	mat3 TBN = mat3(T, B, N);
 
 	out_normal = normalize(TBN * tangentNormal);

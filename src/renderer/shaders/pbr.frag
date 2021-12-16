@@ -81,8 +81,8 @@ void main() {
 		vec4 metalic_roughness = texture(u_metalic_roughness, f_uv);
 		// TODO: fix ssao so we don't need to load ao from texture
 		float ao = 1.0; // metalic_roughness.r;
-		float roughness = metalic_roughness.g;
-		float metallic = metalic_roughness.b;
+		float metallic = metalic_roughness.g;
+		float roughness = metalic_roughness.b;
 
 		vec3 F0 = vec3(0.04);
 		F0 = mix(F0, albedo, metallic);

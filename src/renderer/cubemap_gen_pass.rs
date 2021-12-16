@@ -12,7 +12,8 @@ use vulkano::{
     format::{ClearValue, Format},
     image::{
         view::{ImageView, ImageViewType},
-        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, StorageImage,
+        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, MipmapsCount,
+        StorageImage,
     },
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{Framebuffer, RenderPass, Subpass},
@@ -27,42 +28,49 @@ use super::{
     skybox_pass::{SkyboxPass, SkyboxVertex},
 };
 
-const DIM: f32 = 64.0;
-
-pub struct CubemapGenerationPass {
+pub struct CubemapGenPass {
     pipeline: Arc<GraphicsPipeline>,
     vertex_buffer: Arc<ImmutableBuffer<[SkyboxVertex]>>,
     descriptor_set: Arc<PersistentDescriptorSet>,
-    pub uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
+    camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
+    roughness_uniform_buffer: Arc<CpuAccessibleBuffer<RoughnessBufferObject>>,
     pub cube_attachment: Arc<StorageImage>,
     pub cube_attachment_view: Arc<ImageView<StorageImage>>,
     pub color_attachment: Arc<StorageImage>,
     pub color_attachment_view: Arc<ImageView<StorageImage>>,
     pub render_pass: Arc<RenderPass>,
     pub framebuffer: Arc<Framebuffer>,
+    dim: f32,
 }
 
-impl CubemapGenerationPass {
+impl CubemapGenPass {
     pub fn initialize<T>(
         context: &Context,
         input_image: &Arc<T>,
         fragment_shader_entry_point: EntryPoint,
-    ) -> CubemapGenerationPass
+        dim: f32,
+    ) -> CubemapGenPass
     where
         T: ImageViewAbstract + 'static,
     {
         let render_pass = Self::create_render_pass(context);
         let pipeline =
-            Self::create_graphics_pipeline(context, &render_pass, fragment_shader_entry_point);
+            Self::create_graphics_pipeline(context, &render_pass, fragment_shader_entry_point, dim);
 
         let vertex_buffer = SkyboxPass::create_vertex_buffer(context);
-        let uniform_buffer = Self::create_uniform_buffer(context);
+        let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
+        let roughness_uniform_buffer = Self::create_roughness_uniform_buffer(context);
 
-        let descriptor_set =
-            Self::create_descriptor_set(context, &pipeline, &uniform_buffer, &input_image);
+        let descriptor_set = Self::create_descriptor_set(
+            context,
+            &pipeline,
+            &camera_uniform_buffer,
+            &roughness_uniform_buffer,
+            &input_image,
+        );
 
-        let cube_attachment = Self::create_cube_attachment(context);
-        let color_attachment = Self::create_color_attachment(context);
+        let cube_attachment = Self::create_cube_attachment(context, dim);
+        let color_attachment = Self::create_color_attachment(context, dim);
 
         let cube_attachment_view = ImageView::start(cube_attachment.clone())
             .with_type(ImageViewType::Cube)
@@ -73,8 +81,9 @@ impl CubemapGenerationPass {
 
         let framebuffer = Self::create_framebuffer(&render_pass, &color_attachment_view);
 
-        CubemapGenerationPass {
-            uniform_buffer,
+        CubemapGenPass {
+            camera_uniform_buffer,
+            roughness_uniform_buffer,
             pipeline,
             vertex_buffer,
             descriptor_set,
@@ -84,10 +93,11 @@ impl CubemapGenerationPass {
             color_attachment_view,
             render_pass,
             framebuffer,
+            dim,
         }
     }
 
-    fn create_uniform_buffer(
+    fn create_camera_uniform_buffer(
         context: &Context,
     ) -> Arc<CpuAccessibleBuffer<CameraUniformBufferObject>> {
         let identity = Mat4::IDENTITY.to_cols_array_2d();
@@ -109,22 +119,54 @@ impl CubemapGenerationPass {
         buffer
     }
 
-    fn update_uniform_buffer(
-        uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
+    fn create_roughness_uniform_buffer(
+        context: &Context,
+    ) -> Arc<CpuAccessibleBuffer<RoughnessBufferObject>> {
+        let uniform_buffer_data = RoughnessBufferObject {
+            roughness: 0.0,
+            numSamples: 32,
+        };
+
+        let buffer = CpuAccessibleBuffer::from_data(
+            context.device.clone(),
+            BufferUsage::uniform_buffer_transfer_destination(),
+            false,
+            uniform_buffer_data,
+        )
+        .unwrap();
+
+        buffer
+    }
+
+    fn update_uniform_buffers(
+        &self,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         matrix: &Mat4,
+        mip_map_level: u32,
     ) {
-        let view = matrix.to_cols_array_2d();
-
-        let proj = Mat4::perspective_rh(PI / 2.0, 1.0, 0.1, 512.0).to_cols_array_2d();
-
-        let data = Arc::new(CameraUniformBufferObject {
-            view,
-            proj,
+        // camera buffer
+        let camera_buffer_data = Arc::new(CameraUniformBufferObject {
+            view: matrix.to_cols_array_2d(),
+            proj: Mat4::perspective_rh(PI / 2.0, 1.0, 0.1, 512.0).to_cols_array_2d(),
             position: Vec3::ZERO.to_array(),
         });
 
-        builder.update_buffer(uniform_buffer.clone(), data).unwrap();
+        builder
+            .update_buffer(self.camera_uniform_buffer.clone(), camera_buffer_data)
+            .unwrap();
+
+        let num_mips = self.dim.log2().floor() + 1.0;
+        let roughness = (mip_map_level as f32) / num_mips;
+
+        // roughness buffer
+        let roughness_buffer_data = Arc::new(RoughnessBufferObject {
+            roughness,
+            numSamples: 32,
+        });
+
+        builder
+            .update_buffer(self.roughness_uniform_buffer.clone(), roughness_buffer_data)
+            .unwrap();
     }
 
     fn create_framebuffer(
@@ -166,65 +208,63 @@ impl CubemapGenerationPass {
 
         let mats = matrices();
 
-        // let num_mips = (DIM.floor().log2() + 1.0) as u32;
+        let num_mips = (self.dim.log2().floor() + 1.0) as u32;
 
-        // TODO: vulkano is not supporting mipmaps for StorageImage right now
-        // for m in 0..num_mips {
-        let m = 0;
-        for f in 0..6 {
-            let width = DIM * 0.5_f32.powf(m as f32);
-            let height = DIM * 0.5_f32.powf(m as f32);
-            let viewport = Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [width, height],
-                depth_range: 0.0..1.0,
-            };
+        for m in 0..num_mips {
+            for f in 0..6 {
+                let width = self.dim * 0.5_f32.powf(m as f32);
+                let height = self.dim * 0.5_f32.powf(m as f32);
+                let viewport = Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [width, height],
+                    depth_range: 0.0..1.0,
+                };
 
-            Self::update_uniform_buffer(&self.uniform_buffer, &mut builder, &mats[f]);
+                self.update_uniform_buffers(&mut builder, &mats[f], m);
 
-            builder
-                .begin_render_pass(
-                    self.framebuffer.clone(),
-                    SubpassContents::Inline,
-                    vec![ClearValue::Float([1.0, 0.0, 0.0, 1.0])],
-                )
-                .unwrap();
+                builder
+                    .begin_render_pass(
+                        self.framebuffer.clone(),
+                        SubpassContents::Inline,
+                        vec![ClearValue::Float([1.0, 0.0, 0.0, 1.0])],
+                    )
+                    .unwrap();
 
-            builder
-                .set_viewport(0, [viewport.clone()])
-                .bind_pipeline_graphics(self.pipeline.clone())
-                .bind_descriptor_sets(
-                    PipelineBindPoint::Graphics,
-                    self.pipeline.layout().clone(),
-                    0,
-                    self.descriptor_set.clone(),
-                )
-                .bind_vertex_buffers(0, self.vertex_buffer.clone())
-                .draw(36, 1, 0, 0)
-                .unwrap();
+                builder
+                    .set_viewport(0, [viewport.clone()])
+                    .bind_pipeline_graphics(self.pipeline.clone())
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::Graphics,
+                        self.pipeline.layout().clone(),
+                        0,
+                        self.descriptor_set.clone(),
+                    )
+                    .bind_vertex_buffers(0, self.vertex_buffer.clone())
+                    .draw(36, 1, 0, 0)
+                    .unwrap();
 
-            builder.end_render_pass().unwrap();
+                builder.end_render_pass().unwrap();
 
-            let source = self.color_attachment.clone();
+                let source = self.color_attachment.clone();
 
-            let destination = self.cube_attachment.clone();
+                let destination = self.cube_attachment.clone();
 
-            builder
-                .copy_image(
-                    source,
-                    [0, 0, 0],
-                    0,
-                    0,
-                    destination,
-                    [0, 0, 0],
-                    f as u32,
-                    m,
-                    [width as u32, height as u32, 1],
-                    1,
-                )
-                .unwrap();
+                builder
+                    .copy_image(
+                        source,
+                        [0, 0, 0],
+                        0,
+                        0,
+                        destination,
+                        [0, 0, 0],
+                        f as u32,
+                        m,
+                        [width as u32, height as u32, 1],
+                        1,
+                    )
+                    .unwrap();
+            }
         }
-        // }
 
         builder
             .build()
@@ -241,12 +281,13 @@ impl CubemapGenerationPass {
         context: &Context,
         render_pass: &Arc<RenderPass>,
         fragment_shader_entry_point: EntryPoint,
+        dim: f32,
     ) -> Arc<GraphicsPipeline> {
         let vert_shader_module = vs::load(context.device.clone()).unwrap();
 
         let viewport = Viewport {
             origin: [0.0, 0.0],
-            dimensions: [DIM, DIM],
+            dimensions: [dim, dim],
             depth_range: 0.0..1.0,
         };
 
@@ -267,7 +308,8 @@ impl CubemapGenerationPass {
     fn create_descriptor_set<T>(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
+        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
+        roughness_uniform_buffer: &Arc<CpuAccessibleBuffer<RoughnessBufferObject>>,
         input_image: &Arc<T>,
     ) -> Arc<PersistentDescriptorSet>
     where
@@ -281,21 +323,27 @@ impl CubemapGenerationPass {
 
         let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-        set_builder.add_buffer(uniform_buffer.clone()).unwrap();
+        set_builder
+            .add_buffer(camera_uniform_buffer.clone())
+            .unwrap();
 
         set_builder
             .add_sampled_image(input_image.clone(), context.image_sampler.clone())
             .unwrap();
 
+        set_builder
+            .add_buffer(roughness_uniform_buffer.clone())
+            .unwrap();
+
         set_builder.build().unwrap()
     }
 
-    fn create_color_attachment(context: &Context) -> Arc<StorageImage> {
+    fn create_color_attachment(context: &Context, dim: f32) -> Arc<StorageImage> {
         StorageImage::with_usage(
             context.device.clone(),
             ImageDimensions::Dim2d {
-                width: DIM as u32,
-                height: DIM as u32,
+                width: dim as u32,
+                height: dim as u32,
                 // TODO: what are array_layers?
                 array_layers: 1,
             },
@@ -312,16 +360,18 @@ impl CubemapGenerationPass {
         .unwrap()
     }
 
-    fn create_cube_attachment(context: &Context) -> Arc<StorageImage> {
-        StorageImage::with_usage(
+    fn create_cube_attachment(context: &Context, dim: f32) -> Arc<StorageImage> {
+        let num_mips = (dim.log2().floor() + 1.0) as u32;
+
+        StorageImage::with_mipmaps_usage(
             context.device.clone(),
             ImageDimensions::Dim2d {
-                width: DIM as u32,
-                height: DIM as u32,
-                // TODO: what are array_layers?
+                width: dim as u32,
+                height: dim as u32,
                 array_layers: 6,
             },
             Format::R32G32B32A32_SFLOAT,
+            MipmapsCount::Specific(num_mips),
             ImageUsage {
                 transfer_destination: true,
                 color_attachment: true,
@@ -358,6 +408,8 @@ pub mod prefilterenvmap_fs {
         path: "src/renderer/shaders/prefilterenvmap.frag"
     }
 }
+
+type RoughnessBufferObject = prefilterenvmap_fs::ty::RoughnessBufferObject;
 
 fn matrices() -> [Mat4; 6] {
     [
