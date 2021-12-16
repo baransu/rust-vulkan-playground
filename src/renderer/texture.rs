@@ -15,7 +15,8 @@ use vulkano::{
     image::{
         immutable::SubImage,
         view::{ImageView, ImageViewType},
-        ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, ImmutableImage, MipmapsCount,
+        ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, ImmutableImage,
+        MipmapsCount,
     },
     sync::GpuFuture,
 };

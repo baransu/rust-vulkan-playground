@@ -285,16 +285,13 @@ impl Scene {
             .unwrap();
 
         set_builder
-            .add_sampled_image(
-                normal_texture.image.clone(),
-                context.attachment_sampler.clone(),
-            )
+            .add_sampled_image(normal_texture.image.clone(), context.image_sampler.clone())
             .unwrap();
 
         set_builder
             .add_sampled_image(
                 metalic_roughness_texture.image.clone(),
-                context.attachment_sampler.clone(),
+                context.image_sampler.clone(),
             )
             .unwrap();
 

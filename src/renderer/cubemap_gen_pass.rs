@@ -29,6 +29,8 @@ use super::{
     skybox_pass::{SkyboxPass, SkyboxVertex},
 };
 
+const NUM_SAMPLES: i32 = 32;
+
 pub struct CubemapGenPass {
     pipeline: Arc<GraphicsPipeline>,
     vertex_buffer: Arc<ImmutableBuffer<[SkyboxVertex]>>,
@@ -125,8 +127,8 @@ impl CubemapGenPass {
         context: &Context,
     ) -> Arc<CpuAccessibleBuffer<RoughnessBufferObject>> {
         let uniform_buffer_data = RoughnessBufferObject {
+            numSamples: NUM_SAMPLES,
             roughness: 0.0,
-            numSamples: 32,
         };
 
         let buffer = CpuAccessibleBuffer::from_data(
@@ -145,6 +147,7 @@ impl CubemapGenPass {
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         matrix: Mat4,
         mip_map_level: u32,
+        num_mips: u32,
     ) {
         // camera buffer
         let camera_buffer_data = Arc::new(CameraUniformBufferObject {
@@ -158,13 +161,12 @@ impl CubemapGenPass {
             .update_buffer(self.camera_uniform_buffer.clone(), camera_buffer_data)
             .unwrap();
 
-        let num_mips = self.dim.log2().floor() + 1.0;
-        let roughness = (mip_map_level as f32) / (num_mips - 1.0);
+        let roughness = (mip_map_level as f32) / ((num_mips - 1) as f32);
 
         // roughness buffer
         let roughness_buffer_data = Arc::new(RoughnessBufferObject {
+            numSamples: NUM_SAMPLES,
             roughness,
-            numSamples: 32,
         });
 
         builder
@@ -189,7 +191,7 @@ impl CubemapGenPass {
                     color: {
                         load: Clear,
                         store: Store,
-                        format: Format::R16G16B16A16_SFLOAT,
+                        format: Format::R32G32B32A32_SFLOAT,
                         samples: 1,
                     }
                 },
@@ -224,7 +226,7 @@ impl CubemapGenPass {
                     depth_range: 0.0..1.0,
                 };
 
-                self.update_uniform_buffers(&mut builder, mats[f], m);
+                self.update_uniform_buffers(&mut builder, mats[f], m, num_mips);
 
                 builder
                     .begin_render_pass(
@@ -332,26 +334,23 @@ impl CubemapGenPass {
             .add_buffer(camera_uniform_buffer.clone())
             .unwrap();
 
-        // let num_mips = dim.log2().floor() + 1.0;
-
         set_builder
             .add_sampled_image(
                 input_image.clone(),
-                context.image_sampler.clone(),
-                // Sampler::new(
-                //     context.device.clone(),
-                //     Filter::Linear,
-                //     Filter::Linear,
-                //     MipmapMode::Linear,
-                //     SamplerAddressMode::ClampToEdge,
-                //     SamplerAddressMode::ClampToEdge,
-                //     SamplerAddressMode::ClampToEdge,
-                //     0.0,
-                //     1.0,
-                //     0.0,
-                //     num_mips,
-                // )
-                // .unwrap(),
+                Sampler::new(
+                    context.device.clone(),
+                    Filter::Linear,
+                    Filter::Linear,
+                    MipmapMode::Linear,
+                    SamplerAddressMode::ClampToEdge,
+                    SamplerAddressMode::ClampToEdge,
+                    SamplerAddressMode::ClampToEdge,
+                    0.0,
+                    1.0,
+                    0.0,
+                    1.0,
+                )
+                .unwrap(),
             )
             .unwrap();
 
@@ -371,10 +370,11 @@ impl CubemapGenPass {
                 // TODO: what are array_layers?
                 array_layers: 1,
             },
-            Format::R16G16B16A16_SFLOAT,
+            Format::R32G32B32A32_SFLOAT,
             ImageUsage {
                 color_attachment: true,
                 transfer_source: true,
+                transfer_destination: true,
                 sampled: true,
                 ..ImageUsage::none()
             },
@@ -394,10 +394,11 @@ impl CubemapGenPass {
                 height: dim as u32,
                 array_layers: 6,
             },
-            Format::R16G16B16A16_SFLOAT,
+            Format::R32G32B32A32_SFLOAT,
             MipmapsCount::Specific(num_mips),
             ImageUsage {
                 transfer_destination: true,
+                transfer_source: true,
                 color_attachment: true,
                 sampled: true,
                 ..ImageUsage::none()
