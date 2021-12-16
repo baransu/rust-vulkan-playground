@@ -177,7 +177,7 @@ impl BRDFPass {
 pub mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
-        path: "src/renderer/shaders/fullscreen.vert"
+        path: "src/renderer/shaders/brdf.vert"
     }
 }
 

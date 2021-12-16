@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use vulkano::{
     format::Format,
-    image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract},
+    image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage},
     pipeline::{
         graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
         GraphicsPipeline,

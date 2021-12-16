@@ -305,7 +305,7 @@ impl Ssao {
                 array_layers: 1,
             },
             MipmapsCount::One,
-            Format::R32G32B32A32_SFLOAT,
+            Format::R16G16B16A16_SFLOAT,
             context.graphics_queue.clone(),
         )
         .unwrap();

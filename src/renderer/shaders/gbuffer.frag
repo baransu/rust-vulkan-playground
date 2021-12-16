@@ -34,7 +34,7 @@ void main() {
 	out_position = vec4(f_position, linear_depth(gl_FragCoord.z));
 
 	out_albedo.rgb = f_material_diffuse.rgb * texture(diffuse_sampler, f_uv).rgb;
-	out_albedo.a = f_material_specular.r;
+	out_albedo.a = 1.0;
 
 	out_metalic_roughness = texture(metalic_roughness_sampler, f_uv);
 

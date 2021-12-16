@@ -17,6 +17,7 @@ use vulkano::{
     },
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{Framebuffer, RenderPass, Subpass},
+    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     shader::EntryPoint,
     single_pass_renderpass,
     sync::GpuFuture,
@@ -67,6 +68,7 @@ impl CubemapGenPass {
             &camera_uniform_buffer,
             &roughness_uniform_buffer,
             &input_image,
+            dim,
         );
 
         let cube_attachment = Self::create_cube_attachment(context, dim);
@@ -141,13 +143,14 @@ impl CubemapGenPass {
     fn update_uniform_buffers(
         &self,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        matrix: &Mat4,
+        matrix: Mat4,
         mip_map_level: u32,
     ) {
         // camera buffer
         let camera_buffer_data = Arc::new(CameraUniformBufferObject {
-            view: matrix.to_cols_array_2d(),
-            proj: Mat4::perspective_rh(PI / 2.0, 1.0, 0.1, 512.0).to_cols_array_2d(),
+            view: Mat4::IDENTITY.to_cols_array_2d(),
+            proj: (Mat4::perspective_rh(90.0_f32.to_radians(), 1.0, 0.1, 10.0) * matrix)
+                .to_cols_array_2d(),
             position: Vec3::ZERO.to_array(),
         });
 
@@ -156,7 +159,7 @@ impl CubemapGenPass {
             .unwrap();
 
         let num_mips = self.dim.log2().floor() + 1.0;
-        let roughness = (mip_map_level as f32) / num_mips;
+        let roughness = (mip_map_level as f32) / (num_mips - 1.0);
 
         // roughness buffer
         let roughness_buffer_data = Arc::new(RoughnessBufferObject {
@@ -186,7 +189,7 @@ impl CubemapGenPass {
                     color: {
                         load: Clear,
                         store: Store,
-                        format: Format::R32G32B32A32_SFLOAT,
+                        format: Format::R16G16B16A16_SFLOAT,
                         samples: 1,
                     }
                 },
@@ -214,25 +217,26 @@ impl CubemapGenPass {
             for f in 0..6 {
                 let width = self.dim * 0.5_f32.powf(m as f32);
                 let height = self.dim * 0.5_f32.powf(m as f32);
+
                 let viewport = Viewport {
                     origin: [0.0, 0.0],
                     dimensions: [width, height],
                     depth_range: 0.0..1.0,
                 };
 
-                self.update_uniform_buffers(&mut builder, &mats[f], m);
+                self.update_uniform_buffers(&mut builder, mats[f], m);
 
                 builder
                     .begin_render_pass(
                         self.framebuffer.clone(),
                         SubpassContents::Inline,
-                        vec![ClearValue::Float([1.0, 0.0, 0.0, 1.0])],
+                        vec![ClearValue::Float([0.0, 0.0, 0.2, 0.0])],
                     )
                     .unwrap();
 
                 builder
-                    .set_viewport(0, [viewport.clone()])
                     .bind_pipeline_graphics(self.pipeline.clone())
+                    .set_viewport(0, [viewport.clone()])
                     .bind_descriptor_sets(
                         PipelineBindPoint::Graphics,
                         self.pipeline.layout().clone(),
@@ -311,6 +315,7 @@ impl CubemapGenPass {
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         roughness_uniform_buffer: &Arc<CpuAccessibleBuffer<RoughnessBufferObject>>,
         input_image: &Arc<T>,
+        dim: f32,
     ) -> Arc<PersistentDescriptorSet>
     where
         T: ImageViewAbstract + 'static,
@@ -327,8 +332,27 @@ impl CubemapGenPass {
             .add_buffer(camera_uniform_buffer.clone())
             .unwrap();
 
+        // let num_mips = dim.log2().floor() + 1.0;
+
         set_builder
-            .add_sampled_image(input_image.clone(), context.image_sampler.clone())
+            .add_sampled_image(
+                input_image.clone(),
+                context.image_sampler.clone(),
+                // Sampler::new(
+                //     context.device.clone(),
+                //     Filter::Linear,
+                //     Filter::Linear,
+                //     MipmapMode::Linear,
+                //     SamplerAddressMode::ClampToEdge,
+                //     SamplerAddressMode::ClampToEdge,
+                //     SamplerAddressMode::ClampToEdge,
+                //     0.0,
+                //     1.0,
+                //     0.0,
+                //     num_mips,
+                // )
+                // .unwrap(),
+            )
             .unwrap();
 
         set_builder
@@ -347,7 +371,7 @@ impl CubemapGenPass {
                 // TODO: what are array_layers?
                 array_layers: 1,
             },
-            Format::R32G32B32A32_SFLOAT,
+            Format::R16G16B16A16_SFLOAT,
             ImageUsage {
                 color_attachment: true,
                 transfer_source: true,
@@ -370,7 +394,7 @@ impl CubemapGenPass {
                 height: dim as u32,
                 array_layers: 6,
             },
-            Format::R32G32B32A32_SFLOAT,
+            Format::R16G16B16A16_SFLOAT,
             MipmapsCount::Specific(num_mips),
             ImageUsage {
                 transfer_destination: true,
@@ -413,16 +437,22 @@ type RoughnessBufferObject = prefilterenvmap_fs::ty::RoughnessBufferObject;
 
 fn matrices() -> [Mat4; 6] {
     [
+        // POSITIVE_X
         Mat4::look_at_rh(Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0), -Vec3::Y),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+        // NEGATIVE_X
         Mat4::look_at_rh(Vec3::ZERO, Vec3::new(-1.0, 0.0, 0.0), -Vec3::Y),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+        // POSITIVE_Y
         Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0), Vec3::Z),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)),
+        // NEGATIVE_Y
         Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, -1.0, 0.0), -Vec3::Z),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f)),
+        // POSITIVE_Z
         Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0), -Vec3::Y),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+        // NEGATIVE_Z
         Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 0.0, -1.0), -Vec3::Y),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))
     ]

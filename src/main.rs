@@ -47,17 +47,18 @@ use winit::{
     event_loop::ControlFlow,
 };
 
-const MODEL_PATHS: [&str; 3] = [
-    "res/models/damaged_helmet/scene.gltf",
-    "res/models/plane/plane.gltf",
-    "res/models/cube/cube.gltf",
+const MODEL_PATHS: [&str; 1] = [
+    // "res/models/damaged_helmet/scene.gltf",
+    // "res/models/plane/plane.gltf",
+    // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
     // "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf",
+    "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
 ];
 
 // const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
-const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
-// const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
+// const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
+const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
 const RENDER_SKYBOX: bool = true;
 
@@ -156,7 +157,11 @@ impl Application {
 
         let brdf = BRDFPass::initialize(&context);
 
-        let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, &skybox_texture.image);
+        let skybox = SkyboxPass::initialize(
+            &context,
+            &gbuffer.render_pass,
+            &skybox_texture.image, // prefilterenvmap.cube_attachment_view,
+        );
 
         let light_system = LightSystem::initialize(
             &context,
@@ -219,6 +224,16 @@ impl Application {
                 translation: Vec3::ZERO,
                 rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
                 scale: Vec3::ONE,
+            },
+            Default::default(),
+        ));
+
+        scene.add_game_object(GameObject::new(
+            "WaterBottle",
+            Transform {
+                translation: Vec3::ZERO,
+                rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+                scale: Vec3::ONE * 5.0,
             },
             Default::default(),
         ));

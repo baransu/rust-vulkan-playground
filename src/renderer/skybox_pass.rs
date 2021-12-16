@@ -14,7 +14,7 @@ use vulkano::{
 
 use super::{context::Context, shaders::CameraUniformBufferObject, texture::Texture};
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct SkyboxVertex {
     position: [f32; 3],
 }
@@ -229,41 +229,46 @@ impl SkyboxPass {
 fn skybox_vertices() -> [SkyboxVertex; 36] {
     [
         SkyboxVertex::new(-1.0, -1.0, -1.0),
-        SkyboxVertex::new(-1.0, 1.0, -1.0),
-        SkyboxVertex::new(1.0, 1.0, -1.0),
         SkyboxVertex::new(1.0, 1.0, -1.0),
         SkyboxVertex::new(1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
         SkyboxVertex::new(-1.0, -1.0, -1.0),
+        SkyboxVertex::new(-1.0, 1.0, -1.0),
+        //
+        SkyboxVertex::new(-1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(-1.0, 1.0, 1.0),
+        SkyboxVertex::new(-1.0, -1.0, 1.0),
+        //
         SkyboxVertex::new(-1.0, 1.0, 1.0),
         SkyboxVertex::new(-1.0, 1.0, -1.0),
         SkyboxVertex::new(-1.0, -1.0, -1.0),
         SkyboxVertex::new(-1.0, -1.0, -1.0),
         SkyboxVertex::new(-1.0, -1.0, 1.0),
         SkyboxVertex::new(-1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, 1.0, -1.0),
+        //
         SkyboxVertex::new(1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, -1.0, 1.0),
-        SkyboxVertex::new(1.0, -1.0, 1.0),
         SkyboxVertex::new(1.0, -1.0, -1.0),
         SkyboxVertex::new(1.0, 1.0, -1.0),
-        SkyboxVertex::new(-1.0, 1.0, 1.0),
-        SkyboxVertex::new(-1.0, -1.0, 1.0),
-        SkyboxVertex::new(1.0, -1.0, 1.0),
-        SkyboxVertex::new(1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, -1.0, -1.0),
         SkyboxVertex::new(1.0, 1.0, 1.0),
-        SkyboxVertex::new(-1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, -1.0, 1.0),
+        //
         SkyboxVertex::new(-1.0, -1.0, -1.0),
         SkyboxVertex::new(1.0, -1.0, -1.0),
         SkyboxVertex::new(1.0, -1.0, 1.0),
         SkyboxVertex::new(1.0, -1.0, 1.0),
         SkyboxVertex::new(-1.0, -1.0, 1.0),
         SkyboxVertex::new(-1.0, -1.0, -1.0),
+        //
+        SkyboxVertex::new(-1.0, 1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
         SkyboxVertex::new(-1.0, 1.0, -1.0),
         SkyboxVertex::new(-1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, 1.0, -1.0),
-        SkyboxVertex::new(1.0, 1.0, -1.0),
-        SkyboxVertex::new(-1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, 1.0, 1.0),
     ]
 }
 

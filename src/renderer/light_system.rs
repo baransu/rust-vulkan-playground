@@ -4,6 +4,7 @@ use vulkano::{
     buffer::CpuAccessibleBuffer,
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
+    device,
     image::{view::ImageView, AttachmentImage, StorageImage},
     pipeline::{
         graphics::{
@@ -12,6 +13,7 @@ use vulkano::{
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
+    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     single_pass_renderpass,
 };
 
@@ -143,15 +145,15 @@ impl LightSystem {
             .unwrap();
 
         set_builder
-            .add_sampled_image(irradiance_map.clone(), context.attachment_sampler.clone())
+            .add_sampled_image(irradiance_map.clone(), Self::create_sampler(context, 7.0))
             .unwrap();
 
         set_builder
-            .add_sampled_image(prefilter_map.clone(), context.attachment_sampler.clone())
+            .add_sampled_image(prefilter_map.clone(), Self::create_sampler(context, 10.0))
             .unwrap();
 
         set_builder
-            .add_sampled_image(brdf.clone(), context.attachment_sampler.clone())
+            .add_sampled_image(brdf.clone(), Self::create_sampler(context, 1.0))
             .unwrap();
 
         set_builder
@@ -163,6 +165,23 @@ impl LightSystem {
             .unwrap();
 
         set_builder.build().unwrap()
+    }
+
+    fn create_sampler(context: &Context, mip: f32) -> Arc<Sampler> {
+        Sampler::new(
+            context.device.clone(),
+            Filter::Linear,
+            Filter::Linear,
+            MipmapMode::Linear,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            0.0,
+            1.0,
+            0.0,
+            mip,
+        )
+        .unwrap()
     }
 
     fn create_pipeline(context: &Context, render_pass: &Arc<RenderPass>) -> Arc<GraphicsPipeline> {

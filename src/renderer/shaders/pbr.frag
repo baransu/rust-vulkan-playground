@@ -30,9 +30,9 @@ layout(binding = 3) uniform sampler2D u_albedo;
 layout(binding = 4) uniform sampler2D u_metalic_roughness;
 layout(binding = 5) uniform sampler2D ssao_sampler;
 layout(binding = 6) uniform sampler2D shadow_sampler;
-layout(binding = 7) uniform samplerCube irradianceMap;
-layout(binding = 8) uniform samplerCube prefilterMap;
-layout(binding = 9) uniform sampler2D   brdfLUT;  
+layout(binding = 7) uniform samplerCube samplerIrradiance;
+layout(binding = 8) uniform samplerCube prefilteredMap;
+layout(binding = 9) uniform sampler2D   samplerBRDFLUT;  
 
 // duplicated definition in model.vert and shaders.rs
 layout(binding = 10)	uniform LightSpaceUniformBufferObject {
@@ -51,15 +51,75 @@ layout(location = 0) out vec4 out_color;
 
 #define PI 3.1415926535897932384626433832795
 
-vec3 fresnelSchlick(float cosTheta,  vec3 F0);
-float DistributionGGX(vec3 N, vec3 H, float roughness);
-float GeometryShlickGGX(float NdotV, float roughness); 
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness);
+#define ALBEDO pow(texture(u_albedo, f_uv).xyz, vec3(2.2))
 
-vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+// Normal Distribution function --------------------------------------
+float D_GGX(float dotNH, float roughness)
 {
-    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}  
+	float alpha = roughness * roughness;
+	float alpha2 = alpha * alpha;
+	float denom = dotNH * dotNH * (alpha2 - 1.0) + 1.0;
+	return (alpha2)/(PI * denom*denom); 
+}
+
+// Geometric Shadowing function --------------------------------------
+float G_SchlicksmithGGX(float dotNL, float dotNV, float roughness)
+{
+	float r = (roughness + 1.0);
+	float k = (r*r) / 8.0;
+	float GL = dotNL / (dotNL * (1.0 - k) + k);
+	float GV = dotNV / (dotNV * (1.0 - k) + k);
+	return GL * GV;
+}
+
+// Fresnel function ----------------------------------------------------
+vec3 F_Schlick(float cosTheta, vec3 F0)
+{
+	return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+}
+vec3 F_SchlickR(float cosTheta, vec3 F0, float roughness)
+{
+	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
+vec3 prefilteredReflection(vec3 R, float roughness)
+{
+	const float MAX_REFLECTION_LOD = 9.0; // todo: param/const
+	float lod = roughness * MAX_REFLECTION_LOD;
+	float lodf = floor(lod);
+	float lodc = ceil(lod);
+	vec3 a = textureLod(prefilteredMap, R, lodf).rgb;
+	vec3 b = textureLod(prefilteredMap, R, lodc).rgb;
+	return mix(a, b, lod - lodf);
+}
+
+vec3 specularContribution(vec3 L, vec3 V, vec3 N, vec3 F0, float metallic, float roughness)
+{
+	// Precalculate vectors and dot products	
+	vec3 H = normalize (V + L);
+	float dotNH = clamp(dot(N, H), 0.0, 1.0);
+	float dotNV = clamp(dot(N, V), 0.0, 1.0);
+	float dotNL = clamp(dot(N, L), 0.0, 1.0);
+
+	// Light color fixed
+	vec3 lightColor = vec3(1.0);
+
+	vec3 color = vec3(0.0);
+
+	if (dotNL > 0.0) {
+		// D = Normal distribution (Distribution of the microfacets)
+		float D = D_GGX(dotNH, roughness); 
+		// G = Geometric shadowing term (Microfacets shadowing)
+		float G = G_SchlicksmithGGX(dotNL, dotNV, roughness);
+		// F = Fresnel factor (Reflectance depending on angle of incidence)
+		vec3 F = F_Schlick(dotNV, F0);		
+		vec3 spec = D * F * G / (4.0 * dotNL * dotNV + 0.001);		
+		vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);			
+		color += (kD * ALBEDO / PI + spec) * dotNL;
+	}
+
+	return color;
+}
 
 void main() {
 	vec3 raw_albedo = texture(u_albedo, f_uv).xyz;
@@ -79,10 +139,9 @@ void main() {
 		vec3 R = reflect(-V, N);
 
 		vec4 metalic_roughness = texture(u_metalic_roughness, f_uv);
-		// TODO: fix ssao so we don't need to load ao from texture
-		float ao = 1.0; // metalic_roughness.r;
-		float metallic = metalic_roughness.g;
-		float roughness = metalic_roughness.b;
+		float ao = metalic_roughness.r;
+		float roughness = metalic_roughness.g;
+		float metallic = metalic_roughness.b;
 
 		vec3 F0 = vec3(0.04);
 		F0 = mix(F0, albedo, metallic);
@@ -91,45 +150,26 @@ void main() {
 		for(int i = 0; i < lights.point_lights_count; i++) {
 			PointLight light = lights.point_lights[i];
 			vec3 L = normalize(light.position - Position);
-			vec3 H = normalize(V + L);
-
-			float distance = length(light.position - Position);
-			float attenuation = 1.0 / (distance * distance);
-			vec3 radiance = light.color * attenuation;
-
-			float NDF = DistributionGGX(N, H, roughness);
-			float G = GeometrySmith(N, V, L, roughness);
-			vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
-
-			vec3 numerator = NDF * G * F;
-			float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-			vec3 specular = numerator / denominator;
-
-			vec3 kS = F;
-			vec3 kD = vec3(1.0) - kS;
-
-			kD *= 1.0 - metallic;
-
-			float NdotL = max(dot(N, L), 0.0);
-
-			Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+			Lo += specularContribution(L, V, N, F0, metallic, roughness);
 		}
 
-		vec3 F = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
-		vec3 kS = F;
-		vec3 kD = 1.0 - kS;
-		kD *= 1.0 - metallic;
+		vec2 brdf = texture(samplerBRDFLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
+		vec3 reflection = prefilteredReflection(R, roughness).rgb;	
+		vec3 irradiance = texture(samplerIrradiance, N).rgb;
 
-    vec3 irradiance = texture(irradianceMap, N).rgb;
-    vec3 diffuse    = irradiance * albedo;
+		// Diffuse based on irradiance
+		vec3 diffuse = irradiance * ALBEDO;	
 
-		 const float MAX_REFLECTION_LOD = 4.0;
-    vec3 prefilteredColor = textureLod(prefilterMap, R,roughness * MAX_REFLECTION_LOD).rgb;    
-		vec2 brdf = texture(brdfLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
-		vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
+		vec3 F = F_SchlickR(max(dot(N, V), 0.0), F0, roughness);
 
+		// Specular reflectance
+		vec3 specular = reflection * (F * brdf.x + brdf.y);
+
+		// Ambient part
+		vec3 kD = 1.0 - F;
+		kD *= 1.0 - metallic;	  
 		vec3 ambient = (kD * diffuse + specular) * ao;
-
+		
 		color = ambient + Lo;
 	}
 
@@ -140,40 +180,4 @@ void main() {
 	color = pow(color, vec3(1.0/gamma));
 
 	out_color = vec4(color, 1.0);
-}
-
-vec3 fresnelSchlick(float cosTheta,  vec3 F0) {
-	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-
-float DistributionGGX(vec3 N, vec3 H, float roughness) {
-	float a = roughness * roughness;
-	float a2 = a * a;
-	float NdotH = max(dot(N, H), 0.0);
-	float NdotH2 = NdotH * NdotH;
-
-	float nom = a2;
-	float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-	denom = PI * denom * denom;
-
-	return nom / denom;
-}
-
-float GeometryShlickGGX(float NdotV, float roughness) {
-	float r = roughness + 1.0;
-	float k = (r * r) / 8.0;
-
-	float nom = NdotV;
-	float denom = NdotV * (1.0 - k) + k;
-
-	return nom / denom;
-}
-
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
-	float NdotV = max(dot(N, V), 0.0);
-	float NdotL = max(dot(N, L), 0.0);
-	float ggx2 = GeometryShlickGGX(NdotV, roughness);
-	float ggx1 = GeometryShlickGGX(NdotL, roughness);
-
-	return ggx1 * ggx2;
 }
