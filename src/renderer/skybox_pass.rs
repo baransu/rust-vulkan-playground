@@ -170,7 +170,7 @@ impl SkyboxPass {
             .polygon_mode_fill() // = default
             .line_width(1.0) // = default
             .cull_mode_back()
-            .front_face_counter_clockwise()
+            .front_face_clockwise()
             .blend_pass_through()
             .viewports_dynamic_scissors_irrelevant(1)
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
@@ -228,42 +228,42 @@ impl SkyboxPass {
 
 fn skybox_vertices() -> [SkyboxVertex; 36] {
     [
-        SkyboxVertex::new(-1.0, 1.0, -1.0),
-        SkyboxVertex::new(-1.0, -1.0, -1.0),
-        SkyboxVertex::new(1.0, -1.0, -1.0),
-        SkyboxVertex::new(1.0, -1.0, -1.0),
-        SkyboxVertex::new(1.0, 1.0, -1.0),
-        SkyboxVertex::new(-1.0, 1.0, -1.0),
-        SkyboxVertex::new(-1.0, -1.0, 1.0),
         SkyboxVertex::new(-1.0, -1.0, -1.0),
         SkyboxVertex::new(-1.0, 1.0, -1.0),
-        SkyboxVertex::new(-1.0, 1.0, -1.0),
-        SkyboxVertex::new(-1.0, 1.0, 1.0),
-        SkyboxVertex::new(-1.0, -1.0, 1.0),
-        SkyboxVertex::new(1.0, -1.0, -1.0),
-        SkyboxVertex::new(1.0, -1.0, 1.0),
-        SkyboxVertex::new(1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
         SkyboxVertex::new(1.0, 1.0, -1.0),
         SkyboxVertex::new(1.0, -1.0, -1.0),
-        SkyboxVertex::new(-1.0, -1.0, 1.0),
-        SkyboxVertex::new(-1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, -1.0, 1.0),
-        SkyboxVertex::new(-1.0, -1.0, 1.0),
-        SkyboxVertex::new(-1.0, 1.0, -1.0),
-        SkyboxVertex::new(1.0, 1.0, -1.0),
-        SkyboxVertex::new(1.0, 1.0, 1.0),
-        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(-1.0, -1.0, -1.0),
         SkyboxVertex::new(-1.0, 1.0, 1.0),
         SkyboxVertex::new(-1.0, 1.0, -1.0),
         SkyboxVertex::new(-1.0, -1.0, -1.0),
+        SkyboxVertex::new(-1.0, -1.0, -1.0),
         SkyboxVertex::new(-1.0, -1.0, 1.0),
+        SkyboxVertex::new(-1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, -1.0, 1.0),
         SkyboxVertex::new(1.0, -1.0, -1.0),
-        SkyboxVertex::new(1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
+        SkyboxVertex::new(-1.0, 1.0, 1.0),
         SkyboxVertex::new(-1.0, -1.0, 1.0),
         SkyboxVertex::new(1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
+        SkyboxVertex::new(-1.0, 1.0, 1.0),
+        SkyboxVertex::new(-1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, -1.0, -1.0),
+        SkyboxVertex::new(1.0, -1.0, 1.0),
+        SkyboxVertex::new(1.0, -1.0, 1.0),
+        SkyboxVertex::new(-1.0, -1.0, 1.0),
+        SkyboxVertex::new(-1.0, -1.0, -1.0),
+        SkyboxVertex::new(-1.0, 1.0, -1.0),
+        SkyboxVertex::new(-1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
+        SkyboxVertex::new(1.0, 1.0, -1.0),
+        SkyboxVertex::new(-1.0, 1.0, 1.0),
+        SkyboxVertex::new(1.0, 1.0, 1.0),
     ]
 }
 
@@ -288,8 +288,7 @@ pub mod fs {
 	layout (location = 2) out vec4 outFragColor;
 
 	void main() {
-		vec3 uv = vec3(inUV.x, -inUV.y, inUV.z);
-		outFragColor = texture(skybox_texture, uv);
+		outFragColor = texture(skybox_texture, inUV);
 	}
 "
     }

@@ -11,6 +11,7 @@ layout(location = 0) in vec3 position;
 layout(location = 0) out vec3 WorldPos;
 
 void main() {
-	WorldPos = position;
+	// NOTE: skybox cube is flipped
+	WorldPos = position * vec3(1.0, -1.0, 1.0);
 	gl_Position = camera.proj * camera.view * vec4(position, 1.0);
 }	
