@@ -40,7 +40,7 @@ impl Camera {
 
     pub fn get_projection(&self, dimensions: [f32; 2]) -> Mat4 {
         let mut proj = Mat4::perspective_rh(
-            (77.0_f32).to_radians(),
+            (45.0_f32).to_radians(),
             dimensions[0] as f32 / dimensions[1] as f32,
             0.1,
             1000.0,

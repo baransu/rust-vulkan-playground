@@ -48,12 +48,12 @@ use winit::{
 };
 
 const MODEL_PATHS: [&str; 1] = [
-    "res/models/damaged_helmet/scene.gltf",
+    // "res/models/damaged_helmet/scene.gltf",
     // "res/models/plane/plane.gltf",
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
     // "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf",
-    // "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
+    "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
 ];
 
 // const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
@@ -157,11 +157,7 @@ impl Application {
 
         let brdf = BRDFPass::initialize(&context);
 
-        let skybox = SkyboxPass::initialize(
-            &context,
-            &gbuffer.render_pass,
-            &skybox_texture.image, // .cube_attachment_view,
-        );
+        let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, &skybox_texture.image);
 
         let light_system = LightSystem::initialize(
             &context,

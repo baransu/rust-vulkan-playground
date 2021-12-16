@@ -100,7 +100,7 @@ impl GBuffer {
                         albedo: {
                             load: Clear,
                             store: Store,
-                            format: Format::R16G16B16A16_SFLOAT,
+                            format: Format::R8G8B8A8_UNORM,
                             samples: 1,
                         },
                         metalic_roughness: {
@@ -204,7 +204,7 @@ impl GBuffer {
             AttachmentImage::with_usage(
                 context.graphics_queue.device().clone(),
                 dimensions,
-                Format::R16G16B16A16_SFLOAT,
+                Format::R8G8B8A8_UNORM,
                 usage,
             )
             .unwrap(),

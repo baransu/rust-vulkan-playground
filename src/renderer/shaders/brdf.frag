@@ -5,6 +5,18 @@ layout (location = 0) in vec2 TexCoords;
 layout (location = 0) out vec4 FragColor;
 
 const float PI = 3.14159265359;
+
+// Based omn http://byteblacksmith.com/improvements-to-the-canonical-one-liner-glsl-rand-for-opengl-es-2-0/
+float random(vec2 co)
+{
+	float a = 12.9898;
+	float b = 78.233;
+	float c = 43758.5453;
+	float dt= dot(co.xy ,vec2(a,b));
+	float sn= mod(dt,3.14);
+	return fract(sin(sn) * c);
+}
+
 // ----------------------------------------------------------------------------
 // http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
 // efficient VanDerCorpus calculation.
@@ -27,7 +39,7 @@ vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
 {
 	float a = roughness*roughness;
 	
-	float phi = 2.0 * PI * Xi.x;
+	float phi = 2.0 * PI * Xi.x + random(N.xz) * 0.1;
 	float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
 	float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
 	

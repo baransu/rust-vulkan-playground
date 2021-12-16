@@ -58,7 +58,7 @@ vec3 importanceSample_GGX(vec2 Xi, float roughness, vec3 normal)
 
 	// Convert to world Space
 	vec3 sampleVec = tangent * H.x + bitangent * H.y + normal * H.z;
-    return normalize(sampleVec);
+	return normalize(sampleVec);
 }
 
 // Normal Distribution function
@@ -101,8 +101,6 @@ vec3 prefilterEnvMap(vec3 R, float roughness) {
 			color += textureLod(samplerEnv, L, mipLevel).rgb * dotNL;
 			totalWeight += dotNL;
 		}
-
-        // color += H;
 	}
 
 	return (color / totalWeight);

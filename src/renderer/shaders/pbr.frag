@@ -53,6 +53,8 @@ layout(location = 0) out vec4 out_color;
 
 #define ALBEDO pow(texture(u_albedo, f_uv).xyz, vec3(2.2))
 
+#define MAX_REFLECTION_LOD 9.0 // todo: param/const
+
 // Normal Distribution function --------------------------------------
 float D_GGX(float dotNH, float roughness)
 {
@@ -84,7 +86,7 @@ vec3 F_SchlickR(float cosTheta, vec3 F0, float roughness)
 
 vec3 prefilteredReflection(vec3 R, float roughness)
 {
-	const float MAX_REFLECTION_LOD = 9.0; // todo: param/const
+
 	float lod = roughness * MAX_REFLECTION_LOD;
 	float lodf = floor(lod);
 	float lodc = ceil(lod);
@@ -96,7 +98,7 @@ vec3 prefilteredReflection(vec3 R, float roughness)
 vec3 specularContribution(vec3 L, vec3 V, vec3 N, vec3 F0, float metallic, float roughness)
 {
 	// Precalculate vectors and dot products	
-	vec3 H = normalize (V + L);
+	vec3 H = normalize(V + L);
 	float dotNH = clamp(dot(N, H), 0.0, 1.0);
 	float dotNV = clamp(dot(N, V), 0.0, 1.0);
 	float dotNL = clamp(dot(N, L), 0.0, 1.0);
@@ -134,43 +136,75 @@ void main() {
 	if(texture(u_position, f_uv).w == 0.0) {
 		color = raw_albedo;
 	} else {
+		// TODO: do we need to double normalize?
 		vec3 N = normalize(Normal);
 		vec3 V = normalize(camera.position - Position);
 		vec3 R = reflect(-V, N);
 
 		vec4 metalic_roughness = texture(u_metalic_roughness, f_uv);
 		float ao = metalic_roughness.r;
-		float roughness = metalic_roughness.g;
-		float metallic = metalic_roughness.b;
+		float roughness = clamp(metalic_roughness.g, 0.0, 1.0);
+		float metallic = clamp(metalic_roughness.b, 0.0, 1.0);
 
 		vec3 F0 = vec3(0.04);
 		F0 = mix(F0, albedo, metallic);
 
-		vec3 Lo = vec3(0.0);
-		for(int i = 0; i < lights.point_lights_count; i++) {
-			PointLight light = lights.point_lights[i];
-			vec3 L = normalize(light.position - Position);
-			Lo += specularContribution(L, V, N, F0, metallic, roughness);
-		}
+		// vec3 Lo = vec3(0.0);
+		// for(int i = 0; i < lights.point_lights_count; i++) {
+		// 	PointLight light = lights.point_lights[i];
+		// 	vec3 L = normalize(light.position - Position);
+		// 	Lo += specularContribution(L, V, N, F0, metallic, roughness);
+		// }
 
-		vec2 brdf = texture(samplerBRDFLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
-		vec3 reflection = prefilteredReflection(R, roughness).rgb;	
-		vec3 irradiance = texture(samplerIrradiance, N).rgb;
+		float specularWeight = 1.0;
+
+		float NdotV = max(dot(N, V), 0.0);
+		vec3 Fr = max(vec3(1.0 - roughness), F0) - F0;
+		vec3 k_S = F0 + Fr * pow(1.0 - NdotV, 5.0);
+
+
+	
+		vec2 brdfSamplePoint = clamp(vec2(NdotV, roughness), vec2(0.0), vec2(1.0));
+		vec2 brdf = texture(samplerBRDFLUT, brdfSamplePoint).rg;
+
+		vec3 FssEss = specularWeight * k_S * brdf.x + brdf.y;
+		
+
+		float lod = roughness * MAX_REFLECTION_LOD;
+		// vec3 reflection = prefilteredReflection(R, roughness).rgb;	
+		vec3 reflection = normalize(R);
+		vec3 specularSample = textureLod(prefilteredMap, reflection, lod).rgb;
+		vec3 specularLight = specularSample.rgb;
+
+		vec3 specular = specularLight * FssEss;
 
 		// Diffuse based on irradiance
-		vec3 diffuse = irradiance * ALBEDO;	
+		// vec3 diffuse = irradiance * ALBEDO;	
 
-		vec3 F = F_SchlickR(max(dot(N, V), 0.0), F0, roughness);
+		// vec3 F = F_SchlickR(max(dot(N, V), 0.0), F0, roughness);
+		
+		// vec3 Fr = max(vec3(1.0 - roughness), F0) - F0;
+		// vec3 FssEss = specularWeight * k_S * brdf.x + brdf.y;
+
+		float Ems = (1.0 - (brdf.x + brdf.y));
+		vec3 F_avg = specularWeight * (F0 + (1.0 - F0) / 21.0);
+		vec3 FmsEms = Ems * FssEss * F_avg / (1.0 - F_avg * Ems);
+		vec3 k_D = ALBEDO * (1.0 - FssEss + FmsEms);
 
 		// Specular reflectance
-		vec3 specular = reflection * (F * brdf.x + brdf.y);
+		// vec3 specular = reflection * (F * brdf.x + brdf.y);
 
 		// Ambient part
-		vec3 kD = 1.0 - F;
-		kD *= 1.0 - metallic;	  
-		vec3 ambient = (kD * diffuse + specular) * ao;
+		// vec3 kD = 1.0 - F;
+		// kD *= 1.0 - metallic;	  
+		// vec3 ambient = (kD * diffuse + specular) * ao;
 		
-		color = ambient + Lo;
+		// color = ambient + Lo;
+
+		vec3 irradiance = texture(samplerIrradiance, N).rgb;
+		vec3 diffuse = (FmsEms + k_D) * irradiance;
+
+		color = specular + diffuse;
 	}
 
 	// tone mapping

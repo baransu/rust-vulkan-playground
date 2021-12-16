@@ -383,12 +383,14 @@ impl Context {
     fn choose_swap_surface_format(
         available_formats: &[(Format, ColorSpace)],
     ) -> (Format, ColorSpace) {
-        *available_formats
+        let format = *available_formats
             .iter()
-            .find(|(format, color_space)| {
-                *format == Format::R8G8B8A8_UNORM && *color_space == ColorSpace::SrgbNonLinear
-            })
-            .unwrap_or_else(|| &available_formats[0])
+            .find(|(format, __color_space)| *format == Format::B8G8R8A8_UNORM)
+            .unwrap_or_else(|| &available_formats[0]);
+
+        println!("Using format: {:?}", format);
+
+        format
     }
 
     fn choose_swap_present_mode(available_present_modes: SupportedPresentModes) -> PresentMode {

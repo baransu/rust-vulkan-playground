@@ -29,7 +29,7 @@ use super::{
     skybox_pass::{SkyboxPass, SkyboxVertex},
 };
 
-const NUM_SAMPLES: i32 = 32;
+const NUM_SAMPLES: i32 = 1024;
 
 pub struct CubemapGenPass {
     pipeline: Arc<GraphicsPipeline>,
@@ -191,7 +191,7 @@ impl CubemapGenPass {
                     color: {
                         load: Clear,
                         store: Store,
-                        format: Format::R32G32B32A32_SFLOAT,
+                        format: Format::R16G16B16A16_SFLOAT,
                         samples: 1,
                     }
                 },
@@ -370,7 +370,7 @@ impl CubemapGenPass {
                 // TODO: what are array_layers?
                 array_layers: 1,
             },
-            Format::R32G32B32A32_SFLOAT,
+            Format::R16G16B16A16_SFLOAT,
             ImageUsage {
                 color_attachment: true,
                 transfer_source: true,
@@ -394,7 +394,7 @@ impl CubemapGenPass {
                 height: dim as u32,
                 array_layers: 6,
             },
-            Format::R32G32B32A32_SFLOAT,
+            Format::R16G16B16A16_SFLOAT,
             MipmapsCount::Specific(num_mips),
             ImageUsage {
                 transfer_destination: true,
