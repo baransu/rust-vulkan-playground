@@ -7,6 +7,7 @@ use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     device::Queue,
+    format::Format,
     pipeline::{GraphicsPipeline, Pipeline},
     sync::GpuFuture,
 };
@@ -130,7 +131,13 @@ impl Scene {
                     let diffuse_texture = pbr
                         .base_color_texture()
                         .map(|info| {
-                            Texture::from_gltf_texture(&context, path, &info.texture(), &buffers)
+                            Texture::from_gltf_texture(
+                                &context,
+                                path,
+                                &info.texture(),
+                                &buffers,
+                                Format::R8G8B8A8_UNORM,
+                            )
                         })
                         .unwrap_or_else(|| {
                             // just a fillter image to make descriptor set happy
@@ -140,7 +147,13 @@ impl Scene {
                     let normal_texture = material
                         .normal_texture()
                         .map(|info| {
-                            Texture::from_gltf_texture(&context, path, &info.texture(), &buffers)
+                            Texture::from_gltf_texture(
+                                &context,
+                                path,
+                                &info.texture(),
+                                &buffers,
+                                Format::R8G8B8A8_UNORM,
+                            )
                         })
                         .unwrap_or_else(|| {
                             // just a fillter image to make descriptor set happy
@@ -150,7 +163,13 @@ impl Scene {
                     let metalic_roughness_texture = pbr
                         .metallic_roughness_texture()
                         .map(|info| {
-                            Texture::from_gltf_texture(&context, path, &info.texture(), &buffers)
+                            Texture::from_gltf_texture(
+                                &context,
+                                path,
+                                &info.texture(),
+                                &buffers,
+                                Format::R8G8B8A8_UNORM,
+                            )
                         })
                         .unwrap_or_else(|| {
                             // just a fillter image to make descriptor set happy

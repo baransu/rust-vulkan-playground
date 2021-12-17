@@ -29,7 +29,7 @@ use vulkano::{
         SecondaryAutoCommandBuffer, SubpassContents,
     },
     device::Device,
-    format::ClearValue,
+    format::{ClearValue, Format},
     image::{view::ImageView, AttachmentImage, ImageUsage},
     pipeline::{
         graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
@@ -144,6 +144,7 @@ impl Application {
             &context,
             &skybox_texture.image,
             irradiance_convolution_fs_mod.entry_point("main").unwrap(),
+            Format::R32G32B32A32_SFLOAT,
             64.0,
         );
 
@@ -152,6 +153,7 @@ impl Application {
             &context,
             &skybox_texture.image,
             prefilterenvmap_fs_mod.entry_point("main").unwrap(),
+            Format::R16G16B16A16_SFLOAT,
             512.0,
         );
 
@@ -417,7 +419,7 @@ impl Application {
                     depth: 0,
                     normal: 0,
                     position: 0,
-                    rgb: 0,
+                    rgb: 1,
                 },
             )
             .unwrap();

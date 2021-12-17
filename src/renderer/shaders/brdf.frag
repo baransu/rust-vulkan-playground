@@ -4,124 +4,109 @@ layout (location = 0) in vec2 TexCoords;
 
 layout (location = 0) out vec4 FragColor;
 
-const float PI = 3.14159265359;
+#define PI 3.141592653589793
 
-// Based omn http://byteblacksmith.com/improvements-to-the-canonical-one-liner-glsl-rand-for-opengl-es-2-0/
-float random(vec2 co)
-{
-	float a = 12.9898;
-	float b = 78.233;
-	float c = 43758.5453;
-	float dt= dot(co.xy ,vec2(a,b));
-	float sn= mod(dt,3.14);
-	return fract(sin(sn) * c);
+float saturate(float x) {
+    return clamp(x, 0.0, 1.0);
 }
 
-// ----------------------------------------------------------------------------
-// http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
-// efficient VanDerCorpus calculation.
-float RadicalInverse_VdC(uint bits) 
+// Taken from https://github.com/SaschaWillems/Vulkan-glTF-PBR/blob/master/data/shaders/genbrdflut.frag
+// Based on http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
+vec2 hammersley(uint i, uint N) 
 {
-     bits = (bits << 16u) | (bits >> 16u);
-     bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
-     bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
-     bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-     bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
-     return float(bits) * 2.3283064365386963e-10; // / 0x100000000
+	// Radical inverse based on http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
+	uint bits = (i << 16u) | (i >> 16u);
+	bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+	bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+	bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+	float rdi = float(bits) * 2.3283064365386963e-10;
+	return vec2(float(i) /float(N), rdi);
 }
-// ----------------------------------------------------------------------------
-vec2 Hammersley(uint i, uint N)
+
+// From the filament docs. Geometric Shadowing function
+// https://google.github.io/filament/Filament.html#toc4.4.2
+float G_Smith(float NoV, float NoL, float roughness)
 {
-	return vec2(float(i)/float(N), RadicalInverse_VdC(i));
+	float k = (roughness * roughness) / 2.0;
+	float GGXL = NoL / (NoL * (1.0 - k) + k);
+	float GGXV = NoV / (NoV * (1.0 - k) + k);
+	return GGXL * GGXV;
 }
-// ----------------------------------------------------------------------------
-vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
-{
-	float a = roughness*roughness;
-	
-	float phi = 2.0 * PI * Xi.x + random(N.xz) * 0.1;
-	float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
-	float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
-	
-	// from spherical coordinates to cartesian coordinates - halfway vector
-	vec3 H;
-	H.x = cos(phi) * sinTheta;
-	H.y = sin(phi) * sinTheta;
-	H.z = cosTheta;
-	
-	// from tangent-space H vector to world-space sample vector
-	vec3 up          = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-	vec3 tangent   = normalize(cross(up, N));
-	vec3 bitangent = cross(N, tangent);
-	
-	vec3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
-	return normalize(sampleVec);
+
+// From the filament docs. Geometric Shadowing function
+// https://google.github.io/filament/Filament.html#toc4.4.2
+float V_SmithGGXCorrelated(float NoV, float NoL, float roughness) {
+    float a2 = pow(roughness, 4.0);
+    float GGXV = NoL * sqrt(NoV * NoV * (1.0 - a2) + a2);
+    float GGXL = NoV * sqrt(NoL * NoL * (1.0 - a2) + a2);
+    return 0.5 / (GGXV + GGXL);
 }
-// ----------------------------------------------------------------------------
-float GeometrySchlickGGX(float NdotV, float roughness)
+
+
+// Based on Karis 2014
+vec3 importanceSampleGGX(vec2 Xi, float roughness, vec3 N)
 {
-    // note that we use a different k for IBL
-    float a = roughness;
-    float k = (a * a) / 2.0;
-
-    float nom   = NdotV;
-    float denom = NdotV * (1.0 - k) + k;
-
-    return nom / denom;
-}
-// ----------------------------------------------------------------------------
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
-{
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
-    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
-
-    return ggx1 * ggx2;
-}
-// ----------------------------------------------------------------------------
-vec2 IntegrateBRDF(float NdotV, float roughness)
-{
-    vec3 V;
-    V.x = sqrt(1.0 - NdotV*NdotV);
-    V.y = 0.0;
-    V.z = NdotV;
-
-    float A = 0.0;
-    float B = 0.0; 
-
-    vec3 N = vec3(0.0, 0.0, 1.0);
+    float a = roughness * roughness;
+    // Sample in spherical coordinates
+    float Phi = 2.0 * PI * Xi.x;
+    float CosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
+    float SinTheta = sqrt(1.0 - CosTheta * CosTheta);
+    // Construct tangent space vector
+    vec3 H;
+    H.x = SinTheta * cos(Phi);
+    H.y = SinTheta * sin(Phi);
+    H.z = CosTheta;
     
-    const uint SAMPLE_COUNT = 1024u;
-    for(uint i = 0u; i < SAMPLE_COUNT; ++i)
-    {
-        // generates a sample vector that's biased towards the
-        // preferred alignment direction (importance sampling).
-        vec2 Xi = Hammersley(i, SAMPLE_COUNT);
-        vec3 H = ImportanceSampleGGX(Xi, N, roughness);
-        vec3 L = normalize(2.0 * dot(V, H) * H - V);
+    // Tangent to world space
+    vec3 UpVector = abs(N.z) < 0.999 ? vec3(0.,0.,1.0) : vec3(1.0,0.,0.);
+    vec3 TangentX = normalize(cross(UpVector, N));
+    vec3 TangentY = cross(N, TangentX);
+    return TangentX * H.x + TangentY * H.y + N * H.z;
+}
 
-        float NdotL = max(L.z, 0.0);
-        float NdotH = max(H.z, 0.0);
-        float VdotH = max(dot(V, H), 0.0);
 
-        if(NdotL > 0.0)
-        {
-            float G = GeometrySmith(N, V, L, roughness);
-            float G_Vis = (G * VdotH) / (NdotH * NdotV);
-            float Fc = pow(1.0 - VdotH, 5.0);
-
-            A += (1.0 - Fc) * G_Vis;
-            B += Fc * G_Vis;
+// Karis 2014
+vec2 integrateBRDF(float roughness, float NoV)
+{
+	vec3 V;
+    V.x = sqrt(1.0 - NoV * NoV); // sin
+    V.y = 0.0;
+    V.z = NoV; // cos
+    
+    // N points straight upwards for this integration
+    const vec3 N = vec3(0.0, 0.0, 1.0);
+    
+    float A = 0.0;
+    float B = 0.0;
+    const uint numSamples = 32u;
+    
+    for (uint i = 0u; i < numSamples; i++) {
+        vec2 Xi = hammersley(i, numSamples);
+        // Sample microfacet direction
+        vec3 H = importanceSampleGGX(Xi, roughness, N);
+        
+        // Get the light direction
+        vec3 L = 2.0 * dot(V, H) * H - V;
+        
+        float NoL = saturate(dot(N, L));
+        float NoH = saturate(dot(N, H));
+        float VoH = saturate(dot(V, H));
+        
+        if(NoL > 0.0) {
+            float V_pdf = V_SmithGGXCorrelated(NoV, NoL, roughness) * VoH * NoL / NoH;
+            float Fc = pow(1.0 - VoH, 5.0);
+            A += (1.0 - Fc) * V_pdf;
+            B += Fc * V_pdf;
         }
     }
-    A /= float(SAMPLE_COUNT);
-    B /= float(SAMPLE_COUNT);
-    return vec2(A, B);
+
+    return 4.0 * vec2(A, B) / float(numSamples);
 }
+
 // ----------------------------------------------------------------------------
 void main() 
 {
-    vec2 integratedBRDF = IntegrateBRDF(TexCoords.s, 1.0 - TexCoords.t);
-    FragColor = vec4(integratedBRDF, 0.0, 1.0);
+    vec2 res = integrateBRDF(TexCoords.y, TexCoords.x);
+    FragColor = vec4(res.x, res.y, 0.0, 1.0);
 }

@@ -46,7 +46,7 @@ impl LightSystem {
         ssao_target: &Arc<ImageView<AttachmentImage>>,
         irradiance_map: &Arc<ImageView<StorageImage>>,
         prefilter_map: &Arc<ImageView<StorageImage>>,
-        brdf: &Arc<ImageView<StorageImage>>,
+        brdf: &Arc<ImageView<AttachmentImage>>,
     ) -> LightSystem {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
 
@@ -91,7 +91,7 @@ impl LightSystem {
         ssao_target: &Arc<ImageView<AttachmentImage>>,
         irradiance_map: &Arc<ImageView<StorageImage>>,
         prefilter_map: &Arc<ImageView<StorageImage>>,
-        brdf: &Arc<ImageView<StorageImage>>,
+        brdf: &Arc<ImageView<AttachmentImage>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = light_graphics_pipeline
             .layout()

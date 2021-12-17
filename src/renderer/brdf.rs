@@ -5,10 +5,14 @@ use vulkano::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents,
     },
     format::{ClearValue, Format},
-    image::{view::ImageView, ImageCreateFlags, ImageDimensions, ImageUsage, StorageImage},
+    image::{
+        view::ImageView, AttachmentImage, ImageCreateFlags, ImageDimensions, ImageUsage,
+        StorageImage,
+    },
     pipeline::{
         graphics::{
-            input_assembly::InputAssemblyState, vertex_input::BuffersDefinition, viewport::Viewport,
+            color_blend::ColorBlendState, input_assembly::InputAssemblyState,
+            vertex_input::BuffersDefinition, viewport::Viewport,
         },
         GraphicsPipeline,
     },
@@ -27,7 +31,7 @@ const DIM: f32 = 512.0;
 pub struct BRDFPass {
     pipeline: Arc<GraphicsPipeline>,
     screen_quad_buffers: ScreenFrameQuadBuffers,
-    pub color_attachment_view: Arc<ImageView<StorageImage>>,
+    pub color_attachment_view: Arc<ImageView<AttachmentImage>>,
     pub render_pass: Arc<RenderPass>,
     pub framebuffer: Arc<Framebuffer>,
 }
@@ -55,7 +59,7 @@ impl BRDFPass {
 
     fn create_framebuffer(
         render_pass: &Arc<RenderPass>,
-        target: &Arc<ImageView<StorageImage>>,
+        target: &Arc<ImageView<AttachmentImage>>,
     ) -> Arc<Framebuffer> {
         Framebuffer::start(render_pass.clone())
             .add(target.clone())
@@ -70,7 +74,7 @@ impl BRDFPass {
                     color: {
                         load: Clear,
                         store: Store,
-                        format: Format::R16G16B16A16_SFLOAT,
+                        format: Format::R16G16_SFLOAT,
                         samples: 1,
                     }
                 },
@@ -100,7 +104,7 @@ impl BRDFPass {
             .begin_render_pass(
                 self.framebuffer.clone(),
                 SubpassContents::Inline,
-                vec![ClearValue::Float([0.0, 0.0, 1.0, 1.0])],
+                vec![ClearValue::Float([0.0, 0.0, 0.0, 1.0])],
             )
             .unwrap();
 
@@ -141,34 +145,25 @@ impl BRDFPass {
         GraphicsPipeline::start()
             .vertex_input_state(BuffersDefinition::new().vertex::<ScreenQuadVertex>())
             .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
-            .triangle_list()
             .primitive_restart(false)
             .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-            .input_assembly_state(InputAssemblyState::new())
             .fragment_shader(frag_shader_module.entry_point("main").unwrap(), ())
-            .front_face_counter_clockwise()
             .viewports_dynamic_scissors_irrelevant(1)
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())
             .unwrap()
     }
 
-    fn create_color_attachment(context: &Context) -> Arc<StorageImage> {
-        StorageImage::with_usage(
+    fn create_color_attachment(context: &Context) -> Arc<AttachmentImage> {
+        AttachmentImage::with_usage(
             context.device.clone(),
-            ImageDimensions::Dim2d {
-                width: DIM as u32,
-                height: DIM as u32,
-                array_layers: 1,
-            },
-            Format::R16G16B16A16_SFLOAT,
+            [DIM as u32, DIM as u32],
+            Format::R16G16_SFLOAT,
             ImageUsage {
                 color_attachment: true,
                 sampled: true,
                 ..ImageUsage::none()
             },
-            ImageCreateFlags::none(),
-            [context.graphics_queue.family()].iter().cloned(),
         )
         .unwrap()
     }
