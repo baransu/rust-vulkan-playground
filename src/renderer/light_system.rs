@@ -5,7 +5,7 @@ use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     device,
-    image::{view::ImageView, AttachmentImage, StorageImage},
+    image::{view::ImageView, AttachmentImage, ImmutableImage, StorageImage},
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState, vertex_input::BuffersDefinition, viewport::Viewport,
@@ -46,7 +46,7 @@ impl LightSystem {
         ssao_target: &Arc<ImageView<AttachmentImage>>,
         irradiance_map: &Arc<ImageView<StorageImage>>,
         prefilter_map: &Arc<ImageView<StorageImage>>,
-        brdf: &Arc<ImageView<AttachmentImage>>,
+        brdf: &Arc<ImageView<ImmutableImage>>,
     ) -> LightSystem {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
 
@@ -91,7 +91,7 @@ impl LightSystem {
         ssao_target: &Arc<ImageView<AttachmentImage>>,
         irradiance_map: &Arc<ImageView<StorageImage>>,
         prefilter_map: &Arc<ImageView<StorageImage>>,
-        brdf: &Arc<ImageView<AttachmentImage>>,
+        brdf: &Arc<ImageView<ImmutableImage>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = light_graphics_pipeline
             .layout()

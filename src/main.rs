@@ -1,7 +1,7 @@
 pub mod imgui_renderer;
 pub mod renderer;
 
-use std::{collections::HashMap, sync::Arc, time::Instant, vec};
+use std::{collections::HashMap, path::Path, sync::Arc, time::Instant, vec};
 
 use glam::{EulerRot, Quat, Vec3};
 use imgui::*;
@@ -20,6 +20,7 @@ use renderer::{
     skybox_pass::SkyboxPass,
     ssao::Ssao,
     ssao_blur::SsaoBlur,
+    texture::Texture,
     vertex::Vertex,
 };
 use vulkano::{
@@ -47,8 +48,8 @@ use winit::{
     event_loop::ControlFlow,
 };
 
-const MODEL_PATHS: [&str; 1] = [
-    // "res/models/damaged_helmet/scene.gltf",
+const MODEL_PATHS: [&str; 2] = [
+    "res/models/damaged_helmet/scene.gltf",
     // "res/models/plane/plane.gltf",
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
@@ -63,6 +64,8 @@ const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 const RENDER_SKYBOX: bool = true;
 
 const SHADOW_MAP_DIM: f32 = 2048.0;
+
+const BRDF_PATH: &str = "res/ibl_brdf_lut.png";
 
 pub struct FramebufferWithAttachment {
     framebuffer: Arc<Framebuffer>,
@@ -118,6 +121,14 @@ impl Application {
         // let mut rng = rand::thread_rng();
         let context = Context::initialize();
 
+        let img = image::io::Reader::open(BRDF_PATH)
+            .unwrap()
+            .decode()
+            .unwrap();
+
+        // TODO: generate brdf texture instead of loading it?
+        let brdf_texture = Texture::create_image_view(&context, &img, Format::R8G8B8A8_UNORM);
+
         let shadow_render_pass = Self::create_shadow_render_pass(&context);
         let shadow_framebuffer = Self::create_shadow_framebuffer(&context, &shadow_render_pass);
         let shadow_graphics_pipeline =
@@ -172,7 +183,7 @@ impl Application {
             &ssao_blur.target,
             &irradiance_convolution.cube_attachment_view,
             &prefilterenvmap.cube_attachment_view,
-            &brdf.color_attachment_view,
+            &brdf_texture,
         );
 
         // let count = 10;
@@ -182,7 +193,7 @@ impl Application {
         // // Helmets
         // for x in start..end {
         //     for z in start..end {
-        //         let translation = Vec3::new(x as f32 * 2.0, 2.0, z as f32 * 2.0);
+        //         let translation = Vec3::new(x as f32 * 3.0, 3.0, z as f32 * 3.0);
         //         let material = Material {
         //             // diffuse: Vec3::new(
         //             //     rng.gen_range(0.0..1.0),
@@ -219,7 +230,7 @@ impl Application {
         scene.add_game_object(GameObject::new(
             "damaged_helmet",
             Transform {
-                translation: Vec3::ZERO,
+                translation: Vec3::new(0.0, 0.0, 5.0),
                 rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
                 scale: Vec3::ONE,
             },
@@ -229,7 +240,7 @@ impl Application {
         scene.add_game_object(GameObject::new(
             "WaterBottle",
             Transform {
-                translation: Vec3::ZERO,
+                translation: Vec3::new(-5.0, 0.0, 0.0),
                 rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
                 scale: Vec3::ONE * 5.0,
             },
@@ -248,17 +259,17 @@ impl Application {
         // ));
 
         // sponza
-        // for idx in 0..102 {
-        //     scene.add_game_object(GameObject::new(
-        //         format!("sponza-{}", idx).as_str(),
-        //         Transform {
-        //             rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
-        //             scale: Vec3::ONE * 0.01,
-        //             translation: Vec3::new(0.0, 0.0, 0.0),
-        //         },
-        //         Default::default(),
-        //     ));
-        // }
+        for idx in 0..102 {
+            scene.add_game_object(GameObject::new(
+                format!("sponza-{}", idx).as_str(),
+                Transform {
+                    rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+                    scale: Vec3::ONE * 0.01,
+                    translation: Vec3::new(0.0, 0.0, 0.0),
+                },
+                Default::default(),
+            ));
+        }
 
         // point light cubes for reference
         for light in scene.point_lights.clone() {
@@ -414,7 +425,7 @@ impl Application {
         let brdf_texture_id = imgui_renderer
             .register_texture(
                 &context,
-                &brdf.color_attachment_view,
+                &brdf_texture,
                 TextureUsage {
                     depth: 0,
                     normal: 0,
@@ -1026,7 +1037,7 @@ impl Application {
 
         self.irradiance_convolution.execute(&self.context);
         self.prefilterenvmap.execute(&self.context);
-        self.brdf.execute(&self.context);
+        // self.brdf.execute(&self.context);
 
         self.context
             .event_loop

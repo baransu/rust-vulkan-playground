@@ -224,7 +224,7 @@ impl Texture {
         Texture { image: view }
     }
 
-    fn create_image_view(
+    pub fn create_image_view(
         context: &Context,
         image: &DynamicImage,
         format: Format,

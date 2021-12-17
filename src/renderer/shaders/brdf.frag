@@ -2,7 +2,7 @@
 
 layout (location = 0) in vec2 TexCoords;
 
-layout (location = 0) out vec4 FragColor;
+layout (location = 0) out vec2 FragColor;
 
 #define PI 3.141592653589793
 
@@ -67,7 +67,7 @@ vec3 importanceSampleGGX(vec2 Xi, float roughness, vec3 N)
 
 
 // Karis 2014
-vec2 integrateBRDF(float roughness, float NoV)
+vec2 integrateBRDF(float NoV, float roughness)
 {
 	vec3 V;
     V.x = sqrt(1.0 - NoV * NoV); // sin
@@ -79,7 +79,7 @@ vec2 integrateBRDF(float roughness, float NoV)
     
     float A = 0.0;
     float B = 0.0;
-    const uint numSamples = 32u;
+    const uint numSamples = 1024u;
     
     for (uint i = 0u; i < numSamples; i++) {
         vec2 Xi = hammersley(i, numSamples);
@@ -107,6 +107,6 @@ vec2 integrateBRDF(float roughness, float NoV)
 // ----------------------------------------------------------------------------
 void main() 
 {
-    vec2 res = integrateBRDF(TexCoords.y, TexCoords.x);
-    FragColor = vec4(res.x, res.y, 0.0, 1.0);
+    vec2 res = integrateBRDF(TexCoords.x, TexCoords.y);
+    FragColor = vec2(res.x, res.y);
 }
