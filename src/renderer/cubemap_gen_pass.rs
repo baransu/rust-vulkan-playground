@@ -51,12 +51,13 @@ impl CubemapGenPass {
         context: &Context,
         input_image: &Arc<T>,
         fragment_shader_entry_point: EntryPoint,
+        format: Format,
         dim: f32,
     ) -> CubemapGenPass
     where
         T: ImageViewAbstract + 'static,
     {
-        let render_pass = Self::create_render_pass(context);
+        let render_pass = Self::create_render_pass(context, format);
         let pipeline =
             Self::create_graphics_pipeline(context, &render_pass, fragment_shader_entry_point, dim);
 
@@ -73,8 +74,8 @@ impl CubemapGenPass {
             dim,
         );
 
-        let cube_attachment = Self::create_cube_attachment(context, dim);
-        let color_attachment = Self::create_color_attachment(context, dim);
+        let cube_attachment = Self::create_cube_attachment(context, format, dim);
+        let color_attachment = Self::create_color_attachment(context, format, dim);
 
         let cube_attachment_view = ImageView::start(cube_attachment.clone())
             .with_type(ImageViewType::Cube)
@@ -185,13 +186,13 @@ impl CubemapGenPass {
             .unwrap()
     }
 
-    fn create_render_pass(context: &Context) -> Arc<RenderPass> {
+    fn create_render_pass(context: &Context, format: Format) -> Arc<RenderPass> {
         single_pass_renderpass!(context.device.clone(),
                 attachments: {
                     color: {
                         load: Clear,
                         store: Store,
-                        format: Format::R16G16B16A16_SFLOAT,
+                        format: format,
                         samples: 1,
                     }
                 },
@@ -361,7 +362,7 @@ impl CubemapGenPass {
         set_builder.build().unwrap()
     }
 
-    fn create_color_attachment(context: &Context, dim: f32) -> Arc<StorageImage> {
+    fn create_color_attachment(context: &Context, format: Format, dim: f32) -> Arc<StorageImage> {
         StorageImage::with_usage(
             context.device.clone(),
             ImageDimensions::Dim2d {
@@ -370,7 +371,7 @@ impl CubemapGenPass {
                 // TODO: what are array_layers?
                 array_layers: 1,
             },
-            Format::R16G16B16A16_SFLOAT,
+            format,
             ImageUsage {
                 color_attachment: true,
                 transfer_source: true,
@@ -384,7 +385,7 @@ impl CubemapGenPass {
         .unwrap()
     }
 
-    fn create_cube_attachment(context: &Context, dim: f32) -> Arc<StorageImage> {
+    fn create_cube_attachment(context: &Context, format: Format, dim: f32) -> Arc<StorageImage> {
         let num_mips = (dim.log2().floor() + 1.0) as u32;
 
         StorageImage::with_mipmaps_usage(
@@ -394,7 +395,7 @@ impl CubemapGenPass {
                 height: dim as u32,
                 array_layers: 6,
             },
-            Format::R16G16B16A16_SFLOAT,
+            format,
             MipmapsCount::Specific(num_mips),
             ImageUsage {
                 transfer_destination: true,

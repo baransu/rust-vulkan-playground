@@ -75,22 +75,18 @@ float G_SchlicksmithGGX(float dotNL, float dotNV, float roughness)
 // Fresnel function ----------------------------------------------------
 vec3 F_Schlick(float cosTheta, vec3 F0)
 {
-	return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 vec3 F_SchlickR(float cosTheta, vec3 F0, float roughness)
 {
-	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - cosTheta, 5.0);
+	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 vec3 prefilteredReflection(vec3 R, float roughness)
 {
 	const float MAX_REFLECTION_LOD = 9.0; // todo: param/const
 	float lod = roughness * MAX_REFLECTION_LOD;
-	float lodf = floor(lod);
-	float lodc = ceil(lod);
-	vec3 a = textureLod(prefilteredMap, R, lodf).rgb;
-	vec3 b = textureLod(prefilteredMap, R, lodc).rgb;
-	return mix(a, b, lod - lodf);
+	return textureLod(prefilteredMap, R, lod).rgb;
 }
 
 vec3 specularContribution(vec3 L, vec3 V, vec3 N, vec3 F0, float metallic, float roughness)
@@ -140,36 +136,34 @@ void main() {
 
 		vec4 metalic_roughness = texture(u_metalic_roughness, f_uv);
 		float ao = metalic_roughness.r;
-		float roughness = metalic_roughness.g;
-		float metallic = metalic_roughness.b;
+		float roughness = clamp(metalic_roughness.g, 0.0, 1.0);
+		float metallic = clamp(metalic_roughness.b, 0.0, 1.0);
 
 		vec3 F0 = vec3(0.04);
-		F0 = mix(F0, albedo, metallic);
+		F0 = mix(F0, ALBEDO, metallic);
 
 		vec3 Lo = vec3(0.0);
-		for(int i = 0; i < lights.point_lights_count; i++) {
-			PointLight light = lights.point_lights[i];
-			vec3 L = normalize(light.position - Position);
-			Lo += specularContribution(L, V, N, F0, metallic, roughness);
-		}
+		// for(int i = 0; i < lights.point_lights_count; i++) {
+		// 	PointLight light = lights.point_lights[i];
+		// 	vec3 L = normalize(light.position - Position);
+		// 	Lo += specularContribution(L, V, N, F0, metallic, roughness);
+		// }
 
 		float NoV = max(dot(N, V), 0.0);
-		
-		vec2 brdf = texture(samplerBRDFLUT, vec2(NoV, roughness)).rg;
-		vec3 reflection = prefilteredReflection(R, roughness).rgb;	
-		vec3 irradiance = texture(samplerIrradiance, N).rgb;
-
-		// Diffuse based on irradiance
-		vec3 diffuse = irradiance * ALBEDO;	
 
 		vec3 F = F_SchlickR(NoV, F0, roughness);
+		vec3 kD = 1.0 - F;
+		kD *= 1.0 - metallic; 
+
+		// Diffuse based on irradiance
+		vec3 irradiance = texture(samplerIrradiance, N).rgb;
+		vec3 diffuse = irradiance * ALBEDO;	
 
 		// Specular reflectance
-		vec3 specular = reflection * (F * brdf.x + brdf.y);
+		vec3 prefilteredColor = prefilteredReflection(R, roughness).rgb;	
+		vec2 brdf = texture(samplerBRDFLUT, vec2(NoV, roughness)).rg;
+		vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
 
-		// Ambient part
-		vec3 kD = 1.0 - F;
-		kD *= 1.0 - metallic;	  
 		vec3 ambient = (kD * diffuse + specular) * ao;
 		
 		color = ambient + Lo;

@@ -130,6 +130,7 @@ impl Texture {
         base_path: &str,
         image: &gltf::Texture,
         buffers: &Vec<Data>,
+        format: Format,
     ) -> Texture {
         let image = match image.source().source() {
             Source::View { view, mime_type } => {
@@ -211,21 +212,22 @@ impl Texture {
         }
         .unwrap();
 
-        let image = Self::create_image_view(context, &image);
+        let image = Self::create_image_view(context, &image, format);
 
         Texture { image }
     }
 
     pub fn empty(context: &Context) -> Texture {
         let image = DynamicImage::new_rgb8(1, 1);
-        let view = Self::create_image_view(context, &image);
+        let view = Self::create_image_view(context, &image, Format::R8G8B8A8_UNORM);
 
         Texture { image: view }
     }
 
-    fn create_image_view(
+    pub fn create_image_view(
         context: &Context,
         image: &DynamicImage,
+        format: Format,
     ) -> Arc<ImageView<ImmutableImage>> {
         let width = image.width();
         let height = image.height();
@@ -237,17 +239,27 @@ impl Texture {
             array_layers: 1,
         };
 
-        let image_rgba = image.to_rgba8();
-
-        let (image, future) = ImmutableImage::from_iter(
-            image_rgba.into_raw().iter().cloned(),
-            dimensions,
-            // vulkano already supports mipmap generation so we don't need to do this by hand
-            MipmapsCount::Log2,
-            Format::R8G8B8A8_UNORM,
-            context.graphics_queue.clone(),
-        )
-        .unwrap();
+        let (image, future) = if format == Format::R16G16B16A16_SFLOAT {
+            ImmutableImage::from_iter(
+                image.to_rgba16().into_raw().iter().cloned(),
+                dimensions,
+                // vulkano already supports mipmap generation so we don't need to do this by hand
+                MipmapsCount::Log2,
+                format,
+                context.graphics_queue.clone(),
+            )
+            .unwrap()
+        } else {
+            ImmutableImage::from_iter(
+                image.to_rgba8().into_raw().iter().cloned(),
+                dimensions,
+                // vulkano already supports mipmap generation so we don't need to do this by hand
+                MipmapsCount::Log2,
+                format,
+                context.graphics_queue.clone(),
+            )
+            .unwrap()
+        };
 
         future.flush().unwrap();
 

@@ -18,7 +18,7 @@ use vulkano::image::{AttachmentImage, ImageUsage, ImmutableImage};
 use vulkano::pipeline::graphics::viewport::{Scissor, Viewport};
 use vulkano::render_pass::Framebuffer;
 use vulkano::render_pass::Subpass;
-use vulkano::sampler::Sampler;
+use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
 
 use std::fmt;
 use std::sync::Arc;
@@ -382,7 +382,20 @@ impl Renderer {
     where
         T: ImageViewAbstract + 'static,
     {
-        let sampler = Sampler::simple_repeat_linear_no_mipmap(context.device.clone());
+        let sampler = Sampler::new(
+            context.device.clone(),
+            Filter::Linear,
+            Filter::Linear,
+            MipmapMode::Linear,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+        )
+        .unwrap();
 
         let usage = Self::create_texture_usage_buffer(context, usage);
         let texture_id = self.textures.insert((image.clone(), sampler, usage));
