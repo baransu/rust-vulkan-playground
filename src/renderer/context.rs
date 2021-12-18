@@ -1,4 +1,4 @@
-use std::{collections::HashSet, iter::FromIterator, sync::Arc};
+use std::sync::Arc;
 
 use vulkano::{
     device::{
@@ -24,7 +24,11 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
+#[cfg(not(target_os = "macos"))]
 const VALIDATION_LAYERS: &[&str] = &["VK_LAYER_LUNARG_standard_validation"];
+
+#[cfg(target_os = "macos")]
+const VALIDATION_LAYERS: &[&str] = &["VK_LAYER_KHRONOS_validation"];
 
 #[cfg(all(debug_assertions))]
 const ENABLE_VALIDATION_LAYERS: bool = true;
@@ -52,11 +56,8 @@ pub struct Context {
     debug_callback: Option<DebugCallback>,
     pub surface: Arc<Surface<Window>>,
     #[allow(dead_code)]
-    physical_device_index: usize, // can't store PhysicalDevice directly (lifetime issues)
     pub device: Arc<Device>,
     pub graphics_queue: Arc<Queue>,
-    #[allow(dead_code)]
-    present_queue: Arc<Queue>,
     pub swap_chain: Arc<Swapchain<Window>>,
     pub swap_chain_images: Vec<Arc<SwapchainImage<Window>>>,
 
@@ -74,22 +75,10 @@ impl Context {
 
         let (event_loop, surface) = Self::init_window(&instance);
 
-        let (physical_device_index, unique_queue_families_ids) =
-            Self::pick_physical_device(&surface, &instance);
+        let (device, graphics_queue) = Self::create_device_and_queue(&surface, &instance);
 
-        let (device, graphics_queue, present_queue) = Self::create_logical_device(
-            &instance,
-            physical_device_index,
-            unique_queue_families_ids,
-        );
-
-        let (swap_chain, swap_chain_images) = Self::create_swap_chain(
-            &instance,
-            &surface,
-            physical_device_index,
-            &device,
-            &graphics_queue,
-        );
+        let (swap_chain, swap_chain_images) =
+            Self::create_swap_chain(&surface, &device, &graphics_queue);
 
         let image_sampler = Self::create_image_sampler(&device);
         let depth_sampler = Self::create_depth_sampler(&device);
@@ -100,10 +89,8 @@ impl Context {
             debug_callback,
             surface,
             event_loop: Some(event_loop),
-            physical_device_index,
             device,
             graphics_queue,
-            present_queue,
             swap_chain,
             swap_chain_images,
 
@@ -120,7 +107,7 @@ impl Context {
 
         let surface = WindowBuilder::new()
             .with_title("Vulkan")
-            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
+            .with_inner_size(winit::dpi::LogicalSize::new(1920.0, 1080.0))
             .build_vk_surface(&event_loop, instance.clone())
             .unwrap();
 
@@ -211,15 +198,16 @@ impl Context {
         .ok()
     }
 
-    fn pick_physical_device(
+    fn create_device_and_queue(
         surface: &Arc<Surface<Window>>,
         instance: &Arc<Instance>,
-    ) -> (usize, HashSet<u32>) {
-        let (physical_device, unique_queue_families_ids) = PhysicalDevice::enumerate(instance)
+    ) -> (Arc<Device>, Arc<Queue>) {
+        let (physical_device, queue_family) = PhysicalDevice::enumerate(instance)
             .filter(|&p| p.supported_extensions().is_superset_of(&DEVICE_EXTENSIONS))
-            .filter_map(|device| {
-                Self::get_unique_queue_families_ids_if_device_suitable(&device, surface)
-                    .map(|unique_queue_families_ids| (device, unique_queue_families_ids))
+            .filter_map(|p| {
+                p.queue_families()
+                    .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
+                    .map(|q| (p, q))
             })
             .min_by_key(|(device, _)| {
                 // Better score to device types that are likely to be faster/better.
@@ -239,87 +227,31 @@ impl Context {
             physical_device.properties().device_type,
         );
 
-        (physical_device.index(), unique_queue_families_ids.clone())
-    }
-
-    fn get_unique_queue_families_ids_if_device_suitable(
-        device: &PhysicalDevice,
-        surface: &Arc<Surface<Window>>,
-    ) -> Option<HashSet<u32>> {
-        let queue_families = device
-            .queue_families()
-            .filter(|&q| q.supports_graphics() || surface.is_supported(q).unwrap_or(false));
-
-        let queue_families_uniq_ids =
-            HashSet::from_iter(queue_families.map(|q| q.id()).into_iter());
-
-        let extensions_supported = Self::check_device_extension_support(device);
-
-        let swap_chain_adequate = if extensions_supported {
-            let capabilities = surface
-                .capabilities(*device)
-                .expect("failed to get surface capabilities");
-            !capabilities.supported_formats.is_empty()
-                && capabilities.present_modes.iter().next().is_some()
-        } else {
-            false
-        };
-
-        if !queue_families_uniq_ids.is_empty() && extensions_supported && swap_chain_adequate {
-            Some(queue_families_uniq_ids)
-        } else {
-            None
-        }
-    }
-
-    fn check_device_extension_support(device: &PhysicalDevice) -> bool {
-        let supported_extensions = PhysicalDevice::supported_extensions(device);
-        supported_extensions.intersection(&DEVICE_EXTENSIONS) == DEVICE_EXTENSIONS
-    }
-
-    fn create_logical_device(
-        instance: &Arc<Instance>,
-        physical_device_index: usize,
-        unique_queue_families_ids: HashSet<u32>,
-    ) -> (Arc<Device>, Arc<Queue>, Arc<Queue>) {
-        let physical_device = PhysicalDevice::from_index(&instance, physical_device_index).unwrap();
-
-        let queue_priority = 1.0;
-
-        let queue_families = physical_device
-            .queue_families()
-            .filter(|q| unique_queue_families_ids.contains(&q.id()))
-            .map(|q| (q, queue_priority));
-
-        // Some devices require certain extensions to be enabled if they are present
-        // (e.g. `khr_portability_subset`). We add them to the device extensions that we're going to
-        // enable.
-        let required_extensions = &physical_device
-            .required_extensions()
-            .union(&DEVICE_EXTENSIONS);
-
         let (device, mut queues) = Device::new(
             physical_device,
             &Features::none(),
-            required_extensions,
-            queue_families,
+            // Some devices require certain extensions to be enabled if they are present
+            // (e.g. `khr_portability_subset`). We add them to the device extensions that we're going to
+            // enable.
+            &physical_device
+                .required_extensions()
+                .union(&DEVICE_EXTENSIONS),
+            [(queue_family, 0.5)].iter().cloned(),
         )
         .unwrap();
 
-        let graphics_queue = queues.next().unwrap();
-        let present_queue = queues.next().unwrap_or_else(|| graphics_queue.clone());
+        let queue = queues.next().unwrap();
 
-        (device, graphics_queue, present_queue)
+        (device, queue)
     }
 
     fn create_swap_chain(
-        instance: &Arc<Instance>,
         surface: &Arc<Surface<Window>>,
-        physical_device_index: usize,
         device: &Arc<Device>,
         graphics_queue: &Arc<Queue>,
     ) -> (Arc<Swapchain<Window>>, Vec<Arc<SwapchainImage<Window>>>) {
-        let physical_device = PhysicalDevice::from_index(&instance, physical_device_index).unwrap();
+        let physical_device = device.physical_device();
+
         let capabilities = surface
             .capabilities(physical_device)
             .expect("failed to get surface capabilities");
@@ -340,13 +272,8 @@ impl Context {
             ..ImageUsage::none()
         };
 
-        // TODO: make present and graphics queue work
-        let sharing: SharingMode =
-            // if graphics_queue.id_within_family() != present_queue.id_within_family() {
-            //     vec![graphics_queue, present_queue].as_slice().into()
-            // } else {
-                graphics_queue.into();
-        // };
+        // TODO: add support for more queues
+        let sharing: SharingMode = graphics_queue.into();
 
         let dimensions: [u32; 2] = surface.window().inner_size().into();
 
