@@ -31,11 +31,14 @@ pub struct GBuffer {
 
 impl GBuffer {
     pub fn initialize(context: &Context, target: &GBufferTarget) -> GBuffer {
-        let position_buffer = Self::create_position_buffer(context, &target);
-        let normals_buffer = Self::create_normals_buffer(context, &target);
-        let albedo_buffer = Self::create_albedo_buffer(context, &target);
-        let metalic_roughness_buffer = Self::create_metalic_roughness_buffer(context, &target);
-        let depth_buffer = Self::create_depth_buffer(context, &target);
+        let position_buffer =
+            Self::create_attachment_image(context, &target, Format::R16G16B16A16_SFLOAT);
+        let normals_buffer =
+            Self::create_attachment_image(context, &target, Format::R16G16B16A16_SFLOAT);
+        let albedo_buffer = Self::create_attachment_image(context, &target, Format::R8G8B8A8_UNORM);
+        let metalic_roughness_buffer =
+            Self::create_attachment_image(context, &target, Format::R8G8B8A8_UNORM);
+        let depth_buffer = Self::create_attachment_image(context, &target, context.depth_format);
 
         let render_pass = Self::create_render_pass(context);
         let framebuffer = Self::create_framebuffer(
@@ -114,7 +117,7 @@ impl GBuffer {
                         },
                         depth: {
                             load: Clear,
-                            store: DontCare,
+                            store: Store,
                             format: context.depth_format,
                             samples: 1,
                         }
@@ -155,19 +158,24 @@ impl GBuffer {
             .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
             .fragment_shader(fs.entry_point("main").unwrap(), ())
             .depth_stencil_simple_depth()
+            .cull_mode_back()
             .viewports_dynamic_scissors_irrelevant(1)
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .with_auto_layout(context.device.clone(), |descriptor_set_desc| {
+                // diffuse texture
                 descriptor_set_desc[1].set_immutable_samplers(0, [context.image_sampler.clone()]);
+                // normal texture
                 descriptor_set_desc[1].set_immutable_samplers(1, [context.image_sampler.clone()]);
+                // metallic roughness texture
                 descriptor_set_desc[1].set_immutable_samplers(2, [context.image_sampler.clone()]);
             })
             .unwrap()
     }
 
-    fn create_position_buffer(
+    fn create_attachment_image(
         context: &Context,
         target: &GBufferTarget,
+        format: Format,
     ) -> Arc<ImageView<AttachmentImage>> {
         let (usage, dimensions) = Self::usage_dimensions(target);
 
@@ -175,79 +183,7 @@ impl GBuffer {
             AttachmentImage::with_usage(
                 context.graphics_queue.device().clone(),
                 dimensions,
-                Format::R16G16B16A16_SFLOAT,
-                usage,
-            )
-            .unwrap(),
-        )
-        .unwrap()
-    }
-
-    fn create_normals_buffer(
-        context: &Context,
-        target: &GBufferTarget,
-    ) -> Arc<ImageView<AttachmentImage>> {
-        let (usage, dimensions) = Self::usage_dimensions(target);
-
-        ImageView::new(
-            AttachmentImage::with_usage(
-                context.graphics_queue.device().clone(),
-                dimensions,
-                Format::R16G16B16A16_SFLOAT,
-                usage,
-            )
-            .unwrap(),
-        )
-        .unwrap()
-    }
-
-    fn create_albedo_buffer(
-        context: &Context,
-        target: &GBufferTarget,
-    ) -> Arc<ImageView<AttachmentImage>> {
-        let (usage, dimensions) = Self::usage_dimensions(target);
-
-        ImageView::new(
-            AttachmentImage::with_usage(
-                context.graphics_queue.device().clone(),
-                dimensions,
-                Format::R8G8B8A8_UNORM,
-                usage,
-            )
-            .unwrap(),
-        )
-        .unwrap()
-    }
-
-    fn create_metalic_roughness_buffer(
-        context: &Context,
-        target: &GBufferTarget,
-    ) -> Arc<ImageView<AttachmentImage>> {
-        let (usage, dimensions) = Self::usage_dimensions(target);
-
-        ImageView::new(
-            AttachmentImage::with_usage(
-                context.graphics_queue.device().clone(),
-                dimensions,
-                Format::R8G8B8A8_UNORM,
-                usage,
-            )
-            .unwrap(),
-        )
-        .unwrap()
-    }
-
-    fn create_depth_buffer(
-        context: &Context,
-        target: &GBufferTarget,
-    ) -> Arc<ImageView<AttachmentImage>> {
-        let (usage, dimensions) = Self::usage_dimensions(target);
-
-        ImageView::new(
-            AttachmentImage::with_usage(
-                context.graphics_queue.device().clone(),
-                dimensions,
-                context.depth_format,
+                format,
                 usage,
             )
             .unwrap(),

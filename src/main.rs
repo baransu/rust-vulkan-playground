@@ -51,8 +51,8 @@ use winit::{
 const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
 const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
 
-const MODEL_PATHS: [&str; 2] = [
-    DAMAGED_HELMET,
+const MODEL_PATHS: [&str; 1] = [
+    // DAMAGED_HELMET,
     // "res/models/plane/plane.gltf",
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
@@ -109,7 +109,6 @@ struct Application {
     gbuffer_albedo_texture_id: TextureId,
     gbuffer_metalic_texture_id: TextureId,
     ssao_texture_id: TextureId,
-    brdf_texture_id: TextureId,
 
     ssao: Ssao,
     ssao_blur: SsaoBlur,
@@ -419,19 +418,6 @@ impl Application {
             )
             .unwrap();
 
-        let brdf_texture_id = imgui_renderer
-            .register_texture(
-                &context,
-                &brdf_texture,
-                TextureUsage {
-                    depth: 0,
-                    normal: 0,
-                    position: 0,
-                    rgb: 1,
-                },
-            )
-            .unwrap();
-
         let mut app = Self {
             context,
 
@@ -467,7 +453,6 @@ impl Application {
             gbuffer_normals_texture_id,
             gbuffer_metalic_texture_id,
             ssao_texture_id,
-            brdf_texture_id,
 
             ssao,
             ssao_blur,
@@ -679,8 +664,6 @@ impl Application {
                         &self.scene.camera_descriptor_set,
                         instance_data_buffer,
                     )
-                } else {
-                    println!("No instance data for model: {}", model.id);
                 }
             }
 
@@ -780,7 +763,6 @@ impl Application {
         let gbuffer_normals_texture_id = self.gbuffer_normals_texture_id;
         let gbuffer_metalic_texture_id = self.gbuffer_metalic_texture_id;
         let ssao_texture_id = self.ssao_texture_id;
-        let brdf_texture_id = self.brdf_texture_id;
 
         let camera_pos = self.camera.position;
 
@@ -797,8 +779,11 @@ impl Application {
                 ));
                 ui.separator();
 
-                Image::new(brdf_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("BRDF");
+                Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("SSAO with Blur");
+
+                Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("Directional light shadow map");
 
                 Image::new(gbuffer_metalic_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("GBuffer metalic");
@@ -811,12 +796,6 @@ impl Application {
 
                 Image::new(gbuffer_albedo_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("GBuffer albedo");
-
-                Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("SSAO with Blur");
-
-                Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("Directional light shadow map");
             });
 
         let draw_data = ui.render();

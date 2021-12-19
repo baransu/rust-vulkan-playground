@@ -10,7 +10,12 @@ use vulkano::{
     image::{
         view::ImageView, AttachmentImage, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount,
     },
-    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
+    pipeline::{
+        graphics::{
+            input_assembly::InputAssemblyState, vertex_input::BuffersDefinition, viewport::Viewport,
+        },
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
+    },
     render_pass::{Framebuffer, RenderPass, Subpass},
     sync::GpuFuture,
 };
@@ -19,7 +24,7 @@ use super::{
     context::Context,
     gbuffer::GBuffer,
     screen_frame::{ScreenFrameQuadBuffers, ScreenQuadVertex},
-    shaders::{screen_vertex_shader, CameraUniformBufferObject},
+    shaders::CameraUniformBufferObject,
 };
 
 const SAMPLES_SIZE: usize = 64;
@@ -79,7 +84,7 @@ impl Ssao {
     }
 
     fn create_pipeline(context: &Context, render_pass: &Arc<RenderPass>) -> Arc<GraphicsPipeline> {
-        let vs = screen_vertex_shader::load(context.graphics_queue.device().clone()).unwrap();
+        let vs = vs::load(context.graphics_queue.device().clone()).unwrap();
         let fs = fs::load(context.device.clone()).unwrap();
 
         let dimensions = context.swap_chain.dimensions();
@@ -91,14 +96,15 @@ impl Ssao {
         };
 
         GraphicsPipeline::start()
-            .vertex_input_single_buffer::<ScreenQuadVertex>()
+            .vertex_input_state(BuffersDefinition::new().vertex::<ScreenQuadVertex>())
             .vertex_shader(vs.entry_point("main").unwrap(), ())
             .triangle_list()
-            .primitive_restart(false)
-            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-            .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .blend_pass_through()
             .viewports_dynamic_scissors_irrelevant(1)
+            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .input_assembly_state(InputAssemblyState::new())
+            .fragment_shader(fs.entry_point("main").unwrap(), ())
+            .cull_mode_back()
+            .front_face_clockwise()
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())
             .unwrap()
@@ -313,6 +319,13 @@ impl Ssao {
         future.flush().unwrap();
 
         ImageView::new(image).unwrap()
+    }
+}
+
+mod vs {
+    vulkano_shaders::shader! {
+            ty: "vertex",
+            path: "src/renderer/shaders/fullscreen.vert"
     }
 }
 

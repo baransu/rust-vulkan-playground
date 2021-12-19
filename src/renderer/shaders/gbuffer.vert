@@ -21,14 +21,14 @@ layout(location = 4) in mat4 model;
 layout(location = 0) out vec2 f_uv;
 layout(location = 1) out vec3 f_normal;
 layout(location = 2) out vec4 f_tangent;
-layout(location = 3) out vec3 f_position;
+layout(location = 3) out vec4 f_position;
 
 void main() {
-	vec4 world_pos = model * vec4(position, 1.0);
+	vec4 view_pos = camera.view * model * vec4(position, 1.0);
 
-	f_position = world_pos.xyz;
+	f_position = view_pos;
 
-	gl_Position = camera.proj * camera.view * world_pos;
+	gl_Position = camera.proj * view_pos;
 
 	f_uv = uv;
 

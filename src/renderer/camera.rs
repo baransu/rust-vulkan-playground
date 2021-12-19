@@ -43,7 +43,7 @@ impl Camera {
             (45.0_f32).to_radians(),
             dimensions[0] as f32 / dimensions[1] as f32,
             0.1,
-            1000.0,
+            500.0,
         );
 
         proj.y_axis.y *= -1.0;

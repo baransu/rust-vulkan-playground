@@ -22,5 +22,6 @@ void main() {
 			n++;
 		}
 	}
+	
 	outFragColor = result / (float(n));
 }

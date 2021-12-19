@@ -133,6 +133,10 @@ impl LightSystem {
             .unwrap();
 
         set_builder
+            .add_sampled_image(gbuffer.depth_buffer.clone(), context.depth_sampler.clone())
+            .unwrap();
+
+        set_builder
             .add_sampled_image(ssao_target.clone(), context.attachment_sampler.clone())
             .unwrap();
 

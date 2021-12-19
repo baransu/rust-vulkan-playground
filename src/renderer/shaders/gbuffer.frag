@@ -15,7 +15,7 @@ layout(set = 1, binding = 2) uniform sampler2D metalic_roughness_sampler;
 layout(location = 0) in vec2 f_uv;
 layout(location = 1) in vec3 f_normal;
 layout(location = 2) in vec4 f_tangent;
-layout(location = 3) in vec3 f_position;
+layout(location = 3) in vec4 f_position;
 
 // out
 layout(location = 0) out vec4 out_position;
@@ -23,13 +23,8 @@ layout(location = 1) out vec3 out_normal;
 layout(location = 2) out vec4 out_albedo;
 layout(location = 3) out vec4 out_metalic_roughness;
 
-float linear_depth(float depth) {
-	float z = depth * 2.0 - 1.0; 
-	return (2.0 * 0.1 * 1000.0) / (0.1 + 1000.0 - z * (1000.0 - 0.1));	
-}
-
 void main() {
-	out_position = vec4(f_position, linear_depth(gl_FragCoord.z));
+	out_position = f_position;
 
 	out_albedo = texture(diffuse_sampler, f_uv);
 	out_albedo.a = 1.0;
