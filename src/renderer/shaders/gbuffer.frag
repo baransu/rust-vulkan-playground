@@ -1,23 +1,21 @@
 #version 450
 
 // duplicated definition in model.vert
-layout(binding = 0) uniform CameraUniformBufferObject {
+layout(set = 0, binding = 0) uniform CameraUniformBufferObject {
 	mat4 view;
 	mat4 proj;
 	vec3 position;
 } camera;
 
-layout(binding = 1) uniform sampler2D diffuse_sampler;
-layout(binding = 2) uniform sampler2D normal_sampler;
-layout(binding = 3) uniform sampler2D metalic_roughness_sampler;
+layout(set = 1, binding = 0) uniform sampler2D diffuse_sampler;
+layout(set = 1, binding = 1) uniform sampler2D normal_sampler;
+layout(set = 1, binding = 2) uniform sampler2D metalic_roughness_sampler;
 
 // in
 layout(location = 0) in vec2 f_uv;
 layout(location = 1) in vec3 f_normal;
 layout(location = 2) in vec4 f_tangent;
 layout(location = 3) in vec3 f_position;
-layout(location = 4) in vec3 f_material_diffuse;
-layout(location = 5) in vec3 f_material_specular;
 
 // out
 layout(location = 0) out vec4 out_position;
@@ -33,7 +31,7 @@ float linear_depth(float depth) {
 void main() {
 	out_position = vec4(f_position, linear_depth(gl_FragCoord.z));
 
-	out_albedo.rgb = f_material_diffuse.rgb * texture(diffuse_sampler, f_uv).rgb;
+	out_albedo = texture(diffuse_sampler, f_uv);
 	out_albedo.a = 1.0;
 
 	out_metalic_roughness = texture(metalic_roughness_sampler, f_uv);

@@ -44,14 +44,6 @@ const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
 pub struct Context {
     #[allow(dead_code)]
     instance: Arc<Instance>,
-    /**
-     * This is why we need to wrap event_loop into Option
-     *
-     * https://stackoverflow.com/questions/67349506/ownership-issues-when-attempting-to-work-with-member-variables-passed-to-closure
-     *
-     * I don't really understand how it works and why exactly it's needed.
-     */
-    pub event_loop: Option<EventLoop<()>>,
     #[allow(dead_code)]
     debug_callback: Option<DebugCallback>,
     pub surface: Arc<Surface<Window>>,
@@ -69,7 +61,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn initialize() -> Context {
+    pub fn initialize() -> (Context, EventLoop<()>) {
         let instance = Self::create_instance();
         let debug_callback = Self::setup_debug_callback(&instance);
 
@@ -84,22 +76,25 @@ impl Context {
         let depth_sampler = Self::create_depth_sampler(&device);
         let attachment_sampler = Self::create_attachment_sampler(&device);
 
-        Context {
-            instance,
-            debug_callback,
-            surface,
-            event_loop: Some(event_loop),
-            device,
-            graphics_queue,
-            swap_chain,
-            swap_chain_images,
+        (
+            Context {
+                instance,
+                debug_callback,
+                surface,
 
-            depth_format: Self::find_depth_format(),
-            sample_count: Self::find_sample_count(),
-            image_sampler,
-            depth_sampler,
-            attachment_sampler,
-        }
+                device,
+                graphics_queue,
+                swap_chain,
+                swap_chain_images,
+
+                depth_format: Self::find_depth_format(),
+                sample_count: Self::find_sample_count(),
+                image_sampler,
+                depth_sampler,
+                attachment_sampler,
+            },
+            event_loop,
+        )
     }
 
     fn init_window(instance: &Arc<Instance>) -> (EventLoop<()>, Arc<Surface<Window>>) {
@@ -315,7 +310,7 @@ impl Context {
             .find(|(format, __color_space)| *format == Format::B8G8R8A8_UNORM)
             .unwrap_or_else(|| &available_formats[0]);
 
-        println!("Using format: {:?}", format);
+        println!("Using swap surface format: {:?}", format);
 
         format
     }

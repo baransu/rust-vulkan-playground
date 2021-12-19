@@ -135,7 +135,7 @@ void main() {
 		vec3 R = reflect(-V, N);
 
 		vec4 metalic_roughness = texture(u_metalic_roughness, f_uv);
-		float ao = metalic_roughness.r;
+		float ao = 1.0; // metalic_roughness.r;
 		float roughness = clamp(metalic_roughness.g, 0.0, 1.0);
 		float metallic = clamp(metalic_roughness.b, 0.0, 1.0);
 

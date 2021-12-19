@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use gltf::{buffer::Data, image::Source};
+use gltf::image::Source;
 use image::{DynamicImage, GenericImageView, ImageFormat};
 use ktx::{Decoder, KtxInfo};
 use vulkano::{
@@ -15,8 +15,7 @@ use vulkano::{
     image::{
         immutable::SubImage,
         view::{ImageView, ImageViewType},
-        ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, ImmutableImage,
-        MipmapsCount,
+        ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, ImmutableImage, MipmapsCount,
     },
     sync::GpuFuture,
 };
@@ -129,15 +128,15 @@ impl Texture {
         context: &Context,
         base_path: &str,
         image: &gltf::Texture,
-        buffers: &Vec<Data>,
+        images: &Vec<gltf::image::Data>,
         format: Format,
     ) -> Texture {
         let image = match image.source().source() {
             Source::View { view, mime_type } => {
-                let parent_buffer_data = &buffers[view.buffer().index()].0;
-                let begin = view.offset();
-                let end = begin + view.length();
-                let data = &parent_buffer_data[begin..end];
+                let data = &images[view.buffer().index()].pixels;
+
+                println!("Loading Source::View texture");
+
                 match mime_type {
                     "image/jpeg" => image::load_from_memory_with_format(data, ImageFormat::Jpeg),
                     "image/png" => image::load_from_memory_with_format(data, ImageFormat::Png),
@@ -150,6 +149,8 @@ impl Texture {
             }
             Source::Uri { uri, mime_type } => {
                 let base_path = Path::new(base_path);
+
+                println!("Loading Source::Uri({}, {:?}) texture", uri, mime_type);
 
                 if uri.starts_with("data:") {
                     let encoded = uri.split(',').nth(1).unwrap();
@@ -185,8 +186,6 @@ impl Texture {
                         .unwrap_or_else(|| Path::new("./"))
                         .join(uri);
 
-                    println!("loading texture from {}", path.display());
-
                     let file = fs::File::open(path).unwrap();
                     let reader = io::BufReader::new(file);
                     match mime_type {
@@ -203,8 +202,6 @@ impl Texture {
                         .parent()
                         .unwrap_or_else(|| Path::new("./"))
                         .join(uri);
-
-                    println!("loading texture from {}", path.display());
 
                     image::open(path)
                 }

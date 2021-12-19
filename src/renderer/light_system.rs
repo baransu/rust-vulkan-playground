@@ -4,7 +4,6 @@ use vulkano::{
     buffer::CpuAccessibleBuffer,
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
-    device,
     image::{view::ImageView, AttachmentImage, ImmutableImage, StorageImage},
     pipeline::{
         graphics::{

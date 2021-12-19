@@ -1,4 +1,4 @@
-use std::{f32::consts::PI, sync::Arc};
+use std::sync::Arc;
 
 use glam::{Mat4, Vec3};
 

@@ -1,30 +1,30 @@
 pub mod imgui_renderer;
 pub mod renderer;
 
-use std::{collections::HashMap, path::Path, sync::Arc, time::Instant, vec};
+use std::{collections::HashMap, sync::Arc, time::Instant, vec};
 
 use glam::{EulerRot, Quat, Vec3};
 use imgui::*;
 use imgui_renderer::{shaders::TextureUsage, Renderer};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use renderer::{
-    brdf::BRDFPass,
     camera::Camera,
     context::Context,
     cubemap_gen_pass::{irradiance_convolution_fs, prefilterenvmap_fs, CubemapGenPass},
+    entity::{Entity, InstanceData},
     gbuffer::GBuffer,
     light_system::LightSystem,
-    mesh::{GameObject, InstanceData, Material, Transform},
     scene::Scene,
     screen_frame::ScreenFrame,
     skybox_pass::SkyboxPass,
     ssao::Ssao,
     ssao_blur::SsaoBlur,
     texture::Texture,
+    transform::Transform,
     vertex::Vertex,
 };
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
         SecondaryAutoCommandBuffer, SubpassContents,
@@ -45,16 +45,19 @@ use winit::{
     event::{
         DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
     },
-    event_loop::ControlFlow,
+    event_loop::{ControlFlow, EventLoop},
 };
 
+const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
+const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
+
 const MODEL_PATHS: [&str; 2] = [
-    "res/models/damaged_helmet/scene.gltf",
+    DAMAGED_HELMET,
     // "res/models/plane/plane.gltf",
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
-    // "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf",
-    "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
+    SPONZA,
+    // "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
 ];
 
 // const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
@@ -113,13 +116,21 @@ struct Application {
 
     irradiance_convolution: CubemapGenPass,
     prefilterenvmap: CubemapGenPass,
-    brdf: BRDFPass,
+
+    /**
+     * This is why we need to wrap event_loop into Option
+     *
+     * https://stackoverflow.com/questions/67349506/ownership-issues-when-attempting-to-work-with-member-variables-passed-to-closure
+     *
+     * I don't really understand how it works and why exactly it's needed.
+     */
+    event_loop: Option<EventLoop<()>>,
 }
 
 impl Application {
     pub fn initialize() -> Self {
         // let mut rng = rand::thread_rng();
-        let context = Context::initialize();
+        let (context, event_loop) = Context::initialize();
 
         let img = image::io::Reader::open(BRDF_PATH)
             .unwrap()
@@ -168,8 +179,6 @@ impl Application {
             512.0,
         );
 
-        let brdf = BRDFPass::initialize(&context);
-
         let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, &skybox_texture.image);
 
         let light_system = LightSystem::initialize(
@@ -203,7 +212,7 @@ impl Application {
         //             ..Default::default()
         //         };
 
-        //         let game_object = GameObject::new(
+        //         let entity = Entity::new(
         //             "damaged_helmet",
         //             Transform {
         //                 translation,
@@ -213,11 +222,11 @@ impl Application {
         //             material,
         //         );
 
-        //         scene.add_game_object(game_object);
+        //         scene.add_entity(entity);
         //     }
         // }
 
-        // scene.add_game_object(GameObject::new(
+        // scene.add_entity(Entity::new(
         //     "Sphere",
         //     Transform {
         //         translation: Vec3::ZERO,
@@ -227,28 +236,26 @@ impl Application {
         //     Default::default(),
         // ));
 
-        scene.add_game_object(GameObject::new(
-            "damaged_helmet",
+        scene.add_entity(Entity::new(
+            DAMAGED_HELMET,
             Transform {
                 translation: Vec3::new(0.0, 0.0, 5.0),
                 rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
                 scale: Vec3::ONE,
             },
-            Default::default(),
         ));
 
-        scene.add_game_object(GameObject::new(
-            "WaterBottle",
-            Transform {
-                translation: Vec3::new(-5.0, 0.0, 0.0),
-                rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
-                scale: Vec3::ONE * 5.0,
-            },
-            Default::default(),
-        ));
+        // scene.add_entity(Entity::new(
+        //     "WaterBottle",
+        //     Transform {
+        //         translation: Vec3::new(-5.0, 0.0, 0.0),
+        //         rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+        //         scale: Vec3::ONE * 5.0,
+        //     },
+        // ));
 
         // Plane
-        // scene.add_game_object(GameObject::new(
+        // scene.add_entity(Entity::new(
         //     "Plane",
         //     Transform {
         //         rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
@@ -259,46 +266,35 @@ impl Application {
         // ));
 
         // sponza
-        for idx in 0..102 {
-            scene.add_game_object(GameObject::new(
-                format!("sponza-{}", idx).as_str(),
-                Transform {
-                    rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
-                    scale: Vec3::ONE * 0.01,
-                    translation: Vec3::new(0.0, 0.0, 0.0),
-                },
-                Default::default(),
-            ));
-        }
-
-        // point light cubes for reference
-        for light in scene.point_lights.clone() {
-            let material = Material {
-                diffuse: light.color,
-                ..Default::default()
-            };
-
-            let transform = Transform {
-                rotation: Quat::IDENTITY,
-                scale: Vec3::ONE * 0.2,
-                translation: light.position,
-            };
-
-            scene.add_game_object(GameObject::new("Cube", transform, material));
-        }
-
-        // dir light
-        scene.add_game_object(GameObject::new(
-            "Cube",
+        scene.add_entity(Entity::new(
+            SPONZA,
             Transform {
-                rotation: Quat::IDENTITY,
-                scale: Vec3::ONE * 0.2,
-                translation: Scene::dir_light_position(),
-            },
-            Material {
-                ..Default::default()
+                rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+                scale: Vec3::ONE * 0.01,
+                translation: Vec3::new(0.0, 0.0, 0.0),
             },
         ));
+
+        // // point light cubes for reference
+        // for light in scene.point_lights.clone() {
+        //     let transform = Transform {
+        //         rotation: Quat::IDENTITY,
+        //         scale: Vec3::ONE * 0.2,
+        //         translation: light.position,
+        //     };
+
+        //     scene.add_entity(Entity::new("Cube", transform));
+        // }
+
+        // // dir light
+        // scene.add_entity(Entity::new(
+        //     "Cube",
+        //     Transform {
+        //         rotation: Quat::IDENTITY,
+        //         scale: Vec3::ONE * 0.2,
+        //         translation: Scene::dir_light_position(),
+        //     },
+        // ));
 
         let previous_frame_end = Some(Self::create_sync_objects(&context.device));
 
@@ -477,7 +473,8 @@ impl Application {
 
             irradiance_convolution,
             prefilterenvmap,
-            brdf,
+
+            event_loop: Some(event_loop),
         };
 
         app.create_scene_command_buffers();
@@ -614,20 +611,19 @@ impl Application {
     ) -> HashMap<String, Arc<CpuAccessibleBuffer<[InstanceData]>>> {
         let mut instance_data: HashMap<String, Vec<InstanceData>> = HashMap::new();
 
-        for game_object in self.scene.game_objects.iter() {
-            let model = game_object.transform.get_model_matrix();
+        for entity in self.scene.entities.iter() {
+            let model = entity.transform.get_model_matrix();
 
             let instances = instance_data
-                .entry(game_object.mesh_id.clone())
+                .entry(entity.model_id.clone())
                 .or_insert(Vec::new());
 
             (*instances).push(InstanceData {
                 model: model.to_cols_array_2d(),
-                material_diffuse: game_object.material.diffuse.to_array(),
-                material_specular: game_object.material.specular.to_array(),
             });
         }
 
+        // TODO: we should create one buffer that we'll update with the data from the scene
         let mut instance_data_buffers: HashMap<String, Arc<CpuAccessibleBuffer<[InstanceData]>>> =
             HashMap::new();
 
@@ -673,23 +669,17 @@ impl Application {
 
             builder.bind_pipeline_graphics(self.gbuffer.pipeline.clone());
 
-            for mesh in self.scene.meshes.values() {
+            for model in self.scene.models.iter() {
                 // if there is no instance_data_buffer it means we have 0 instances for this mesh
-                if let Some(instance_data_buffer) = instance_data_buffers.get(&mesh.id) {
-                    builder
-                        .bind_descriptor_sets(
-                            PipelineBindPoint::Graphics,
-                            self.gbuffer.pipeline.layout().clone(),
-                            0,
-                            mesh.descriptor_set.clone(),
-                        )
-                        .bind_vertex_buffers(
-                            0,
-                            (mesh.vertex_buffer.clone(), instance_data_buffer.clone()),
-                        )
-                        .bind_index_buffer(mesh.index_buffer.clone())
-                        .draw_indexed(mesh.index_count, instance_data_buffer.len() as u32, 0, 0, 0)
-                        .unwrap();
+                if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
+                    self.gbuffer.draw_model(
+                        model,
+                        &mut builder,
+                        &self.scene.camera_descriptor_set,
+                        instance_data_buffer,
+                    )
+                } else {
+                    println!("No instance data for model: {}", model.id);
                 }
             }
 
@@ -708,7 +698,7 @@ impl Application {
             depth_range: 0.0..1.0,
         };
 
-        let instance_data_buffers = self.create_instance_data_buffers();
+        // let instance_data_buffers = self.create_instance_data_buffers();
 
         let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
 
@@ -734,19 +724,36 @@ impl Application {
                 self.scene.shadow_descriptor_set.clone(),
             );
 
-            for mesh in self.scene.meshes.values() {
-                // if there is no instance_data_buffer it means we have 0 instances for this mesh
-                if let Some(instance_data_buffer) = instance_data_buffers.get(&mesh.id) {
-                    builder
-                        .bind_vertex_buffers(
-                            0,
-                            (mesh.vertex_buffer.clone(), instance_data_buffer.clone()),
-                        )
-                        .bind_index_buffer(mesh.index_buffer.clone())
-                        .draw_indexed(mesh.index_count, instance_data_buffer.len() as u32, 0, 0, 0)
-                        .unwrap();
-                }
-            }
+            // for model in self.scene.models.iter() {
+            //     // if there is no instance_data_buffer it means we have 0 instances for this mesh
+            //     if let Some(instance_data_buffer) = instance_data_buffers.get(&model.name) {
+            //         for mesh in model.meshes.iter() {
+            //             for primitive_index in mesh.primitives.iter() {
+            //                 let primitive = model.primitives.get(*primitive_index).unwrap();
+
+            //                 builder
+            //                     .bind_vertex_buffers(
+            //                         0,
+            //                         (
+            //                             primitive.vertex_buffer.clone(),
+            //                             instance_data_buffer.clone(),
+            //                         ),
+            //                     )
+            //                     .bind_index_buffer(primitive.index_buffer.clone())
+            //                     .draw_indexed(
+            //                         primitive.index_count,
+            //                         instance_data_buffer.len() as u32,
+            //                         0,
+            //                         0,
+            //                         0,
+            //                     )
+            //                     .unwrap();
+            //             }
+            //         }
+            //     } else {
+            //         println!("No instance data for model: {}", model.name);
+            //     }
+            // }
 
             let command_buffer = Arc::new(builder.build().unwrap());
 
@@ -1039,8 +1046,7 @@ impl Application {
         self.prefilterenvmap.execute(&self.context);
         // self.brdf.execute(&self.context);
 
-        self.context
-            .event_loop
+        self.event_loop
             .take()
             .unwrap()
             .run(move |event, _, control_flow| {

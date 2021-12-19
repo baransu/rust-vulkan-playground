@@ -1,16 +1,19 @@
 use std::sync::Arc;
 
 use vulkano::{
+    buffer::{CpuAccessibleBuffer, TypedBufferAccess},
+    command_buffer::{AutoCommandBufferBuilder, SecondaryAutoCommandBuffer},
+    descriptor_set::PersistentDescriptorSet,
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage},
     pipeline::{
         graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
-        GraphicsPipeline,
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
 };
 
-use super::{context::Context, mesh::InstanceData, vertex::Vertex};
+use super::{context::Context, entity::InstanceData, model::Model, vertex::Vertex};
 
 pub type GBufferTarget = Arc<ImageView<AttachmentImage>>;
 
@@ -154,7 +157,7 @@ impl GBuffer {
             .depth_stencil_simple_depth()
             .viewports_dynamic_scissors_irrelevant(1)
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(context.device.clone())
+            .with_auto_layout(context.device.clone(), |_descriptor_set_desc| {})
             .unwrap()
     }
 
@@ -257,5 +260,97 @@ impl GBuffer {
         };
 
         (usage, dimensions)
+    }
+
+    pub fn draw_model(
+        &self,
+        model: &Model,
+        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
+        camera_descriptor_set: &Arc<PersistentDescriptorSet>,
+        instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+    ) {
+        for node_index in model.root_nodes.iter() {
+            self.draw_model_node(
+                model,
+                builder,
+                *node_index,
+                camera_descriptor_set,
+                instance_data_buffer,
+            )
+        }
+    }
+
+    fn draw_model_node(
+        &self,
+        model: &Model,
+        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
+        node_index: usize,
+        camera_descriptor_set: &Arc<PersistentDescriptorSet>,
+        instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+    ) {
+        let node = model.nodes.get(node_index).unwrap();
+
+        if let Some(mesh_index) = node.mesh {
+            let mesh = model.meshes.get(mesh_index).unwrap();
+
+            for primitive_index in mesh.primitives.iter() {
+                self.draw_model_primitive(
+                    model,
+                    builder,
+                    *primitive_index,
+                    camera_descriptor_set,
+                    instance_data_buffer,
+                );
+            }
+        }
+
+        for child_index in node.children.iter() {
+            self.draw_model_node(
+                model,
+                builder,
+                *child_index,
+                camera_descriptor_set,
+                instance_data_buffer,
+            );
+        }
+    }
+
+    fn draw_model_primitive(
+        &self,
+        model: &Model,
+        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
+        primitive_index: usize,
+        camera_descriptor_set: &Arc<PersistentDescriptorSet>,
+        instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+    ) {
+        let primitive = model.primitives.get(primitive_index).unwrap();
+        let material = model.materials.get(primitive.material).unwrap();
+
+        builder
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.pipeline.layout().clone(),
+                0,
+                (
+                    camera_descriptor_set.clone(),
+                    material.descriptor_set.clone(),
+                ),
+            )
+            .bind_vertex_buffers(
+                0,
+                (
+                    primitive.vertex_buffer.clone(),
+                    instance_data_buffer.clone(),
+                ),
+            )
+            .bind_index_buffer(primitive.index_buffer.clone())
+            .draw_indexed(
+                primitive.index_count,
+                instance_data_buffer.len() as u32,
+                0,
+                0,
+                0,
+            )
+            .unwrap();
     }
 }
