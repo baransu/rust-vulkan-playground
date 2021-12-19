@@ -9,7 +9,7 @@ use vulkano::{
     sync::GpuFuture,
 };
 
-use super::{context::Context, texture::Texture, vertex::Vertex};
+use super::{texture::Texture, vertex::Vertex};
 
 pub struct Primitive {
     pub vertex_buffer: Arc<ImmutableBuffer<[Vertex]>>,
@@ -21,13 +21,14 @@ pub struct Primitive {
 
 impl Primitive {
     fn new(
-        context: &Context,
+        queue: &Arc<Queue>,
+
         material: usize,
         vertices: Vec<Vertex>,
         indices: Vec<u32>,
     ) -> Primitive {
-        let vertex_buffer = Self::create_vertex_buffer(&context.graphics_queue, &vertices);
-        let index_buffer = Self::create_index_buffer(&context.graphics_queue, &indices);
+        let vertex_buffer = Self::create_vertex_buffer(queue, &vertices);
+        let index_buffer = Self::create_index_buffer(queue, &indices);
 
         Primitive {
             vertex_buffer,
@@ -38,14 +39,14 @@ impl Primitive {
     }
 
     fn create_vertex_buffer(
-        graphics_queue: &Arc<Queue>,
+        queue: &Arc<Queue>,
         vertices: &Vec<Vertex>,
     ) -> Arc<ImmutableBuffer<[Vertex]>> {
         let (buffer, future) = ImmutableBuffer::from_iter(
             vertices.iter().cloned(),
             BufferUsage::vertex_buffer(),
             // TODO: idealy it should be transfer queue?
-            graphics_queue.clone(),
+            queue.clone(),
         )
         .unwrap();
 
@@ -54,14 +55,12 @@ impl Primitive {
         buffer
     }
 
-    fn create_index_buffer(
-        graphics_queue: &Arc<Queue>,
-        indices: &Vec<u32>,
-    ) -> Arc<ImmutableBuffer<[u32]>> {
+    fn create_index_buffer(queue: &Arc<Queue>, indices: &Vec<u32>) -> Arc<ImmutableBuffer<[u32]>> {
         let (buffer, future) = ImmutableBuffer::from_iter(
             indices.iter().cloned(),
             BufferUsage::index_buffer(),
-            graphics_queue.clone(),
+            // TODO: idealy it should be transfer queue?
+            queue.clone(),
         )
         .unwrap();
 
@@ -81,19 +80,13 @@ pub struct Material {
 
 impl Material {
     fn new(
-        context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         diffuse: Texture,
         metallic_roughness: Texture,
         normal: Texture,
     ) -> Material {
-        let descriptor_set = Self::create_descriptor_set(
-            context,
-            graphics_pipeline,
-            &diffuse,
-            &metallic_roughness,
-            &normal,
-        );
+        let descriptor_set =
+            Self::create_descriptor_set(graphics_pipeline, &diffuse, &metallic_roughness, &normal);
 
         Material {
             diffuse,
@@ -104,7 +97,6 @@ impl Material {
     }
 
     fn create_descriptor_set(
-        context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         diffuse: &Texture,
         metallic_roughness: &Texture,
@@ -118,19 +110,12 @@ impl Material {
 
         let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-        set_builder
-            .add_sampled_image(diffuse.image.clone(), context.image_sampler.clone())
-            .unwrap();
+        set_builder.add_image(diffuse.image.clone()).unwrap();
+
+        set_builder.add_image(normal.image.clone()).unwrap();
 
         set_builder
-            .add_sampled_image(normal.image.clone(), context.image_sampler.clone())
-            .unwrap();
-
-        set_builder
-            .add_sampled_image(
-                metallic_roughness.image.clone(),
-                context.image_sampler.clone(),
-            )
+            .add_image(metallic_roughness.image.clone())
             .unwrap();
 
         set_builder.build().unwrap()
@@ -162,7 +147,7 @@ pub struct Model {
 
 impl Model {
     pub fn load_gltf(
-        context: &Context,
+        queue: &Arc<Queue>,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         path: &str,
     ) -> Model {
@@ -220,7 +205,7 @@ impl Model {
                     .unwrap();
 
                 Primitive::new(
-                    context,
+                    queue,
                     primitive.material().index().unwrap(),
                     vertices,
                     indices,
@@ -235,7 +220,7 @@ impl Model {
 
                 let diffuse = pbr.base_color_texture().map(|info| {
                     Texture::from_gltf_texture(
-                        &context,
+                        &queue,
                         path,
                         &info.texture(),
                         &images,
@@ -245,7 +230,7 @@ impl Model {
 
                 let normal = material.normal_texture().map(|info| {
                     Texture::from_gltf_texture(
-                        &context,
+                        &queue,
                         path,
                         &info.texture(),
                         &images,
@@ -255,7 +240,7 @@ impl Model {
 
                 let metalic_roughness = pbr.metallic_roughness_texture().map(|info| {
                     Texture::from_gltf_texture(
-                        &context,
+                        &queue,
                         path,
                         &info.texture(),
                         &images,
@@ -264,12 +249,11 @@ impl Model {
                 });
 
                 Material::new(
-                    context,
                     graphics_pipeline,
                     // TODO: how to correctly handle optional values?
-                    diffuse.unwrap_or_else(|| Texture::empty(&context)),
-                    metalic_roughness.unwrap_or_else(|| Texture::empty(&context)),
-                    normal.unwrap_or_else(|| Texture::empty(&context)),
+                    diffuse.unwrap_or_else(|| Texture::empty(&queue)),
+                    metalic_roughness.unwrap_or_else(|| Texture::empty(&queue)),
+                    normal.unwrap_or_else(|| Texture::empty(&queue)),
                 )
             })
             .collect();

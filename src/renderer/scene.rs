@@ -52,10 +52,10 @@ impl Scene {
         let light_uniform_buffer = Self::create_light_uniform_buffer(context, &point_lights);
         let light_space_uniform_buffer = Self::create_light_space_uniform_buffer(context);
 
+        let queue = context.graphics_queue.clone();
         let models = mesh_paths
-            // TODO: rayon parallelize
             .into_iter()
-            .map(|path| Model::load_gltf(&context, &graphics_pipeline, &path))
+            .map(|path| Model::load_gltf(&queue, &graphics_pipeline, &path))
             .collect();
 
         let shadow_descriptor_set = Self::create_shadow_descriptor_set(

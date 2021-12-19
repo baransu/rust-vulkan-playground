@@ -138,7 +138,8 @@ impl Application {
             .unwrap();
 
         // TODO: generate brdf texture instead of loading it?
-        let brdf_texture = Texture::create_image_view(&context, &img, Format::R8G8B8A8_UNORM);
+        let brdf_texture =
+            Texture::create_image_view(&context.graphics_queue, &img, Format::R8G8B8A8_UNORM);
 
         let shadow_render_pass = Self::create_shadow_render_pass(&context);
         let shadow_framebuffer = Self::create_shadow_framebuffer(&context, &shadow_render_pass);

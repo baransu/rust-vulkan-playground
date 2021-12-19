@@ -157,7 +157,11 @@ impl GBuffer {
             .depth_stencil_simple_depth()
             .viewports_dynamic_scissors_irrelevant(1)
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .with_auto_layout(context.device.clone(), |_descriptor_set_desc| {})
+            .with_auto_layout(context.device.clone(), |descriptor_set_desc| {
+                descriptor_set_desc[1].set_immutable_samplers(0, [context.image_sampler.clone()]);
+                descriptor_set_desc[1].set_immutable_samplers(1, [context.image_sampler.clone()]);
+                descriptor_set_desc[1].set_immutable_samplers(2, [context.image_sampler.clone()]);
+            })
             .unwrap()
     }
 

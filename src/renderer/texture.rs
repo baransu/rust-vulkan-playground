@@ -11,6 +11,7 @@ use ktx::{Decoder, KtxInfo};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer},
+    device::Queue,
     format::Format,
     image::{
         immutable::SubImage,
@@ -125,7 +126,7 @@ impl Texture {
     }
 
     pub fn from_gltf_texture(
-        context: &Context,
+        queue: &Arc<Queue>,
         base_path: &str,
         image: &gltf::Texture,
         images: &Vec<gltf::image::Data>,
@@ -209,20 +210,20 @@ impl Texture {
         }
         .unwrap();
 
-        let image = Self::create_image_view(context, &image, format);
+        let image = Self::create_image_view(queue, &image, format);
 
         Texture { image }
     }
 
-    pub fn empty(context: &Context) -> Texture {
+    pub fn empty(queue: &Arc<Queue>) -> Texture {
         let image = DynamicImage::new_rgb8(1, 1);
-        let view = Self::create_image_view(context, &image, Format::R8G8B8A8_UNORM);
+        let view = Self::create_image_view(queue, &image, Format::R8G8B8A8_UNORM);
 
         Texture { image: view }
     }
 
     pub fn create_image_view(
-        context: &Context,
+        queue: &Arc<Queue>,
         image: &DynamicImage,
         format: Format,
     ) -> Arc<ImageView<ImmutableImage>> {
@@ -243,7 +244,7 @@ impl Texture {
                 // vulkano already supports mipmap generation so we don't need to do this by hand
                 MipmapsCount::Log2,
                 format,
-                context.graphics_queue.clone(),
+                queue.clone(),
             )
             .unwrap()
         } else {
@@ -253,7 +254,7 @@ impl Texture {
                 // vulkano already supports mipmap generation so we don't need to do this by hand
                 MipmapsCount::Log2,
                 format,
-                context.graphics_queue.clone(),
+                queue.clone(),
             )
             .unwrap()
         };
