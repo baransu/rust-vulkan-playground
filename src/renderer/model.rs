@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Instant};
 
 use vulkano::{
     buffer::{BufferUsage, ImmutableBuffer},
-    descriptor_set::PersistentDescriptorSet,
+    descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
     device::Queue,
     format::Format,
     pipeline::{GraphicsPipeline, Pipeline},
@@ -80,13 +80,13 @@ pub struct Material {
 
 impl Material {
     fn new(
-        graphics_pipeline: &Arc<GraphicsPipeline>,
+        layout: &Arc<DescriptorSetLayout>,
         diffuse: Texture,
         metallic_roughness: Texture,
         normal: Texture,
     ) -> Material {
         let descriptor_set =
-            Self::create_descriptor_set(graphics_pipeline, &diffuse, &metallic_roughness, &normal);
+            Self::create_descriptor_set(layout, &diffuse, &metallic_roughness, &normal);
 
         Material {
             diffuse,
@@ -97,17 +97,11 @@ impl Material {
     }
 
     fn create_descriptor_set(
-        graphics_pipeline: &Arc<GraphicsPipeline>,
+        layout: &Arc<DescriptorSetLayout>,
         diffuse: &Texture,
         metallic_roughness: &Texture,
         normal: &Texture,
     ) -> Arc<PersistentDescriptorSet> {
-        let layout = graphics_pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(1)
-            .unwrap();
-
         let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
         set_builder.add_image(diffuse.image.clone()).unwrap();
@@ -146,11 +140,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn load_gltf(
-        queue: &Arc<Queue>,
-        graphics_pipeline: &Arc<GraphicsPipeline>,
-        path: &str,
-    ) -> Model {
+    pub fn load_gltf(queue: &Arc<Queue>, layout: &Arc<DescriptorSetLayout>, path: &str) -> Model {
         let (document, buffers, images) = gltf::import(path).unwrap();
 
         assert_eq!(
@@ -249,7 +239,7 @@ impl Model {
                 });
 
                 Material::new(
-                    graphics_pipeline,
+                    layout,
                     // TODO: how to correctly handle optional values?
                     diffuse.unwrap_or_else(|| Texture::empty(&queue)),
                     metalic_roughness.unwrap_or_else(|| Texture::empty(&queue)),

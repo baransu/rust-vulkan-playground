@@ -27,7 +27,10 @@ use renderer::{
 use vulkano::{
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        SecondaryAutoCommandBuffer, SubpassContents,
+        PrimaryCommandBuffer, SecondaryAutoCommandBuffer, SubpassContents,
+    },
+    descriptor_set::layout::{
+        DescriptorDesc, DescriptorSetDesc, DescriptorSetLayout, DescriptorType,
     },
     device::Device,
     format::{ClearValue, Format},
@@ -37,6 +40,7 @@ use vulkano::{
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
+    shader::ShaderStages,
     single_pass_renderpass,
     swapchain::{acquire_next_image, AcquireError},
     sync::{self, GpuFuture},
@@ -52,9 +56,9 @@ const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
 const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
 const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
 
-const MODEL_PATHS: [&str; 2] = [
+const MODEL_PATHS: [&str; 1] = [
     DAMAGED_HELMET,
-    BOTTLE,
+    // BOTTLE,
     // "res/models/plane/plane.gltf",
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
@@ -149,19 +153,62 @@ impl Application {
         let shadow_graphics_pipeline =
             Self::create_shadow_graphics_pipeline(&context, &shadow_render_pass);
 
+        let layout = DescriptorSetLayout::new(
+            context.device.clone(),
+            DescriptorSetDesc::new([
+                // diffuse texture
+                Some(DescriptorDesc {
+                    ty: DescriptorType::CombinedImageSampler,
+                    descriptor_count: 1,
+                    variable_count: false,
+                    stages: ShaderStages {
+                        fragment: true,
+                        ..ShaderStages::none()
+                    },
+                    immutable_samplers: vec![context.image_sampler.clone()],
+                }),
+                // normal texture
+                Some(DescriptorDesc {
+                    ty: DescriptorType::CombinedImageSampler,
+                    descriptor_count: 1,
+                    variable_count: false,
+                    stages: ShaderStages {
+                        fragment: true,
+                        ..ShaderStages::none()
+                    },
+                    immutable_samplers: vec![context.image_sampler.clone()],
+                }),
+                // metallic roughness texture
+                Some(DescriptorDesc {
+                    ty: DescriptorType::CombinedImageSampler,
+                    descriptor_count: 1,
+                    variable_count: false,
+                    stages: ShaderStages {
+                        fragment: true,
+                        ..ShaderStages::none()
+                    },
+                    immutable_samplers: vec![context.image_sampler.clone()],
+                }),
+            ]),
+        )
+        .unwrap();
+
         let gbuffer_target = Self::create_gbuffer_target(&context);
-        let gbuffer = GBuffer::initialize(&context, &gbuffer_target);
+        let gbuffer = GBuffer::initialize(&context, &layout, &gbuffer_target);
 
         let mut scene = Scene::initialize(
             &context,
             MODEL_PATHS.to_vec(),
+            &layout,
             &gbuffer.pipeline,
             &shadow_graphics_pipeline,
         );
 
         let skybox_texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
 
-        let local_probe = LocalProbe::initialize(&context, &scene);
+        println!("Creating local probe");
+
+        let local_probe = LocalProbe::initialize(&context, &layout);
 
         let skybox = SkyboxPass::initialize(
             &context,
@@ -177,7 +224,7 @@ impl Application {
             irradiance_convolution_fs::load(context.device.clone()).unwrap();
         let irradiance_convolution = CubemapGenPass::initialize(
             &context,
-            &skybox_texture.image,
+            &skybox_texture,
             irradiance_convolution_fs_mod.entry_point("main").unwrap(),
             Format::R32G32B32A32_SFLOAT,
             64.0,
@@ -186,7 +233,7 @@ impl Application {
         let prefilterenvmap_fs_mod = prefilterenvmap_fs::load(context.device.clone()).unwrap();
         let prefilterenvmap = CubemapGenPass::initialize(
             &context,
-            &skybox_texture.image,
+            &skybox_texture,
             prefilterenvmap_fs_mod.entry_point("main").unwrap(),
             Format::R16G16B16A16_SFLOAT,
             512.0,

@@ -8,11 +8,11 @@ use vulkano::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
         PrimaryCommandBuffer, SubpassContents,
     },
-    descriptor_set::PersistentDescriptorSet,
+    descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
     format::{ClearValue, Format},
     image::{
         view::{ImageView, ImageViewType},
-        AttachmentImage, ImageCreateFlags, ImageDimensions, ImageUsage, MipmapsCount, StorageImage,
+        AttachmentImage, ImageCreateFlags, ImageDimensions, ImageUsage, StorageImage,
     },
     pipeline::{
         graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
@@ -24,7 +24,7 @@ use vulkano::{
 };
 
 use super::{
-    context::Context, entity::InstanceData, model::Model, scene::Scene,
+    context::Context, entity::InstanceData, gbuffer::GBuffer, model::Model, scene::Scene,
     shaders::CameraUniformBufferObject, vertex::Vertex,
 };
 
@@ -40,15 +40,14 @@ pub struct LocalProbe {
     framebuffer: Arc<Framebuffer>,
 
     camera_descriptor_set: Arc<PersistentDescriptorSet>,
-    light_descriptor_set: Arc<PersistentDescriptorSet>,
 
     pub render_pass: Arc<RenderPass>,
 }
 
 impl LocalProbe {
-    pub fn initialize(context: &Context, scene: &Scene) -> LocalProbe {
+    pub fn initialize(context: &Context, layout: &Arc<DescriptorSetLayout>) -> LocalProbe {
         let render_pass = Self::create_render_pass(context);
-        let pipeline = Self::create_graphics_pipeline(context, &render_pass);
+        let pipeline = Self::create_graphics_pipeline(context, &render_pass, &layout);
 
         let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
 
@@ -67,8 +66,6 @@ impl LocalProbe {
         let camera_descriptor_set =
             Self::create_camera_descriptor_set(&pipeline, &camera_uniform_buffer);
 
-        let light_descriptor_set = Self::create_light_descriptor_set(&pipeline, scene);
-
         LocalProbe {
             camera_uniform_buffer,
             pipeline,
@@ -77,7 +74,6 @@ impl LocalProbe {
             color_attachment,
             framebuffer,
             camera_descriptor_set,
-            light_descriptor_set,
 
             render_pass,
         }
@@ -204,21 +200,6 @@ impl LocalProbe {
         .unwrap()
     }
 
-    fn num_mips() -> u32 {
-        (DIM.log2().floor() + 1.0) as u32
-    }
-
-    fn face_viewport(m: u32) -> Viewport {
-        let width = DIM * 0.5_f32.powf(m as f32);
-        let height = DIM * 0.5_f32.powf(m as f32);
-
-        Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [width, height],
-            depth_range: 0.0..1.0,
-        }
-    }
-
     pub fn execute(&self, context: &Context, scene: &Scene) {
         let mut builder = AutoCommandBufferBuilder::primary(
             context.device.clone(),
@@ -229,60 +210,69 @@ impl LocalProbe {
 
         let mats = matrices();
 
+        let light_descriptor_set = Self::create_light_descriptor_set(&self.pipeline, scene);
         let instance_data_buffers = scene.get_instance_data_buffers(&context);
 
-        for m in 0..Self::num_mips() {
-            for f in 0..6 {
-                let viewport = Self::face_viewport(m);
+        let viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [DIM, DIM],
+            depth_range: 0.0..1.0,
+        };
 
-                self.update_uniform_buffers(&mut builder, mats[f]);
+        for f in 0..6 {
+            self.update_uniform_buffers(&mut builder, mats[f]);
 
-                builder
-                    .begin_render_pass(
-                        self.framebuffer.clone(),
-                        SubpassContents::Inline,
-                        vec![
-                            ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
-                            ClearValue::Depth(1.0),
-                        ],
-                    )
-                    .unwrap();
+            builder
+                .begin_render_pass(
+                    self.framebuffer.clone(),
+                    SubpassContents::Inline,
+                    vec![
+                        ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
+                        ClearValue::Depth(1.0),
+                    ],
+                )
+                .unwrap();
 
-                builder.set_viewport(0, [viewport.clone()]);
-                builder.bind_pipeline_graphics(self.pipeline.clone());
+            builder
+                .bind_pipeline_graphics(self.pipeline.clone())
+                .set_viewport(0, [viewport.clone()]);
 
-                for model in scene.models.iter() {
-                    // if there is no instance_data_buffer it means we have 0 instances for this mesh
-                    if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
-                        self.draw_model(model, &mut builder, instance_data_buffer)
-                    }
+            for model in scene.models.iter() {
+                // if there is no instance_data_buffer it means we have 0 instances for this mesh
+                if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
+                    self.draw_model(
+                        model,
+                        &mut builder,
+                        instance_data_buffer,
+                        &light_descriptor_set,
+                    );
                 }
-
-                builder.end_render_pass().unwrap();
-
-                let source = self.color_attachment.clone();
-
-                let destination = self.cube_attachment.clone();
-
-                builder
-                    .copy_image(
-                        source,
-                        [0, 0, 0],
-                        0,
-                        0,
-                        destination,
-                        [0, 0, 0],
-                        f as u32,
-                        m,
-                        [
-                            viewport.dimensions[0] as u32,
-                            viewport.dimensions[1] as u32,
-                            1,
-                        ],
-                        1,
-                    )
-                    .unwrap();
             }
+
+            builder.end_render_pass().unwrap();
+
+            let source = self.color_attachment.clone();
+
+            let destination = self.cube_attachment.clone();
+
+            builder
+                .copy_image(
+                    source,
+                    [0, 0, 0],
+                    0,
+                    0,
+                    destination,
+                    [0, 0, 0],
+                    f as u32,
+                    0,
+                    [
+                        viewport.dimensions[0] as u32,
+                        viewport.dimensions[1] as u32,
+                        1,
+                    ],
+                    1,
+                )
+                .unwrap();
         }
 
         builder
@@ -299,6 +289,7 @@ impl LocalProbe {
     fn create_graphics_pipeline(
         context: &Context,
         render_pass: &Arc<RenderPass>,
+        layout: &Arc<DescriptorSetLayout>,
     ) -> Arc<GraphicsPipeline> {
         let vs = vs::load(context.device.clone()).unwrap();
         let fs = fs::load(context.device.clone()).unwrap();
@@ -308,6 +299,15 @@ impl LocalProbe {
             dimensions: [DIM, DIM],
             depth_range: 0.0..1.0,
         };
+
+        let pipeline_layout = GBuffer::create_pipeline_layout(
+            &context,
+            vec![
+                Arc::new(vs.entry_point("main").unwrap()).as_ref(),
+                Arc::new(fs.entry_point("main").unwrap()).as_ref(),
+            ],
+            layout,
+        );
 
         GraphicsPipeline::start()
             .vertex_input_state(
@@ -324,14 +324,7 @@ impl LocalProbe {
             .cull_mode_back()
             .viewports_dynamic_scissors_irrelevant(1)
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .with_auto_layout(context.device.clone(), |descriptor_set_desc| {
-                // diffuse texture
-                descriptor_set_desc[1].set_immutable_samplers(0, [context.image_sampler.clone()]);
-                // normal texture
-                descriptor_set_desc[1].set_immutable_samplers(1, [context.image_sampler.clone()]);
-                // metallic roughness texture
-                descriptor_set_desc[1].set_immutable_samplers(2, [context.image_sampler.clone()]);
-            })
+            .with_pipeline_layout(context.device.clone(), pipeline_layout)
             .unwrap()
     }
 
@@ -370,7 +363,7 @@ impl LocalProbe {
     }
 
     fn create_cube_attachment(context: &Context) -> Arc<StorageImage> {
-        StorageImage::with_mipmaps_usage(
+        StorageImage::with_usage(
             context.device.clone(),
             ImageDimensions::Dim2d {
                 width: DIM as u32,
@@ -378,7 +371,6 @@ impl LocalProbe {
                 array_layers: 6,
             },
             FORMAT,
-            MipmapsCount::Specific(Self::num_mips()),
             ImageUsage {
                 transfer_destination: true,
                 sampled: true,
@@ -398,9 +390,16 @@ impl LocalProbe {
         model: &Model,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+        light_descriptor_set: &Arc<PersistentDescriptorSet>,
     ) {
         for node_index in model.root_nodes.iter() {
-            self.draw_model_node(model, builder, *node_index, instance_data_buffer)
+            self.draw_model_node(
+                model,
+                builder,
+                *node_index,
+                instance_data_buffer,
+                light_descriptor_set,
+            );
         }
     }
 
@@ -410,6 +409,7 @@ impl LocalProbe {
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         node_index: usize,
         instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+        light_descriptor_set: &Arc<PersistentDescriptorSet>,
     ) {
         let node = model.nodes.get(node_index).unwrap();
 
@@ -417,12 +417,24 @@ impl LocalProbe {
             let mesh = model.meshes.get(mesh_index).unwrap();
 
             for primitive_index in mesh.primitives.iter() {
-                self.draw_model_primitive(model, builder, *primitive_index, instance_data_buffer);
+                self.draw_model_primitive(
+                    model,
+                    builder,
+                    *primitive_index,
+                    instance_data_buffer,
+                    light_descriptor_set,
+                );
             }
         }
 
         for child_index in node.children.iter() {
-            self.draw_model_node(model, builder, *child_index, instance_data_buffer);
+            self.draw_model_node(
+                model,
+                builder,
+                *child_index,
+                instance_data_buffer,
+                light_descriptor_set,
+            );
         }
     }
 
@@ -432,6 +444,7 @@ impl LocalProbe {
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         primitive_index: usize,
         instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+        light_descriptor_set: &Arc<PersistentDescriptorSet>,
     ) {
         let primitive = model.primitives.get(primitive_index).unwrap();
         let material = model.materials.get(primitive.material).unwrap();
@@ -444,7 +457,7 @@ impl LocalProbe {
                 (
                     self.camera_descriptor_set.clone(),
                     material.descriptor_set.clone(),
-                    self.light_descriptor_set.clone(),
+                    light_descriptor_set.clone(),
                 ),
             )
             .bind_vertex_buffers(

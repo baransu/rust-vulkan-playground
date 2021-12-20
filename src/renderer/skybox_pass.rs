@@ -1,18 +1,26 @@
 use std::{fs::File, io::BufReader, sync::Arc};
 
 use glam::{Mat4, Vec3};
-use ktx::Decoder;
+use ktx::{Decoder, KtxInfo};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer,
+        SecondaryAutoCommandBuffer,
+    },
     descriptor_set::PersistentDescriptorSet,
-    image::ImageViewAbstract,
+    format::Format,
+    image::{
+        view::{ImageView, ImageViewType},
+        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, MipmapsCount,
+        StorageImage,
+    },
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{RenderPass, Subpass},
     sync::GpuFuture,
 };
 
-use super::{context::Context, shaders::CameraUniformBufferObject, texture::Texture};
+use super::{context::Context, shaders::CameraUniformBufferObject};
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct SkyboxVertex {
@@ -218,11 +226,85 @@ impl SkyboxPass {
         vertex_buffer
     }
 
-    pub fn load_skybox_texture(context: &Context, path: &str) -> Texture {
+    pub fn load_skybox_texture(context: &Context, path: &str) -> Arc<ImageView<StorageImage>> {
         let ktx_file = BufReader::new(File::open(path).unwrap());
-        let ktx: Decoder<BufReader<File>> = ktx::Decoder::new(ktx_file).unwrap();
+        let image: Decoder<BufReader<File>> = ktx::Decoder::new(ktx_file).unwrap();
 
-        Texture::from_ktx(context, ktx)
+        let width = image.pixel_width();
+        let height = image.pixel_height();
+
+        println!("Loading cubemap texture: {}x{}", width, height);
+
+        let image_rgba = image.read_textures().next().unwrap().to_vec();
+
+        let dimensions = ImageDimensions::Dim2d {
+            width,
+            height,
+            // TODO: what are array_layers?
+            array_layers: 6,
+        };
+
+        let source = CpuAccessibleBuffer::from_iter(
+            context.device.clone(),
+            BufferUsage::transfer_source(),
+            false,
+            image_rgba,
+        )
+        .unwrap();
+
+        let format = Format::R16G16B16A16_SFLOAT;
+
+        let image = StorageImage::with_mipmaps_usage(
+            context.device.clone(),
+            dimensions,
+            format,
+            MipmapsCount::One,
+            ImageUsage {
+                sampled: true,
+                transfer_destination: true,
+                ..ImageUsage::none()
+            },
+            ImageCreateFlags {
+                cube_compatible: true,
+                ..ImageCreateFlags::none()
+            },
+            [context.graphics_queue.family().clone()],
+        )
+        .unwrap();
+
+        let mut builder = AutoCommandBufferBuilder::primary(
+            context.device.clone(),
+            context.graphics_queue.family(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        builder
+            .copy_buffer_to_image_dimensions(
+                source,
+                image.clone(),
+                [0, 0, 0],
+                dimensions.width_height_depth(),
+                0,
+                dimensions.array_layers(),
+                0,
+            )
+            .unwrap();
+
+        builder
+            .build()
+            .unwrap()
+            .execute(context.graphics_queue.clone())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None)
+            .unwrap();
+
+        ImageView::start(image)
+            .with_type(ImageViewType::Cube)
+            .build()
+            .unwrap()
     }
 }
 
@@ -290,10 +372,17 @@ pub mod fs {
 	layout (location = 0) in vec3 inUV;
 	
 	// it's gbuffer albedo
-	layout (location = 2) out vec4 outFragColor;
+    layout(location = 0) out vec4 out_position;
+    layout(location = 1) out vec3 out_normal;
+    layout(location = 2) out vec4 out_albedo;
+    layout(location = 3) out vec4 out_metallic_roughness;
 
 	void main() {
-		outFragColor = texture(skybox_texture, inUV);
+		out_albedo = texture(skybox_texture, inUV);
+        // just to make vulkan happy that we're not using attachments
+        out_position = vec4(0.0, 0.0, 0.0, 0.0);
+        out_normal = vec3(0.0, 0.0, 0.0);
+        out_metallic_roughness = vec4(0.0, 0.0, 0.0, 0.0);
 	}
 "
     }

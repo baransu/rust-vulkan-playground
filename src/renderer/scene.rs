@@ -4,7 +4,7 @@ use glam::{Mat4, Vec3};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
-    descriptor_set::PersistentDescriptorSet,
+    descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
     pipeline::{GraphicsPipeline, Pipeline},
 };
 
@@ -43,6 +43,7 @@ impl Scene {
     pub fn initialize(
         context: &Context,
         mesh_paths: Vec<&str>,
+        layout: &Arc<DescriptorSetLayout>,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
     ) -> Self {
@@ -55,7 +56,7 @@ impl Scene {
         let queue = context.graphics_queue.clone();
         let models = mesh_paths
             .into_iter()
-            .map(|path| Model::load_gltf(&queue, &graphics_pipeline, &path))
+            .map(|path| Model::load_gltf(&queue, &layout, &path))
             .collect();
 
         let shadow_descriptor_set = Self::create_shadow_descriptor_set(
