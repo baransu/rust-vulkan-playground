@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use glam::{Mat4, Vec3};
 use vulkano::{
@@ -11,7 +11,7 @@ use vulkano::{
 use super::{
     camera::Camera,
     context::Context,
-    entity::Entity,
+    entity::{Entity, InstanceData},
     light_system::{LightUniformBufferObject, ShaderDirectionalLight, ShaderPointLight},
     model::Model,
     shaders::{CameraUniformBufferObject, LightSpaceUniformBufferObject},
@@ -266,5 +266,42 @@ impl Scene {
                 self.get_camera_uniform_buffer_data(&camera, dimensions),
             )
             .unwrap();
+    }
+
+    pub fn get_instance_data_buffers(
+        &self,
+        context: &Context,
+    ) -> HashMap<String, Arc<CpuAccessibleBuffer<[InstanceData]>>> {
+        let mut instance_data: HashMap<String, Vec<InstanceData>> = HashMap::new();
+
+        for entity in self.entities.iter() {
+            let model = entity.transform.get_model_matrix();
+
+            let instances = instance_data
+                .entry(entity.model_id.clone())
+                .or_insert(Vec::new());
+
+            (*instances).push(InstanceData {
+                model: model.to_cols_array_2d(),
+            });
+        }
+
+        // TODO: we should create one buffer that we'll update with the data from the scene
+        let mut instance_data_buffers: HashMap<String, Arc<CpuAccessibleBuffer<[InstanceData]>>> =
+            HashMap::new();
+
+        instance_data.iter().for_each(|(mesh_id, instances)| {
+            let buffer = CpuAccessibleBuffer::from_iter(
+                context.device.clone(),
+                BufferUsage::all(),
+                false,
+                instances.iter().cloned(),
+            )
+            .unwrap();
+
+            instance_data_buffers.insert(mesh_id.clone(), buffer);
+        });
+
+        instance_data_buffers
     }
 }

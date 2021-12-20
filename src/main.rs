@@ -14,6 +14,7 @@ use renderer::{
     entity::{Entity, InstanceData},
     gbuffer::GBuffer,
     light_system::LightSystem,
+    local_probe::LocalProbe,
     scene::Scene,
     screen_frame::ScreenFrame,
     skybox_pass::SkyboxPass,
@@ -24,7 +25,6 @@ use renderer::{
     vertex::Vertex,
 };
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
         SecondaryAutoCommandBuffer, SubpassContents,
@@ -52,11 +52,11 @@ const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
 const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
 
 const MODEL_PATHS: [&str; 1] = [
-    // DAMAGED_HELMET,
+    DAMAGED_HELMET,
     // "res/models/plane/plane.gltf",
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
-    SPONZA,
+    // SPONZA,
     // "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
 ];
 
@@ -116,6 +116,8 @@ struct Application {
     irradiance_convolution: CubemapGenPass,
     prefilterenvmap: CubemapGenPass,
 
+    local_probe: LocalProbe,
+
     /**
      * This is why we need to wrap event_loop into Option
      *
@@ -154,6 +156,8 @@ impl Application {
             &gbuffer.pipeline,
             &shadow_graphics_pipeline,
         );
+
+        let local_probe = LocalProbe::initialize(&context, &scene);
 
         let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
         let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);
@@ -460,6 +464,8 @@ impl Application {
             irradiance_convolution,
             prefilterenvmap,
 
+            local_probe,
+
             event_loop: Some(event_loop),
         };
 
@@ -592,42 +598,6 @@ impl Application {
         }
     }
 
-    fn create_instance_data_buffers(
-        &self,
-    ) -> HashMap<String, Arc<CpuAccessibleBuffer<[InstanceData]>>> {
-        let mut instance_data: HashMap<String, Vec<InstanceData>> = HashMap::new();
-
-        for entity in self.scene.entities.iter() {
-            let model = entity.transform.get_model_matrix();
-
-            let instances = instance_data
-                .entry(entity.model_id.clone())
-                .or_insert(Vec::new());
-
-            (*instances).push(InstanceData {
-                model: model.to_cols_array_2d(),
-            });
-        }
-
-        // TODO: we should create one buffer that we'll update with the data from the scene
-        let mut instance_data_buffers: HashMap<String, Arc<CpuAccessibleBuffer<[InstanceData]>>> =
-            HashMap::new();
-
-        instance_data.iter().for_each(|(mesh_id, instances)| {
-            let buffer = CpuAccessibleBuffer::from_iter(
-                self.context.device.clone(),
-                BufferUsage::all(),
-                false,
-                instances.iter().cloned(),
-            )
-            .unwrap();
-
-            instance_data_buffers.insert(mesh_id.clone(), buffer);
-        });
-
-        instance_data_buffers
-    }
-
     fn create_scene_command_buffers(&mut self) {
         let dimensions_u32 = self.context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
@@ -638,7 +608,7 @@ impl Application {
             depth_range: 0.0..1.0,
         };
 
-        let instance_data_buffers = self.create_instance_data_buffers();
+        let instance_data_buffers = self.scene.get_instance_data_buffers(&self.context);
 
         let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
 
@@ -1025,6 +995,7 @@ impl Application {
         self.irradiance_convolution.execute(&self.context);
         self.prefilterenvmap.execute(&self.context);
         // self.brdf.execute(&self.context);
+        self.local_probe.execute(&self.context, &self.scene);
 
         self.event_loop
             .take()
