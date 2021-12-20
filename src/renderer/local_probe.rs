@@ -25,10 +25,10 @@ use vulkano::{
 
 use super::{
     context::Context, entity::InstanceData, model::Model, scene::Scene,
-    shaders::CameraUniformBufferObject, skybox_pass::SkyboxVertex, vertex::Vertex,
+    shaders::CameraUniformBufferObject, vertex::Vertex,
 };
 
-const DIM: f32 = 512.0;
+const DIM: f32 = 1024.0;
 const FORMAT: Format = Format::R16G16B16A16_SFLOAT;
 
 pub struct LocalProbe {
@@ -41,6 +41,8 @@ pub struct LocalProbe {
 
     camera_descriptor_set: Arc<PersistentDescriptorSet>,
     light_descriptor_set: Arc<PersistentDescriptorSet>,
+
+    pub render_pass: Arc<RenderPass>,
 }
 
 impl LocalProbe {
@@ -76,6 +78,8 @@ impl LocalProbe {
             framebuffer,
             camera_descriptor_set,
             light_descriptor_set,
+
+            render_pass,
         }
     }
 
@@ -316,7 +320,8 @@ impl LocalProbe {
             .primitive_restart(false)
             .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
             .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .front_face_counter_clockwise()
+            .depth_stencil_simple_depth()
+            .cull_mode_back()
             .viewports_dynamic_scissors_irrelevant(1)
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .with_auto_layout(context.device.clone(), |descriptor_set_desc| {
@@ -332,10 +337,11 @@ impl LocalProbe {
 
     fn create_depth_attachment(context: &Context) -> Arc<ImageView<AttachmentImage>> {
         ImageView::new(
-            AttachmentImage::input_attachment(
+            AttachmentImage::with_usage(
                 context.graphics_queue.device().clone(),
                 [DIM as u32, DIM as u32],
                 context.depth_format,
+                ImageUsage::none(),
             )
             .unwrap(),
         )
@@ -355,8 +361,6 @@ impl LocalProbe {
             ImageUsage {
                 color_attachment: true,
                 transfer_source: true,
-                transfer_destination: true,
-                sampled: true,
                 ..ImageUsage::none()
             },
             ImageCreateFlags::none(),
@@ -377,8 +381,6 @@ impl LocalProbe {
             MipmapsCount::Specific(Self::num_mips()),
             ImageUsage {
                 transfer_destination: true,
-                transfer_source: true,
-                color_attachment: true,
                 sampled: true,
                 ..ImageUsage::none()
             },

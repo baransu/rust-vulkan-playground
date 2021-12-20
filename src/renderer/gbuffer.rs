@@ -38,7 +38,7 @@ impl GBuffer {
         let albedo_buffer = Self::create_attachment_image(context, &target, Format::R8G8B8A8_UNORM);
         let metalic_roughness_buffer =
             Self::create_attachment_image(context, &target, Format::R8G8B8A8_UNORM);
-        let depth_buffer = Self::create_attachment_image(context, &target, context.depth_format);
+        let depth_buffer = Self::create_depth_attachment(context, &target);
 
         let render_pass = Self::create_render_pass(context);
         let framebuffer = Self::create_framebuffer(
@@ -185,6 +185,27 @@ impl GBuffer {
                 dimensions,
                 format,
                 usage,
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    }
+
+    fn create_depth_attachment(
+        context: &Context,
+        target: &GBufferTarget,
+    ) -> Arc<ImageView<AttachmentImage>> {
+        let (usage, dimensions) = Self::usage_dimensions(target);
+
+        ImageView::new(
+            AttachmentImage::with_usage(
+                context.graphics_queue.device().clone(),
+                dimensions,
+                context.depth_format,
+                ImageUsage {
+                    // depth_stencil_attachment: true,
+                    ..usage
+                },
             )
             .unwrap(),
         )

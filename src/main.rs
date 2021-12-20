@@ -50,9 +50,11 @@ use winit::{
 
 const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
 const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
+const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
 
-const MODEL_PATHS: [&str; 1] = [
+const MODEL_PATHS: [&str; 2] = [
     DAMAGED_HELMET,
+    BOTTLE,
     // "res/models/plane/plane.gltf",
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
@@ -157,12 +159,19 @@ impl Application {
             &shadow_graphics_pipeline,
         );
 
+        let skybox_texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
+
         let local_probe = LocalProbe::initialize(&context, &scene);
+
+        let skybox = SkyboxPass::initialize(
+            &context,
+            &gbuffer.render_pass,
+            // TODO: for debugging
+            &local_probe.cube_attachment_view,
+        );
 
         let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
         let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);
-
-        let skybox_texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
 
         let irradiance_convolution_fs_mod =
             irradiance_convolution_fs::load(context.device.clone()).unwrap();
@@ -182,8 +191,6 @@ impl Application {
             Format::R16G16B16A16_SFLOAT,
             512.0,
         );
-
-        let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, &skybox_texture.image);
 
         let light_system = LightSystem::initialize(
             &context,
@@ -249,14 +256,14 @@ impl Application {
             },
         ));
 
-        // scene.add_entity(Entity::new(
-        //     "WaterBottle",
-        //     Transform {
-        //         translation: Vec3::new(-5.0, 0.0, 0.0),
-        //         rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
-        //         scale: Vec3::ONE * 5.0,
-        //     },
-        // ));
+        scene.add_entity(Entity::new(
+            BOTTLE,
+            Transform {
+                translation: Vec3::new(-5.0, 0.0, 0.0),
+                rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+                scale: Vec3::ONE * 5.0,
+            },
+        ));
 
         // Plane
         // scene.add_entity(Entity::new(
@@ -992,10 +999,11 @@ impl Application {
 
         let original_rotation = self.camera.rotation;
 
+        self.local_probe.execute(&self.context, &self.scene);
+
         self.irradiance_convolution.execute(&self.context);
         self.prefilterenvmap.execute(&self.context);
         // self.brdf.execute(&self.context);
-        self.local_probe.execute(&self.context, &self.scene);
 
         self.event_loop
             .take()
