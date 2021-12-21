@@ -1,12 +1,12 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
-use glam::{Mat4, Vec3};
+use glam::{Mat3, Mat4, Vec3};
 
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        PrimaryCommandBuffer, SubpassContents,
+        PrimaryCommandBuffer, SecondaryAutoCommandBuffer, SubpassContents,
     },
     descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
     format::{ClearValue, Format},
@@ -20,12 +20,18 @@ use vulkano::{
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
     single_pass_renderpass,
-    sync::GpuFuture,
+    sync::{self, GpuFuture},
 };
 
 use super::{
-    context::Context, entity::InstanceData, gbuffer::GBuffer, model::Model, scene::Scene,
-    shaders::CameraUniformBufferObject, vertex::Vertex,
+    context::Context,
+    entity::InstanceData,
+    gbuffer::GBuffer,
+    model::Model,
+    scene::Scene,
+    shaders::CameraUniformBufferObject,
+    skybox_pass::{fs_local_probe, SkyboxPass},
+    vertex::Vertex,
 };
 
 const DIM: f32 = 1024.0;
@@ -41,11 +47,15 @@ pub struct LocalProbe {
 
     camera_descriptor_set: Arc<PersistentDescriptorSet>,
 
-    pub render_pass: Arc<RenderPass>,
+    skybox: SkyboxPass,
 }
 
 impl LocalProbe {
-    pub fn initialize(context: &Context, layout: &Arc<DescriptorSetLayout>) -> LocalProbe {
+    pub fn initialize(
+        context: &Context,
+        layout: &Arc<DescriptorSetLayout>,
+        skybox_texture: &Arc<ImageView<StorageImage>>,
+    ) -> LocalProbe {
         let render_pass = Self::create_render_pass(context);
         let pipeline = Self::create_graphics_pipeline(context, &render_pass, &layout);
 
@@ -66,6 +76,16 @@ impl LocalProbe {
         let camera_descriptor_set =
             Self::create_camera_descriptor_set(&pipeline, &camera_uniform_buffer);
 
+        let skybox = SkyboxPass::initialize(
+            context,
+            &render_pass,
+            &skybox_texture,
+            fs_local_probe::load(context.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap(),
+        );
+
         LocalProbe {
             camera_uniform_buffer,
             pipeline,
@@ -75,7 +95,7 @@ impl LocalProbe {
             framebuffer,
             camera_descriptor_set,
 
-            render_pass,
+            skybox,
         }
     }
 
@@ -106,15 +126,28 @@ impl LocalProbe {
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         matrix: Mat4,
     ) {
+        let projection =
+            Mat4::perspective_rh(90.0_f32.to_radians(), 1.0, 0.1, 10.0).to_cols_array_2d();
+
         // camera buffer
         let camera_buffer_data = Arc::new(CameraUniformBufferObject {
             view: matrix.to_cols_array_2d(),
-            proj: Mat4::perspective_rh(90.0_f32.to_radians(), 1.0, 0.1, 10.0).to_cols_array_2d(),
+            proj: projection,
             position: Vec3::ZERO.to_array(),
         });
 
         builder
             .update_buffer(self.camera_uniform_buffer.clone(), camera_buffer_data)
+            .unwrap();
+
+        let skybox_buffer_data = Arc::new(CameraUniformBufferObject {
+            view: Mat4::from_mat3(Mat3::from_mat4(matrix)).to_cols_array_2d(),
+            proj: projection,
+            position: Vec3::ZERO.to_array(),
+        });
+
+        builder
+            .update_buffer(self.skybox.uniform_buffer.clone(), skybox_buffer_data)
             .unwrap();
     }
 
@@ -200,14 +233,12 @@ impl LocalProbe {
         .unwrap()
     }
 
-    pub fn execute(&self, context: &Context, scene: &Scene) {
-        let mut builder = AutoCommandBufferBuilder::primary(
-            context.device.clone(),
-            context.graphics_queue.family(),
-            CommandBufferUsage::OneTimeSubmit,
-        )
-        .unwrap();
-
+    pub fn execute(
+        &self,
+        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        context: &Context,
+        scene: &Scene,
+    ) {
         let mats = matrices();
 
         let light_descriptor_set = Self::create_light_descriptor_set(&self.pipeline, scene);
@@ -219,13 +250,39 @@ impl LocalProbe {
             depth_range: 0.0..1.0,
         };
 
+        let mut secondary_builder = AutoCommandBufferBuilder::secondary_graphics(
+            context.device.clone(),
+            context.graphics_queue.family(),
+            CommandBufferUsage::SimultaneousUse,
+            self.pipeline.subpass().clone(),
+        )
+        .unwrap();
+
+        secondary_builder
+            .bind_pipeline_graphics(self.pipeline.clone())
+            .set_viewport(0, [viewport.clone()]);
+
+        for model in scene.models.iter() {
+            // if there is no instance_data_buffer it means we have 0 instances for this mesh
+            if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
+                self.draw_model(
+                    model,
+                    &mut secondary_builder,
+                    instance_data_buffer,
+                    &light_descriptor_set,
+                );
+            }
+        }
+
+        let model_command_buffer = Arc::new(secondary_builder.build().unwrap());
+
         for f in 0..6 {
-            self.update_uniform_buffers(&mut builder, mats[f]);
+            self.update_uniform_buffers(builder, mats[f]);
 
             builder
                 .begin_render_pass(
                     self.framebuffer.clone(),
-                    SubpassContents::Inline,
+                    SubpassContents::SecondaryCommandBuffers,
                     vec![
                         ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
                         ClearValue::Depth(1.0),
@@ -234,20 +291,12 @@ impl LocalProbe {
                 .unwrap();
 
             builder
-                .bind_pipeline_graphics(self.pipeline.clone())
-                .set_viewport(0, [viewport.clone()]);
+                .execute_commands(self.skybox.command_buffer.clone())
+                .unwrap();
 
-            for model in scene.models.iter() {
-                // if there is no instance_data_buffer it means we have 0 instances for this mesh
-                if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
-                    self.draw_model(
-                        model,
-                        &mut builder,
-                        instance_data_buffer,
-                        &light_descriptor_set,
-                    );
-                }
-            }
+            builder
+                .execute_commands(model_command_buffer.clone())
+                .unwrap();
 
             builder.end_render_pass().unwrap();
 
@@ -274,16 +323,6 @@ impl LocalProbe {
                 )
                 .unwrap();
         }
-
-        builder
-            .build()
-            .unwrap()
-            .execute(context.graphics_queue.clone())
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None)
-            .unwrap();
     }
 
     fn create_graphics_pipeline(
@@ -388,7 +427,7 @@ impl LocalProbe {
     fn draw_model(
         &self,
         model: &Model,
-        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
         light_descriptor_set: &Arc<PersistentDescriptorSet>,
     ) {
@@ -406,7 +445,7 @@ impl LocalProbe {
     fn draw_model_node(
         &self,
         model: &Model,
-        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         node_index: usize,
         instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
         light_descriptor_set: &Arc<PersistentDescriptorSet>,
@@ -441,7 +480,7 @@ impl LocalProbe {
     fn draw_model_primitive(
         &self,
         model: &Model,
-        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         primitive_index: usize,
         instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
         light_descriptor_set: &Arc<PersistentDescriptorSet>,

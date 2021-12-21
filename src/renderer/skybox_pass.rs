@@ -17,6 +17,7 @@ use vulkano::{
     },
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{RenderPass, Subpass},
+    shader::EntryPoint,
     sync::GpuFuture,
 };
 
@@ -50,11 +51,13 @@ impl SkyboxPass {
         context: &Context,
         render_pass: &Arc<RenderPass>,
         texture: &Arc<T>,
+        fragment_shader_entry_point: EntryPoint,
     ) -> SkyboxPass
     where
         T: ImageViewAbstract + 'static,
     {
-        let graphics_pipeline = Self::create_graphics_pipeline(context, &render_pass);
+        let graphics_pipeline =
+            Self::create_graphics_pipeline(context, &render_pass, fragment_shader_entry_point);
 
         let vertex_buffer = Self::create_vertex_buffer(context);
 
@@ -154,9 +157,9 @@ impl SkyboxPass {
     fn create_graphics_pipeline(
         context: &Context,
         render_pass: &Arc<RenderPass>,
+        fragment_shader_entry_point: EntryPoint,
     ) -> Arc<GraphicsPipeline> {
         let vert_shader_module = vs::load(context.device.clone()).unwrap();
-        let frag_shader_module = fs::load(context.device.clone()).unwrap();
 
         // TODO: add that to context as util or something
         let dimensions_u32 = context.swap_chain.dimensions();
@@ -173,11 +176,11 @@ impl SkyboxPass {
             .triangle_list()
             .primitive_restart(false)
             .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-            .fragment_shader(frag_shader_module.entry_point("main").unwrap(), ())
+            .fragment_shader(fragment_shader_entry_point, ())
             .depth_clamp(false)
             .polygon_mode_fill() // = default
             .line_width(1.0) // = default
-            .cull_mode_back()
+            // .cull_mode_back()
             .front_face_clockwise()
             .blend_pass_through()
             .viewports_dynamic_scissors_irrelevant(1)
@@ -361,7 +364,7 @@ pub mod vs {
     }
 }
 
-pub mod fs {
+pub mod fs_gbuffer {
     vulkano_shaders::shader! {
                     ty: "fragment",
                     src: "
@@ -383,6 +386,26 @@ pub mod fs {
         out_position = vec4(0.0, 0.0, 0.0, 0.0);
         out_normal = vec3(0.0, 0.0, 0.0);
         out_metallic_roughness = vec4(0.0, 0.0, 0.0, 0.0);
+	}
+"
+    }
+}
+
+pub mod fs_local_probe {
+    vulkano_shaders::shader! {
+                    ty: "fragment",
+                    src: "
+	#version 450
+
+	layout (binding = 1) uniform samplerCube skybox_texture;
+	
+	layout (location = 0) in vec3 inUV;
+	
+	// it's gbuffer albedo
+    layout(location = 0) out vec4 out_albedo;
+
+	void main() {
+		out_albedo = texture(skybox_texture, inUV);
 	}
 "
     }

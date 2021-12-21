@@ -120,7 +120,6 @@ vec3 specularContribution(vec3 L, vec3 V, vec3 N, vec3 F0, float metallic, float
 
 void main() {
 	vec3 raw_albedo = texture(u_albedo, f_uv).xyz;
-	vec3 albedo = pow(raw_albedo, vec3(2.2));
 	float depth = texture(u_depth, f_uv).r;
 
 	vec3 Normal = texture(u_normals, f_uv).xyz;

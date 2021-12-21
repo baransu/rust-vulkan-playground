@@ -52,6 +52,8 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
 };
 
+use crate::renderer::skybox_pass::fs_gbuffer;
+
 const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
 const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
 const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
@@ -208,13 +210,17 @@ impl Application {
 
         println!("Creating local probe");
 
-        let local_probe = LocalProbe::initialize(&context, &layout);
+        let local_probe = LocalProbe::initialize(&context, &layout, &skybox_texture);
 
         let skybox = SkyboxPass::initialize(
             &context,
             &gbuffer.render_pass,
             // TODO: for debugging
             &local_probe.cube_attachment_view,
+            fs_gbuffer::load(context.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap(),
         );
 
         let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
@@ -1046,11 +1052,29 @@ impl Application {
 
         let original_rotation = self.camera.rotation;
 
-        self.local_probe.execute(&self.context, &self.scene);
+        let mut builder = AutoCommandBufferBuilder::primary(
+            self.context.device.clone(),
+            self.context.graphics_queue.family(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
 
-        self.irradiance_convolution.execute(&self.context);
-        self.prefilterenvmap.execute(&self.context);
-        // self.brdf.execute(&self.context);
+        self.local_probe
+            .execute(&mut builder, &self.context, &self.scene);
+
+        self.irradiance_convolution.execute(&mut builder);
+
+        self.prefilterenvmap.execute(&mut builder);
+
+        builder
+            .build()
+            .unwrap()
+            .execute(self.context.graphics_queue.clone())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None)
+            .unwrap();
 
         self.event_loop
             .take()

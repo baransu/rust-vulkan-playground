@@ -204,14 +204,7 @@ impl CubemapGenPass {
         .unwrap()
     }
 
-    pub fn execute(&self, context: &Context) {
-        let mut builder = AutoCommandBufferBuilder::primary(
-            context.device.clone(),
-            context.graphics_queue.family(),
-            CommandBufferUsage::OneTimeSubmit,
-        )
-        .unwrap();
-
+    pub fn execute(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) {
         let mats = matrices();
 
         let num_mips = (self.dim.log2().floor() + 1.0) as u32;
@@ -227,7 +220,7 @@ impl CubemapGenPass {
                     depth_range: 0.0..1.0,
                 };
 
-                self.update_uniform_buffers(&mut builder, mats[f], m, num_mips);
+                self.update_uniform_buffers(builder, mats[f], m, num_mips);
 
                 builder
                     .begin_render_pass(
@@ -272,16 +265,6 @@ impl CubemapGenPass {
                     .unwrap();
             }
         }
-
-        builder
-            .build()
-            .unwrap()
-            .execute(context.graphics_queue.clone())
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None)
-            .unwrap();
     }
 
     fn create_graphics_pipeline(
