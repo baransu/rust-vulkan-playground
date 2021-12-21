@@ -212,17 +212,6 @@ impl Application {
 
         let local_probe = LocalProbe::initialize(&context, &layout, &skybox_texture);
 
-        let skybox = SkyboxPass::initialize(
-            &context,
-            &gbuffer.render_pass,
-            // TODO: for debugging
-            &local_probe.cube_attachment_view,
-            fs_gbuffer::load(context.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap(),
-        );
-
         let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
         let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);
 
@@ -230,6 +219,7 @@ impl Application {
             irradiance_convolution_fs::load(context.device.clone()).unwrap();
         let irradiance_convolution = CubemapGenPass::initialize(
             &context,
+            &local_probe.cube_attachment_view,
             &skybox_texture,
             irradiance_convolution_fs_mod.entry_point("main").unwrap(),
             Format::R32G32B32A32_SFLOAT,
@@ -239,10 +229,22 @@ impl Application {
         let prefilterenvmap_fs_mod = prefilterenvmap_fs::load(context.device.clone()).unwrap();
         let prefilterenvmap = CubemapGenPass::initialize(
             &context,
+            &local_probe.cube_attachment_view,
             &skybox_texture,
             prefilterenvmap_fs_mod.entry_point("main").unwrap(),
             Format::R16G16B16A16_SFLOAT,
             512.0,
+        );
+
+        let skybox = SkyboxPass::initialize(
+            &context,
+            &gbuffer.render_pass,
+            // TODO: for debugging
+            &irradiance_convolution.cube_attachment_view,
+            fs_gbuffer::load(context.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap(),
         );
 
         let light_system = LightSystem::initialize(
@@ -1040,6 +1042,21 @@ impl Application {
         }
     }
 
+    fn prebuild(&mut self) {
+        self.local_probe
+            .execute(&self.context, &self.scene)
+            .execute(self.context.graphics_queue.clone())
+            .unwrap()
+            .then_execute_same_queue(self.irradiance_convolution.execute(&self.context))
+            .unwrap()
+            .then_execute_same_queue(self.prefilterenvmap.execute(&self.context))
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None)
+            .unwrap();
+    }
+
     fn main_loop(mut self) {
         let mut mouse_buttons: HashMap<MouseButton, ElementState> = HashMap::new();
         let mut keyboard_buttons: HashMap<VirtualKeyCode, ElementState> = HashMap::new();
@@ -1052,29 +1069,7 @@ impl Application {
 
         let original_rotation = self.camera.rotation;
 
-        let mut builder = AutoCommandBufferBuilder::primary(
-            self.context.device.clone(),
-            self.context.graphics_queue.family(),
-            CommandBufferUsage::OneTimeSubmit,
-        )
-        .unwrap();
-
-        self.local_probe
-            .execute(&mut builder, &self.context, &self.scene);
-
-        self.irradiance_convolution.execute(&mut builder);
-
-        self.prefilterenvmap.execute(&mut builder);
-
-        builder
-            .build()
-            .unwrap()
-            .execute(self.context.graphics_queue.clone())
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None)
-            .unwrap();
+        self.prebuild();
 
         self.event_loop
             .take()

@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use glam::{Mat3, Mat4, Vec3};
 
@@ -6,7 +6,7 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        PrimaryCommandBuffer, SecondaryAutoCommandBuffer, SubpassContents,
+        SecondaryAutoCommandBuffer, SubpassContents,
     },
     descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
     format::{ClearValue, Format},
@@ -19,8 +19,8 @@ use vulkano::{
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
+    sampler::Filter,
     single_pass_renderpass,
-    sync::{self, GpuFuture},
 };
 
 use super::{
@@ -42,7 +42,7 @@ pub struct LocalProbe {
     camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     pub cube_attachment: Arc<StorageImage>,
     pub cube_attachment_view: Arc<ImageView<StorageImage>>,
-    color_attachment: Arc<StorageImage>,
+    color_attachment: Arc<AttachmentImage>,
     framebuffer: Arc<Framebuffer>,
 
     camera_descriptor_set: Arc<PersistentDescriptorSet>,
@@ -126,14 +126,17 @@ impl LocalProbe {
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         matrix: Mat4,
     ) {
-        let projection =
-            Mat4::perspective_rh(90.0_f32.to_radians(), 1.0, 0.1, 10.0).to_cols_array_2d();
+        let position = Vec3::ZERO.to_array();
+
+        let mut proj = Mat4::perspective_rh(90.0_f32.to_radians(), 1.0, 0.1, 10.0);
+
+        proj.y_axis.y *= -1.0;
 
         // camera buffer
         let camera_buffer_data = Arc::new(CameraUniformBufferObject {
             view: matrix.to_cols_array_2d(),
-            proj: projection,
-            position: Vec3::ZERO.to_array(),
+            proj: proj.to_cols_array_2d(),
+            position,
         });
 
         builder
@@ -142,8 +145,8 @@ impl LocalProbe {
 
         let skybox_buffer_data = Arc::new(CameraUniformBufferObject {
             view: Mat4::from_mat3(Mat3::from_mat4(matrix)).to_cols_array_2d(),
-            proj: projection,
-            position: Vec3::ZERO.to_array(),
+            proj: proj.to_cols_array_2d(),
+            position,
         });
 
         builder
@@ -196,7 +199,7 @@ impl LocalProbe {
     fn create_framebuffer(
         context: &Context,
         render_pass: &Arc<RenderPass>,
-        target: &Arc<ImageView<StorageImage>>,
+        target: &Arc<ImageView<AttachmentImage>>,
     ) -> Arc<Framebuffer> {
         let depth_attachment = Self::create_depth_attachment(context);
 
@@ -233,12 +236,7 @@ impl LocalProbe {
         .unwrap()
     }
 
-    pub fn execute(
-        &self,
-        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        context: &Context,
-        scene: &Scene,
-    ) {
+    pub fn execute(&self, context: &Context, scene: &Scene) -> PrimaryAutoCommandBuffer {
         let mats = matrices();
 
         let light_descriptor_set = Self::create_light_descriptor_set(&self.pipeline, scene);
@@ -276,8 +274,15 @@ impl LocalProbe {
 
         let model_command_buffer = Arc::new(secondary_builder.build().unwrap());
 
+        let mut builder = AutoCommandBufferBuilder::primary(
+            context.device.clone(),
+            context.graphics_queue.family(),
+            CommandBufferUsage::SimultaneousUse,
+        )
+        .unwrap();
+
         for f in 0..6 {
-            self.update_uniform_buffers(builder, mats[f]);
+            self.update_uniform_buffers(&mut builder, mats[f]);
 
             builder
                 .begin_render_pass(
@@ -300,29 +305,25 @@ impl LocalProbe {
 
             builder.end_render_pass().unwrap();
 
-            let source = self.color_attachment.clone();
-
-            let destination = self.cube_attachment.clone();
-
             builder
-                .copy_image(
-                    source,
+                .blit_image(
+                    self.color_attachment.clone(),
                     [0, 0, 0],
+                    [DIM as i32, DIM as i32, 1],
                     0,
                     0,
-                    destination,
+                    self.cube_attachment.clone(),
                     [0, 0, 0],
+                    [DIM as i32, DIM as i32, 1],
                     f as u32,
                     0,
-                    [
-                        viewport.dimensions[0] as u32,
-                        viewport.dimensions[1] as u32,
-                        1,
-                    ],
                     1,
+                    Filter::Linear,
                 )
                 .unwrap();
         }
+
+        builder.build().unwrap()
     }
 
     fn create_graphics_pipeline(
@@ -380,23 +381,18 @@ impl LocalProbe {
         .unwrap()
     }
 
-    fn create_color_attachment(context: &Context) -> Arc<StorageImage> {
-        StorageImage::with_usage(
+    fn create_color_attachment(context: &Context) -> Arc<AttachmentImage> {
+        AttachmentImage::with_usage(
             context.device.clone(),
-            ImageDimensions::Dim2d {
-                width: DIM as u32,
-                height: DIM as u32,
-                // TODO: what are array_layers?
-                array_layers: 1,
-            },
+            [DIM as u32, DIM as u32],
             FORMAT,
             ImageUsage {
                 color_attachment: true,
+                transfer_destination: true,
                 transfer_source: true,
+                sampled: true,
                 ..ImageUsage::none()
             },
-            ImageCreateFlags::none(),
-            [context.graphics_queue.family()].iter().cloned(),
         )
         .unwrap()
     }
@@ -412,6 +408,7 @@ impl LocalProbe {
             FORMAT,
             ImageUsage {
                 transfer_destination: true,
+                transfer_source: true,
                 sampled: true,
                 ..ImageUsage::none()
             },

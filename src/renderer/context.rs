@@ -177,7 +177,7 @@ impl Context {
         let severity = MessageSeverity {
             error: true,
             warning: true,
-            information: false,
+            information: true,
             verbose: true,
         };
 
@@ -231,7 +231,7 @@ impl Context {
             &physical_device
                 .required_extensions()
                 .union(&DEVICE_EXTENSIONS),
-            [(queue_family, 0.5)].iter().cloned(),
+            vec![(queue_family, 0.5)],
         )
         .unwrap();
 

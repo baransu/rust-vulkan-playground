@@ -12,12 +12,12 @@ use vulkano::{
     format::{ClearValue, Format},
     image::{
         view::{ImageView, ImageViewType},
-        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, MipmapsCount,
-        StorageImage,
+        AttachmentImage, ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract,
+        MipmapsCount, StorageImage,
     },
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{Framebuffer, RenderPass, Subpass},
-    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
+    sampler::Filter,
     shader::EntryPoint,
     single_pass_renderpass,
     sync::GpuFuture,
@@ -39,8 +39,8 @@ pub struct CubemapGenPass {
     roughness_uniform_buffer: Arc<CpuAccessibleBuffer<RoughnessBufferObject>>,
     pub cube_attachment: Arc<StorageImage>,
     pub cube_attachment_view: Arc<ImageView<StorageImage>>,
-    pub color_attachment: Arc<StorageImage>,
-    pub color_attachment_view: Arc<ImageView<StorageImage>>,
+    pub color_attachment: Arc<AttachmentImage>,
+    pub color_attachment_view: Arc<ImageView<AttachmentImage>>,
     pub render_pass: Arc<RenderPass>,
     pub framebuffer: Arc<Framebuffer>,
     dim: f32,
@@ -49,7 +49,8 @@ pub struct CubemapGenPass {
 impl CubemapGenPass {
     pub fn initialize<T>(
         context: &Context,
-        input_image: &Arc<T>,
+        local_cubemap: &Arc<T>,
+        skybox_cubemap: &Arc<T>,
         fragment_shader_entry_point: EntryPoint,
         format: Format,
         dim: f32,
@@ -70,7 +71,8 @@ impl CubemapGenPass {
             &pipeline,
             &camera_uniform_buffer,
             &roughness_uniform_buffer,
-            &input_image,
+            &skybox_cubemap,
+            &local_cubemap,
             dim,
         );
 
@@ -177,7 +179,7 @@ impl CubemapGenPass {
 
     fn create_framebuffer(
         render_pass: &Arc<RenderPass>,
-        target: &Arc<ImageView<StorageImage>>,
+        target: &Arc<ImageView<AttachmentImage>>,
     ) -> Arc<Framebuffer> {
         Framebuffer::start(render_pass.clone())
             .add(target.clone())
@@ -204,10 +206,17 @@ impl CubemapGenPass {
         .unwrap()
     }
 
-    pub fn execute(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) {
+    pub fn execute(&self, context: &Context) -> PrimaryAutoCommandBuffer {
         let mats = matrices();
 
         let num_mips = (self.dim.log2().floor() + 1.0) as u32;
+
+        let mut builder = AutoCommandBufferBuilder::primary(
+            context.device.clone(),
+            context.graphics_queue.family(),
+            CommandBufferUsage::SimultaneousUse,
+        )
+        .unwrap();
 
         for m in 0..num_mips {
             for f in 0..6 {
@@ -220,13 +229,13 @@ impl CubemapGenPass {
                     depth_range: 0.0..1.0,
                 };
 
-                self.update_uniform_buffers(builder, mats[f], m, num_mips);
+                self.update_uniform_buffers(&mut builder, mats[f], m, num_mips);
 
                 builder
                     .begin_render_pass(
                         self.framebuffer.clone(),
                         SubpassContents::Inline,
-                        vec![ClearValue::Float([0.0, 0.0, 0.2, 0.0])],
+                        vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
                     )
                     .unwrap();
 
@@ -245,26 +254,26 @@ impl CubemapGenPass {
 
                 builder.end_render_pass().unwrap();
 
-                let source = self.color_attachment.clone();
-
-                let destination = self.cube_attachment.clone();
-
                 builder
-                    .copy_image(
-                        source,
+                    .blit_image(
+                        self.color_attachment.clone(),
                         [0, 0, 0],
+                        [width as i32, height as i32, 1],
                         0,
                         0,
-                        destination,
+                        self.cube_attachment.clone(),
                         [0, 0, 0],
+                        [width as i32, height as i32, 1],
                         f as u32,
-                        m,
-                        [width as u32, height as u32, 1],
+                        m as u32,
                         1,
+                        Filter::Linear,
                     )
                     .unwrap();
             }
         }
+
+        builder.build().unwrap()
     }
 
     fn create_graphics_pipeline(
@@ -300,7 +309,8 @@ impl CubemapGenPass {
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         roughness_uniform_buffer: &Arc<CpuAccessibleBuffer<RoughnessBufferObject>>,
-        input_image: &Arc<T>,
+        skybox_cubemap: &Arc<T>,
+        local_cubemap: &Arc<T>,
         dim: f32,
     ) -> Arc<PersistentDescriptorSet>
     where
@@ -319,23 +329,11 @@ impl CubemapGenPass {
             .unwrap();
 
         set_builder
-            .add_sampled_image(
-                input_image.clone(),
-                Sampler::new(
-                    context.device.clone(),
-                    Filter::Linear,
-                    Filter::Linear,
-                    MipmapMode::Linear,
-                    SamplerAddressMode::ClampToEdge,
-                    SamplerAddressMode::ClampToEdge,
-                    SamplerAddressMode::ClampToEdge,
-                    0.0,
-                    1.0,
-                    0.0,
-                    1.0,
-                )
-                .unwrap(),
-            )
+            .add_sampled_image(skybox_cubemap.clone(), context.attachment_sampler.clone())
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(local_cubemap.clone(), context.attachment_sampler.clone())
             .unwrap();
 
         set_builder
@@ -345,25 +343,20 @@ impl CubemapGenPass {
         set_builder.build().unwrap()
     }
 
-    fn create_color_attachment(context: &Context, format: Format, dim: f32) -> Arc<StorageImage> {
-        StorageImage::with_usage(
+    fn create_color_attachment(
+        context: &Context,
+        format: Format,
+        dim: f32,
+    ) -> Arc<AttachmentImage> {
+        AttachmentImage::with_usage(
             context.device.clone(),
-            ImageDimensions::Dim2d {
-                width: dim as u32,
-                height: dim as u32,
-                // TODO: what are array_layers?
-                array_layers: 1,
-            },
+            [dim as u32, dim as u32],
             format,
             ImageUsage {
                 color_attachment: true,
                 transfer_source: true,
-                transfer_destination: true,
-                sampled: true,
                 ..ImageUsage::none()
             },
-            ImageCreateFlags::none(),
-            [context.graphics_queue.family()].iter().cloned(),
         )
         .unwrap()
     }

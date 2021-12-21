@@ -182,7 +182,7 @@ impl SkyboxPass {
             .line_width(1.0) // = default
             // .cull_mode_back()
             .front_face_clockwise()
-            .blend_pass_through()
+            // .blend_pass_through()
             .viewports_dynamic_scissors_irrelevant(1)
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())
@@ -294,15 +294,13 @@ impl SkyboxPass {
             )
             .unwrap();
 
-        builder
+        let future = builder
             .build()
             .unwrap()
             .execute(context.graphics_queue.clone())
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None)
             .unwrap();
+
+        future.flush().unwrap();
 
         ImageView::start(image)
             .with_type(ImageViewType::Cube)
