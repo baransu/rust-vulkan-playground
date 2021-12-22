@@ -1,0 +1,692 @@
+Launching Vulkan Application:
+- Layers overridden by "Validation" configuration.
+- Executable Path: /Users/baransu/Projects/rust-vulkan/target/debug/rust-vulkan
+- Working Directory: /Users/baransu/Projects/rust-vulkan/target/debug
+- Log file: /Users/baransu/Projects/rust-vulkan/vulkan-log.txt
+Supported extensions: [VK_KHR_device_group_creation, VK_KHR_external_fence_capabilities, VK_KHR_external_memory_capabilities, VK_KHR_external_semaphore_capabilities, VK_KHR_get_physical_device_properties2, VK_KHR_get_surface_capabilities2, VK_KHR_surface, VK_EXT_debug_report, VK_EXT_debug_utils, VK_EXT_metal_surface, VK_EXT_swapchain_colorspace, VK_MVK_macos_surface]
+UNASSIGNED-BestPractices-vkCreateInstance-deprecated-extension(WARN / SPEC): msgNum: -1861097675 - Validation Warning: [ UNASSIGNED-BestPractices-vkCreateInstance-deprecated-extension ] Object 0: VK_NULL_HANDLE, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x9111e735 | CreateInstance(): Attempting to enable deprecated extension VK_KHR_get_physical_device_properties2, but this extension has been promoted to VK_VERSION_1_1.
+    Objects: 1
+        [0] 0, type: 1, name: NULL
+UNASSIGNED-BestPractices-vkCreateInstance-specialuse-extension-debugging(WARN / SPEC): msgNum: -2111305990 - Validation Warning: [ UNASSIGNED-BestPractices-vkCreateInstance-specialuse-extension-debugging ] Object 0: VK_NULL_HANDLE, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x822806fa | CreateInstance(): Attempting to enable extension VK_EXT_debug_utils, but this extension is intended to support use by applications when debugging and it is strongly recommended that it be otherwise avoided.
+    Objects: 1
+        [0] 0, type: 1, name: NULL
+UNASSIGNED-BestPractices-vkCreateInstance-deprecated-extension(WARN / SPEC): msgNum: -1861097675 - Validation Warning: [ UNASSIGNED-BestPractices-vkCreateInstance-deprecated-extension ] Object 0: VK_NULL_HANDLE, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x9111e735 | CreateInstance(): Attempting to enable deprecated extension VK_MVK_macos_surface, but this extension has been deprecated by VK_EXT_metal_surface.
+    Objects: 1
+        [0] 0, type: 1, name: NULL
+UNASSIGNED-khronos-validation-createinstance-status-message(INFO / SPEC): msgNum: -671457468 - Validation Information: [ UNASSIGNED-khronos-validation-createinstance-status-message ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0xd7fa5f44 | Khronos Validation Layer Active:
+    Settings File: Found at /Users/baransu/.local/share/vulkan/settings.d/vk_layer_settings.txt specified by VkConfig application override.
+    Current Enables: VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT, VALIDATION_CHECK_ENABLE_VENDOR_SPECIFIC_ARM.
+    Current Disables: VK_VALIDATION_FEATURE_DISABLE_OBJECT_LIFETIMES_EXT, VK_VALIDATION_FEATURE_DISABLE_CORE_CHECKS_EXT, VK_VALIDATION_FEATURE_DISABLE_THREAD_SAFETY_EXT, VK_VALIDATION_FEATURE_DISABLE_API_PARAMETERS_EXT, VK_VALIDATION_FEATURE_DISABLE_UNIQUE_HANDLES_EXT.
+
+    Objects: 1
+        [0] 0x151827600, type: 1, name: NULL
+Using device: Apple M1 (type: IntegratedGpu)
+validation layer: "Device Extension: VK_KHR_16bit_storage (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_8bit_storage (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_bind_memory2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_create_renderpass2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_dedicated_allocation (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.3"
+validation layer: "Device Extension: VK_KHR_depth_stencil_resolve (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_descriptor_update_template (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_device_group (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.4"
+validation layer: "Device Extension: VK_KHR_driver_properties (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_external_fence (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_external_memory (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_external_semaphore (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_get_memory_requirements2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_imageless_framebuffer (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_image_format_list (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_maintenance1 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_KHR_maintenance2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_maintenance3 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_multiview (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_portability_subset (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_push_descriptor (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_KHR_relaxed_block_layout (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_sampler_mirror_clamp_to_edge (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.3"
+validation layer: "Device Extension: VK_KHR_sampler_ycbcr_conversion (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.14"
+validation layer: "Device Extension: VK_KHR_shader_draw_parameters (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_shader_float16_int8 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_shader_subgroup_extended_types (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_storage_buffer_storage_class (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_swapchain (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.70"
+validation layer: "Device Extension: VK_KHR_swapchain_mutable_format (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_timeline_semaphore (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_KHR_uniform_buffer_standard_layout (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_variable_pointers (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_debug_marker (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.4"
+validation layer: "Device Extension: VK_EXT_descriptor_indexing (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_EXT_fragment_shader_interlock (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_hdr_metadata (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_EXT_host_query_reset (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_image_robustness (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_inline_uniform_block (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_memory_budget (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_post_depth_coverage (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_private_data (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_robustness2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_scalar_block_layout (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_shader_stencil_export (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_shader_viewport_index_layer (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_subgroup_size_control (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_EXT_texel_buffer_alignment (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_texture_compression_astc_hdr (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_vertex_attribute_divisor (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.3"
+validation layer: "Device Extension: VK_AMD_gpu_shader_half_float (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_AMD_negative_viewport_height (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_AMD_shader_image_load_store_lod (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_AMD_shader_trinary_minmax (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_IMG_format_pvrtc (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_INTEL_shader_integer_functions2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_GOOGLE_display_timing (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_NV_glsl_shader (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_16bit_storage (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_8bit_storage (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_bind_memory2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_create_renderpass2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_dedicated_allocation (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.3"
+validation layer: "Device Extension: VK_KHR_depth_stencil_resolve (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_descriptor_update_template (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_device_group (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.4"
+validation layer: "Device Extension: VK_KHR_driver_properties (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_external_fence (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_external_memory (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_external_semaphore (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_get_memory_requirements2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_imageless_framebuffer (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_image_format_list (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_maintenance1 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_KHR_maintenance2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_maintenance3 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_multiview (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_portability_subset (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_push_descriptor (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_KHR_relaxed_block_layout (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_sampler_mirror_clamp_to_edge (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.3"
+validation layer: "Device Extension: VK_KHR_sampler_ycbcr_conversion (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.14"
+validation layer: "Device Extension: VK_KHR_shader_draw_parameters (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_shader_float16_int8 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_shader_subgroup_extended_types (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_storage_buffer_storage_class (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_swapchain (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.70"
+validation layer: "Device Extension: VK_KHR_swapchain_mutable_format (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_timeline_semaphore (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_KHR_uniform_buffer_standard_layout (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_variable_pointers (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_debug_marker (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.4"
+validation layer: "Device Extension: VK_EXT_descriptor_indexing (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_EXT_fragment_shader_interlock (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_hdr_metadata (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_EXT_host_query_reset (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_image_robustness (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_inline_uniform_block (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_memory_budget (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_post_depth_coverage (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_private_data (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_robustness2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_scalar_block_layout (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_shader_stencil_export (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_shader_viewport_index_layer (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_subgroup_size_control (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_EXT_texel_buffer_alignment (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_texture_compression_astc_hdr (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_vertex_attribute_divisor (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.3"
+validation layer: "Device Extension: VK_AMD_gpu_shader_half_float (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_AMD_negative_viewport_height (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_AMD_shader_image_load_store_lod (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_AMD_shader_trinary_minmax (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_IMG_format_pvrtc (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_INTEL_shader_integer_functions2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_GOOGLE_display_timing (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_NV_glsl_shader (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_16bit_storage (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_8bit_storage (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_bind_memory2 (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_create_renderpass2 (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_dedicated_allocation (Unknown) version 0.0.3"
+validation layer: "Device Extension: VK_KHR_depth_stencil_resolve (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_descriptor_update_template (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_device_group (Unknown) version 0.0.4"
+validation layer: "Device Extension: VK_KHR_driver_properties (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_external_fence (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_external_memory (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_external_semaphore (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_get_memory_requirements2 (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_imageless_framebuffer (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_image_format_list (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_maintenance1 (Unknown) version 0.0.2"
+validation layer: "Device Extension: VK_KHR_maintenance2 (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_maintenance3 (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_multiview (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_portability_subset (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_push_descriptor (Unknown) version 0.0.2"
+validation layer: "Device Extension: VK_KHR_relaxed_block_layout (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_sampler_mirror_clamp_to_edge (Unknown) version 0.0.3"
+validation layer: "Device Extension: VK_KHR_sampler_ycbcr_conversion (Unknown) version 0.0.14"
+validation layer: "Device Extension: VK_KHR_shader_draw_parameters (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_shader_float16_int8 (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_shader_subgroup_extended_types (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_storage_buffer_storage_class (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_swapchain (Unknown) version 0.0.70"
+validation layer: "Device Extension: VK_KHR_swapchain_mutable_format (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_timeline_semaphore (Unknown) version 0.0.2"
+validation layer: "Device Extension: VK_KHR_uniform_buffer_standard_layout (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_variable_pointers (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_debug_marker (Unknown) version 0.0.4"
+validation layer: "Device Extension: VK_EXT_descriptor_indexing (Unknown) version 0.0.2"
+validation layer: "Device Extension: VK_EXT_fragment_shader_interlock (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_hdr_metadata (Unknown) version 0.0.2"
+validation layer: "Device Extension: VK_EXT_host_query_reset (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_image_robustness (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_inline_uniform_block (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_memory_budget (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_post_depth_coverage (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_private_data (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_robustness2 (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_scalar_block_layout (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_shader_stencil_export (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_shader_viewport_index_layer (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_subgroup_size_control (Unknown) version 0.0.2"
+validation layer: "Device Extension: VK_EXT_texel_buffer_alignment (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_texture_compression_astc_hdr (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_vertex_attribute_divisor (Unknown) version 0.0.3"
+validation layer: "Device Extension: VK_AMD_gpu_shader_half_float (Unknown) version 0.0.2"
+validation layer: "Device Extension: VK_AMD_negative_viewport_height (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_AMD_shader_image_load_store_lod (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_AMD_shader_trinary_minmax (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_IMG_format_pvrtc (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_INTEL_shader_integer_functions2 (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_GOOGLE_display_timing (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_NV_glsl_shader (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_validation_cache (Unknown) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_tooling_info (Unknown) version 0.0.1"
+validation layer: "Loading layer library /usr/local/share/vulkan/explicit_layer.d/../../../lib/libVkLayer_khronos_validation.dylib"
+validation layer: "Inserted device layer VK_LAYER_KHRONOS_validation (/usr/local/share/vulkan/explicit_layer.d/../../../lib/libVkLayer_khronos_validation.dylib)"
+validation layer: "Device Extension: VK_KHR_16bit_storage (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_8bit_storage (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_bind_memory2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_create_renderpass2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_dedicated_allocation (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.3"
+validation layer: "Device Extension: VK_KHR_depth_stencil_resolve (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_descriptor_update_template (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_device_group (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.4"
+validation layer: "Device Extension: VK_KHR_driver_properties (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_external_fence (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_external_memory (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_external_semaphore (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_get_memory_requirements2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_imageless_framebuffer (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_image_format_list (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_maintenance1 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_KHR_maintenance2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_maintenance3 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_multiview (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_portability_subset (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_push_descriptor (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_KHR_relaxed_block_layout (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_sampler_mirror_clamp_to_edge (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.3"
+validation layer: "Device Extension: VK_KHR_sampler_ycbcr_conversion (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.14"
+validation layer: "Device Extension: VK_KHR_shader_draw_parameters (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_shader_float16_int8 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_shader_subgroup_extended_types (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_storage_buffer_storage_class (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_swapchain (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.70"
+validation layer: "Device Extension: VK_KHR_swapchain_mutable_format (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_timeline_semaphore (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_KHR_uniform_buffer_standard_layout (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_KHR_variable_pointers (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_debug_marker (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.4"
+validation layer: "Device Extension: VK_EXT_descriptor_indexing (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_EXT_fragment_shader_interlock (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_hdr_metadata (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_EXT_host_query_reset (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_image_robustness (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_inline_uniform_block (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_memory_budget (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_post_depth_coverage (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_private_data (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_robustness2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_scalar_block_layout (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_shader_stencil_export (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_shader_viewport_index_layer (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_subgroup_size_control (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_EXT_texel_buffer_alignment (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_texture_compression_astc_hdr (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_EXT_vertex_attribute_divisor (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.3"
+validation layer: "Device Extension: VK_AMD_gpu_shader_half_float (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.2"
+validation layer: "Device Extension: VK_AMD_negative_viewport_height (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_AMD_shader_image_load_store_lod (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_AMD_shader_trinary_minmax (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_IMG_format_pvrtc (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_INTEL_shader_integer_functions2 (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_GOOGLE_display_timing (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Device Extension: VK_NV_glsl_shader (/usr/local/share/vulkan/icd.d/../../../lib/libMoltenVK.dylib) version 0.0.1"
+validation layer: "Using MTLEvent for Vulkan semaphores."
+validation layer: "Created VkDevice to run on GPU Apple M1 with the following 2 Vulkan extensions enabled:\n\t\tVK_KHR_portability_subset v1\n\t\tVK_KHR_swapchain v70"
+Using swap surface format: (B8G8R8A8_UNORM, SrgbNonLinear)
+UNASSIGNED-BestPractices-vkCreateSwapchainKHR-swapchain-presentmode-not-fifo(WARN / SPEC): msgNum: 657182421 - Validation Warning: [ UNASSIGNED-BestPractices-vkCreateSwapchainKHR-swapchain-presentmode-not-fifo ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x272bced5 | [Arm] Warning: Swapchain is not being created with presentation mode "VK_PRESENT_MODE_FIFO_KHR". Prefer using "VK_PRESENT_MODE_FIFO_KHR" to avoid unnecessary CPU and GPU load and save power. Presentation modes which are not FIFO will present the latest available frame and discard other frame(s) if any.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Warning: [ UNASSIGNED-BestPractices-vkCreateSwapchainKHR-swapchain-presentmode-not-fifo ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x272bced5 | [Arm] Warning: Swapchain is not being created with presentation mode \"VK_PRESENT_MODE_FIFO_KHR\". Prefer using \"VK_PRESENT_MODE_FIFO_KHR\" to avoid unnecessary CPU and GPU load and save power. Presentation modes which are not FIFO will present the latest available frame and discard other frame(s) if any."
+validation layer: "Created 3 swapchain images with initial size (1920, 1080)."
+UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping(WARN / PERF): msgNum: -625695684 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE."
+UNASSIGNED-BestPractices-vkCreateSampler-border-clamp-color(WARN / PERF): msgNum: -1510773748 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-border-clamp-color ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xa5f36c0c | [Arm] Creating a sampler object with border clamping and borderColor != VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK. This will lead to less efficient descriptors being created and may cause reduced performance. If possible, use VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK as the border color.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-border-clamp-color ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xa5f36c0c | [Arm] Creating a sampler object with border clamping and borderColor != VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK. This will lead to less efficient descriptors being created and may cause reduced performance. If possible, use VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK as the border color."
+UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping(WARN / PERF): msgNum: -625695684 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE."
+UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation(WARN / PERF): msgNum: -1277938581 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x151707420[] to a memory block which is fully consumed by the image. The required size of the allocation is 853260, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x151707420[] to a memory block which is fully consumed by the image. The required size of the allocation is 853260, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)"
+UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset(WARN / PERF): msgNum: -2027362524 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x8728e724 | vkCreateCommandPool(): VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT is set. Consider resetting entire pool instead.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x8728e724 | vkCreateCommandPool(): VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT is set. Consider resetting entire pool instead."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit(WARN / PERF): msgNum: -1175659702 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default."
+Loading cubemap texture: 1024x1024
+UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset(WARN / PERF): msgNum: -2027362524 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x8728e724 | vkCreateCommandPool(): VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT is set. Consider resetting entire pool instead.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x8728e724 | vkCreateCommandPool(): VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT is set. Consider resetting entire pool instead."
+UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation(WARN / PERF): msgNum: -602362517 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdc18ad6b | vkAllocateMemory(): Allocating a VkDeviceMemory of size 131064. This is a very small allocation (current threshold is 262144 bytes). You should make large allocations and sub-allocate from one large VkDeviceMemory.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdc18ad6b | vkAllocateMemory(): Allocating a VkDeviceMemory of size 131064. This is a very small allocation (current threshold is 262144 bytes). You should make large allocations and sub-allocate from one large VkDeviceMemory."
+UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation(WARN / PERF): msgNum: -1277938581 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x151716940[] to a memory block which is fully consumed by the image. The required size of the allocation is 131064, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x151716940[] to a memory block which is fully consumed by the image. The required size of the allocation is 131064, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)"
+UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation(WARN / PERF): msgNum: -602362517 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdc18ad6b | vkAllocateMemory(): Allocating a VkDeviceMemory of size 16384. This is a very small allocation (current threshold is 262144 bytes). You should make large allocations and sub-allocate from one large VkDeviceMemory.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdc18ad6b | vkAllocateMemory(): Allocating a VkDeviceMemory of size 16384. This is a very small allocation (current threshold is 262144 bytes). You should make large allocations and sub-allocate from one large VkDeviceMemory."
+UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation(WARN / PERF): msgNum: -1277938581 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x151716b90[] to a memory block which is fully consumed by the image. The required size of the allocation is 16384, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x151716b90[] to a memory block which is fully consumed by the image. The required size of the allocation is 16384, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)"
+UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation(WARN / PERF): msgNum: -602362517 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdc18ad6b | vkAllocateMemory(): Allocating a VkDeviceMemory of size 8192. This is a very small allocation (current threshold is 262144 bytes). You should make large allocations and sub-allocate from one large VkDeviceMemory.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdc18ad6b | vkAllocateMemory(): Allocating a VkDeviceMemory of size 8192. This is a very small allocation (current threshold is 262144 bytes). You should make large allocations and sub-allocate from one large VkDeviceMemory."
+UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation(WARN / PERF): msgNum: -1277938581 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x151718ec0[] to a memory block which is fully consumed by the image. The required size of the allocation is 8192, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x151718ec0[] to a memory block which is fully consumed by the image. The required size of the allocation is 8192, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)"
+UNASSIGNED-BestPractices-vkCreateFramebuffer-attachment-should-be-transient(WARN / PERF): msgNum: 781825819 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateFramebuffer-attachment-should-be-transient ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x2e99b71b | Attachment 1 in VkFramebuffer uses loadOp/storeOps which never have to be backed by physical memory, but the image backing the image view does not have VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT set. You can save physical memory by using transient attachment backed by lazily allocated memory here.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateFramebuffer-attachment-should-be-transient ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x2e99b71b | Attachment 1 in VkFramebuffer uses loadOp/storeOps which never have to be backed by physical memory, but the image backing the image view does not have VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT set. You can save physical memory by using transient attachment backed by lazily allocated memory here."
+UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset(WARN / PERF): msgNum: -2027362524 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x8728e724 | vkCreateCommandPool(): VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT is set. Consider resetting entire pool instead.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x8728e724 | vkCreateCommandPool(): VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT is set. Consider resetting entire pool instead."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit(WARN / PERF): msgNum: -1175659702 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default."
+UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset(WARN / PERF): msgNum: -2027362524 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x8728e724 | vkCreateCommandPool(): VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT is set. Consider resetting entire pool instead.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x8728e724 | vkCreateCommandPool(): VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT is set. Consider resetting entire pool instead."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use(WARN / PERF): msgNum: -394667308 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit(WARN / PERF): msgNum: -1175659702 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default."
+Loading model: /Users/baransu/Projects/rust-vulkan/res/models/damaged_helmet/scene.gltf
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit(WARN / PERF): msgNum: -1175659702 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit(WARN / PERF): msgNum: -1175659702 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default."
+Loading Source::Uri(textures/Material_MR_baseColor.jpeg, None) texture
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit(WARN / PERF): msgNum: -1175659702 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default."
+Loading Source::Uri(textures/Material_MR_normal.jpeg, None) texture
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit(WARN / PERF): msgNum: -1175659702 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default."
+Loading Source::Uri(textures/Material_MR_metallicRoughness.png, None) texture
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit(WARN / PERF): msgNum: -1175659702 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default."
+Loaded model: /Users/baransu/Projects/rust-vulkan/res/models/damaged_helmet/scene.gltf in 8.851378166s
+Creating local probe
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit(WARN / PERF): msgNum: -1175659702 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit(WARN / PERF): msgNum: -1175659702 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-one-time-submit ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb9ecdb4a | [Arm] vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default."
+UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation(WARN / PERF): msgNum: -602362517 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdc18ad6b | vkAllocateMemory(): Allocating a VkDeviceMemory of size 128. This is a very small allocation (current threshold is 262144 bytes). You should make large allocations and sub-allocate from one large VkDeviceMemory.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdc18ad6b | vkAllocateMemory(): Allocating a VkDeviceMemory of size 128. This is a very small allocation (current threshold is 262144 bytes). You should make large allocations and sub-allocate from one large VkDeviceMemory."
+UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation(WARN / PERF): msgNum: -1277938581 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x15171f880[] to a memory block which is fully consumed by the image. The required size of the allocation is 128, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x15171f880[] to a memory block which is fully consumed by the image. The required size of the allocation is 128, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)"
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use(WARN / PERF): msgNum: -394667308 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use(WARN / PERF): msgNum: -394667308 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use(WARN / PERF): msgNum: -394667308 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use(WARN / PERF): msgNum: -394667308 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use(WARN / PERF): msgNum: -394667308 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use(WARN / PERF): msgNum: -394667308 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set."
+Loading cubemap texture: 1024x1024
+UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation(WARN / PERF): msgNum: -1277938581 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x1516614c0[] to a memory block which is fully consumed by the image. The required size of the allocation is 524256, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x1516614c0[] to a memory block which is fully consumed by the image. The required size of the allocation is 524256, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)"
+UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation(WARN / PERF): msgNum: -602362517 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdc18ad6b | vkAllocateMemory(): Allocating a VkDeviceMemory of size 65536. This is a very small allocation (current threshold is 262144 bytes). You should make large allocations and sub-allocate from one large VkDeviceMemory.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdc18ad6b | vkAllocateMemory(): Allocating a VkDeviceMemory of size 65536. This is a very small allocation (current threshold is 262144 bytes). You should make large allocations and sub-allocate from one large VkDeviceMemory."
+UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation(WARN / PERF): msgNum: -1277938581 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x1516643f0[] to a memory block which is fully consumed by the image. The required size of the allocation is 65536, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x1516643f0[] to a memory block which is fully consumed by the image. The required size of the allocation is 65536, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)"
+Loading cubemap texture: 1024x1024
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use(WARN / PERF): msgNum: -394667308 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set."
+UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping(WARN / PERF): msgNum: -625695684 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 7.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 7.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE."
+UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping(WARN / PERF): msgNum: -625695684 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 10.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 10.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE."
+UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping(WARN / PERF): msgNum: -625695684 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use(WARN / PERF): msgNum: -394667308 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set."
+UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use(WARN / PERF): msgNum: -394667308 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBeginCommandBuffer-simultaneous-use ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe879dad4 | vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set."
+UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation(WARN / PERF): msgNum: -1277938581 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x1516764a0[] to a memory block which is fully consumed by the image. The required size of the allocation is 262144, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb3d4346b | vkBindImageMemory(): Trying to bind VkImage 0x1516764a0[] to a memory block which is fully consumed by the image. The required size of the allocation is 262144, but smaller images like this should be sub-allocated from larger memory blocks. (Current threshold is 1048576 bytes.)"
+UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping(WARN / PERF): msgNum: -625695684 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE."
+UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping(WARN / PERF): msgNum: -625695684 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE."
+UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping(WARN / PERF): msgNum: -625695684 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE."
+UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping(WARN / PERF): msgNum: -625695684 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE."
+UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping(WARN / PERF): msgNum: -625695684 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCreateSampler-lod-clamping ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdab4a43c | [Arm] Creating a sampler object with LOD clamping (minLod = 0.000000, maxLod = 1.000000). This may cause reduced performance. Instead of clamping LOD in the sampler, consider using an VkImageView which restricts the mip-levels, set minLod to 0.0, and maxLod to VK_LOD_CLAMP_NONE."
+UNASSIGNED-BestPractices-pipeline-stage-flags(WARN / SPEC): msgNum: 1218486124 - Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called
+
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called\n"
+UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile(WARN / PERF): msgNum: -378797968 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed."
+UNASSIGNED-BestPractices-pipeline-stage-flags(WARN / SPEC): msgNum: 1218486124 - Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called
+
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called\n"
+UNASSIGNED-BestPractices-pipeline-stage-flags(WARN / SPEC): msgNum: 1218486124 - Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called
+
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called\n"
+UNASSIGNED-BestPractices-pipeline-stage-flags(WARN / SPEC): msgNum: 1218486124 - Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called
+
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called\n"
+UNASSIGNED-BestPractices-pipeline-stage-flags(WARN / SPEC): msgNum: 1218486124 - Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called
+
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called\n"
+UNASSIGNED-BestPractices-pipeline-stage-flags(WARN / SPEC): msgNum: 1218486124 - Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called
+
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called\n"
+UNASSIGNED-BestPractices-pipeline-stage-flags(WARN / SPEC): msgNum: 1218486124 - Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called
+
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called\n"
+UNASSIGNED-BestPractices-pipeline-stage-flags(WARN / SPEC): msgNum: 1218486124 - Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called
+
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called\n"
+UNASSIGNED-BestPractices-pipeline-stage-flags(WARN / SPEC): msgNum: 1218486124 - Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called
+
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called\n"
+UNASSIGNED-BestPractices-pipeline-stage-flags(WARN / SPEC): msgNum: 1218486124 - Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called
+
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x48a09f6c | You are using VK_PIPELINE_STAGE_ALL_COMMANDS_BIT when vkCmdPipelineBarrier is called\n"
+UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer(WARN / PERF): msgNum: -1687544056 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.79% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.79% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used."
+UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer(WARN / PERF): msgNum: -1687544056 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 1.22% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 1.22% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used."
+UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer(WARN / PERF): msgNum: -1687544056 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.04% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.04% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used."
+UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer(WARN / PERF): msgNum: -1687544056 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.44% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.44% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used."
+UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer(WARN / PERF): msgNum: -1687544056 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.04% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.04% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used."
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Draw primitive
+Prebuild done
+UNASSIGNED-BestPractices-NonSuccess-Result(INFO / SPEC): msgNum: -1993852625 - Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT.
+    Objects: 1
+        [0] 0x151827600, type: 1, name: NULL
+validation layer: "Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT."
+UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile(WARN / PERF): msgNum: -378797968 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed."
+UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer(WARN / PERF): msgNum: -1687544056 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.42% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.42% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used."
+UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer(WARN / PERF): msgNum: -1687544056 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.30% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.30% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used."
+UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer(WARN / PERF): msgNum: -1687544056 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.04% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.04% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used."
+UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer(WARN / PERF): msgNum: -1687544056 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.11% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.11% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used."
+UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer(WARN / PERF): msgNum: -1687544056 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.04% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdDrawIndexed-sparse-index-buffer ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x9b6a1f08 | [Arm] The indices which were specified for the draw call only utilise approximately 0.04% of index buffer value range. Arm Mali architectures before G71 do not have IDVS (Index-Driven Vertex Shading), meaning all vertices corresponding to indices between the minimum and maximum would be loaded, and possibly shaded, whether or not they are used."
+UNASSIGNED-BestPractices-NonSuccess-Result(INFO / SPEC): msgNum: -1993852625 - Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT.
+    Objects: 1
+        [0] 0x151827600, type: 1, name: NULL
+validation layer: "Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT."
+UNASSIGNED-BestPractices-NonSuccess-Result(INFO / SPEC): msgNum: -1993852625 - Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT.
+    Objects: 1
+        [0] 0x151827600, type: 1, name: NULL
+validation layer: "Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT."
+UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile(WARN / PERF): msgNum: -378797968 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed."
+UNASSIGNED-BestPractices-NonSuccess-Result(INFO / SPEC): msgNum: -1993852625 - Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT.
+    Objects: 1
+        [0] 0x151827600, type: 1, name: NULL
+validation layer: "Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT."
+UNASSIGNED-BestPractices-NonSuccess-Result(INFO / SPEC): msgNum: -1993852625 - Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT.
+    Objects: 1
+        [0] 0x151827600, type: 1, name: NULL
+validation layer: "Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT."
+UNASSIGNED-BestPractices-NonSuccess-Result(INFO / SPEC): msgNum: -1993852625 - Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT.
+    Objects: 1
+        [0] 0x151827600, type: 1, name: NULL
+validation layer: "Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT."
+UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile(WARN / PERF): msgNum: -378797968 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed."
+UNASSIGNED-BestPractices-NonSuccess-Result(INFO / SPEC): msgNum: -1993852625 - Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT.
+    Objects: 1
+        [0] 0x151827600, type: 1, name: NULL
+validation layer: "Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT."
+UNASSIGNED-BestPractices-NonSuccess-Result(INFO / SPEC): msgNum: -1993852625 - Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT.
+    Objects: 1
+        [0] 0x151827600, type: 1, name: NULL
+validation layer: "Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT."
+UNASSIGNED-BestPractices-NonSuccess-Result(INFO / SPEC): msgNum: -1993852625 - Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT.
+    Objects: 1
+        [0] 0x151827600, type: 1, name: NULL
+validation layer: "Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT."
+UNASSIGNED-BestPractices-NonSuccess-Result(INFO / SPEC): msgNum: -1993852625 - Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT.
+    Objects: 1
+        [0] 0x151827600, type: 1, name: NULL
+validation layer: "Validation Information: [ UNASSIGNED-BestPractices-NonSuccess-Result ] Object 0: handle = 0x151827600, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x8928392f | vkWaitForFences(): Returned non-success return code VK_TIMEOUT."
+UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile(WARN / PERF): msgNum: -378797968 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed."
+UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile(WARN / PERF): msgNum: -378797968 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed."
+UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile(WARN / PERF): msgNum: -378797968 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed."
+UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile(WARN / PERF): msgNum: -378797968 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed."
+UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile(WARN / PERF): msgNum: -378797968 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed."
+UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile(WARN / PERF): msgNum: -378797968 - Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed.
+    Objects: 1
+        [0] 0x14180dc18, type: 3, name: NULL
+validation layer: "Validation Performance Warning: [ UNASSIGNED-BestPractices-vkCmdEndRenderPass-redundant-attachment-on-tile ] Object 0: handle = 0x14180dc18, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xe96c0070 | [Arm] Render pass was ended, but attachment #0 (format: 124, untouched aspects 0x2) was never accessed by a pipeline or clear command. On tile-based architectures, LOAD_OP_LOAD and STORE_OP_STORE consume bandwidth and should not be part of the render pass if the attachments are not intended to be accessed."
+[mvk-error] VK_ERROR_DEVICE_LOST: Command buffer 0x151732e00 "vkQueueSubmit CommandBuffer on Queue 0-0" execution failed (code 2): Caused GPU Hang Error (00000003:kIOGPUCommandBufferCallbackErrorHang)
+validation layer: "VK_ERROR_DEVICE_LOST: Command buffer 0x151732e00 \"vkQueueSubmit CommandBuffer on Queue 0-0\" execution failed (code 2): Caused GPU Hang Error (00000003:kIOGPUCommandBufferCallbackErrorHang)"
+Process terminated

@@ -4,7 +4,7 @@ use std::{
 };
 
 use vulkano::{
-    buffer::{CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{CpuAccessibleBuffer, ImmutableBuffer, TypedBufferAccess},
     command_buffer::{AutoCommandBufferBuilder, SecondaryAutoCommandBuffer},
     descriptor_set::{
         layout::{DescriptorSetDesc, DescriptorSetLayout, DescriptorSetLayoutError},
@@ -242,7 +242,7 @@ impl GBuffer {
         model: &Model,
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         camera_descriptor_set: &Arc<PersistentDescriptorSet>,
-        instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
     ) {
         for node_index in model.root_nodes.iter() {
             self.draw_model_node(
@@ -261,7 +261,7 @@ impl GBuffer {
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         node_index: usize,
         camera_descriptor_set: &Arc<PersistentDescriptorSet>,
-        instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
     ) {
         let node = model.nodes.get(node_index).unwrap();
 
@@ -296,7 +296,7 @@ impl GBuffer {
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         primitive_index: usize,
         camera_descriptor_set: &Arc<PersistentDescriptorSet>,
-        instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
     ) {
         let primitive = model.primitives.get(primitive_index).unwrap();
         let material = model.materials.get(primitive.material).unwrap();

@@ -12,8 +12,8 @@ use vulkano::{
     format::Format,
     image::{
         view::{ImageView, ImageViewType},
-        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, MipmapsCount,
-        StorageImage,
+        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, ImmutableImage,
+        MipmapsCount, StorageImage,
     },
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{RenderPass, Subpass},
@@ -240,6 +240,8 @@ impl SkyboxPass {
 
         let image_rgba = image.read_textures().next().unwrap().to_vec();
 
+        let format = Format::R16G16B16A16_SFLOAT;
+
         let dimensions = ImageDimensions::Dim2d {
             width,
             height,
@@ -247,15 +249,15 @@ impl SkyboxPass {
             array_layers: 6,
         };
 
+        let data = image::DynamicImage::new_rgba16(width * 6, height * 6).to_rgba16();
+
         let source = CpuAccessibleBuffer::from_iter(
             context.device.clone(),
             BufferUsage::transfer_source(),
             false,
-            image_rgba,
+            data.into_raw().iter().cloned(),
         )
         .unwrap();
-
-        let format = Format::R16G16B16A16_SFLOAT;
 
         let image = StorageImage::with_mipmaps_usage(
             context.device.clone(),

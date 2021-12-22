@@ -2,10 +2,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use glam::{Mat4, Vec3};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
-    descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
+    descriptor_set::PersistentDescriptorSet,
     pipeline::{GraphicsPipeline, Pipeline},
+    sync::GpuFuture,
 };
 
 use super::{
@@ -43,8 +44,8 @@ impl Scene {
     pub fn initialize(
         context: &Context,
         mesh_paths: Vec<&str>,
-        layout: &Arc<DescriptorSetLayout>,
-        graphics_pipeline: &Arc<GraphicsPipeline>,
+        gbuffer_pipeline: &Arc<GraphicsPipeline>,
+        local_probe_pipeline: &Arc<GraphicsPipeline>,
         shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
     ) -> Self {
         let point_lights = Self::gen_point_lights();
@@ -56,7 +57,7 @@ impl Scene {
         let queue = context.graphics_queue.clone();
         let models = mesh_paths
             .into_iter()
-            .map(|path| Model::load_gltf(&queue, &layout, &path))
+            .map(|path| Model::load_gltf(&queue, &path, gbuffer_pipeline, local_probe_pipeline))
             .collect();
 
         let shadow_descriptor_set = Self::create_shadow_descriptor_set(
@@ -65,7 +66,7 @@ impl Scene {
         );
 
         let camera_descriptor_set =
-            Self::create_camera_descriptor_set(graphics_pipeline, &camera_uniform_buffer);
+            Self::create_camera_descriptor_set(gbuffer_pipeline, &camera_uniform_buffer);
 
         Scene {
             models,
@@ -272,7 +273,7 @@ impl Scene {
     pub fn get_instance_data_buffers(
         &self,
         context: &Context,
-    ) -> HashMap<String, Arc<CpuAccessibleBuffer<[InstanceData]>>> {
+    ) -> HashMap<String, Arc<ImmutableBuffer<[InstanceData]>>> {
         let mut instance_data: HashMap<String, Vec<InstanceData>> = HashMap::new();
 
         for entity in self.entities.iter() {
@@ -287,18 +288,23 @@ impl Scene {
             });
         }
 
-        // TODO: we should create one buffer that we'll update with the data from the scene
-        let mut instance_data_buffers: HashMap<String, Arc<CpuAccessibleBuffer<[InstanceData]>>> =
+        // TODO: we should create one buffer that we'll update with the data from the scene if new entity is added
+        let mut instance_data_buffers: HashMap<String, Arc<ImmutableBuffer<[InstanceData]>>> =
             HashMap::new();
 
         instance_data.iter().for_each(|(mesh_id, instances)| {
-            let buffer = CpuAccessibleBuffer::from_iter(
-                context.device.clone(),
-                BufferUsage::all(),
-                false,
+            let (buffer, future) = ImmutableBuffer::from_iter(
                 instances.iter().cloned(),
+                BufferUsage::all(),
+                context.graphics_queue.clone(),
             )
             .unwrap();
+
+            future
+                .then_signal_fence_and_flush()
+                .unwrap()
+                .wait(None)
+                .unwrap();
 
             instance_data_buffers.insert(mesh_id.clone(), buffer);
         });

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use glam::{Mat3, Mat4, Vec3};
 
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer, TypedBufferAccess},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
         SecondaryAutoCommandBuffer, SubpassContents,
@@ -12,7 +12,8 @@ use vulkano::{
     format::{ClearValue, Format},
     image::{
         view::{ImageView, ImageViewType},
-        AttachmentImage, ImageCreateFlags, ImageDimensions, ImageUsage, StorageImage,
+        AttachmentImage, ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract,
+        MipmapsCount, StorageImage,
     },
     pipeline::{
         graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
@@ -34,13 +35,13 @@ use super::{
     vertex::Vertex,
 };
 
-const DIM: f32 = 1024.0;
-const FORMAT: Format = Format::R16G16B16A16_SFLOAT;
+const DIM: f32 = 64.0;
+const FORMAT: Format = Format::R8G8B8A8_UNORM;
 
 pub struct LocalProbe {
-    pipeline: Arc<GraphicsPipeline>,
+    pub pipeline: Arc<GraphicsPipeline>,
     camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-    pub cube_attachment: Arc<StorageImage>,
+    cube_attachment: Arc<StorageImage>,
     pub cube_attachment_view: Arc<ImageView<StorageImage>>,
     color_attachment: Arc<AttachmentImage>,
     framebuffer: Arc<Framebuffer>,
@@ -51,11 +52,14 @@ pub struct LocalProbe {
 }
 
 impl LocalProbe {
-    pub fn initialize(
+    pub fn initialize<T>(
         context: &Context,
         layout: &Arc<DescriptorSetLayout>,
-        skybox_texture: &Arc<ImageView<StorageImage>>,
-    ) -> LocalProbe {
+        skybox_texture: &Arc<T>,
+    ) -> LocalProbe
+    where
+        T: ImageViewAbstract + 'static,
+    {
         let render_pass = Self::create_render_pass(context);
         let pipeline = Self::create_graphics_pipeline(context, &render_pass, &layout);
 
@@ -236,94 +240,97 @@ impl LocalProbe {
         .unwrap()
     }
 
-    pub fn execute(&self, context: &Context, scene: &Scene) -> PrimaryAutoCommandBuffer {
+    pub fn add_to_builder(
+        &self,
+        context: &Context,
+        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        scene: &Scene,
+    ) {
         let mats = matrices();
 
         let light_descriptor_set = Self::create_light_descriptor_set(&self.pipeline, scene);
         let instance_data_buffers = scene.get_instance_data_buffers(&context);
 
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [DIM, DIM],
-            depth_range: 0.0..1.0,
-        };
+        let num_mips = (DIM.log2().floor() + 1.0) as u32;
 
-        let mut secondary_builder = AutoCommandBufferBuilder::secondary_graphics(
-            context.device.clone(),
-            context.graphics_queue.family(),
-            CommandBufferUsage::SimultaneousUse,
-            self.pipeline.subpass().clone(),
-        )
-        .unwrap();
+        for m in 0..num_mips {
+            for f in 0..6 {
+                let width = DIM * 0.5_f32.powf(m as f32);
+                let height = DIM * 0.5_f32.powf(m as f32);
 
-        secondary_builder
-            .bind_pipeline_graphics(self.pipeline.clone())
-            .set_viewport(0, [viewport.clone()]);
+                let viewport = Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [width, height],
+                    depth_range: 0.0..1.0,
+                };
 
-        for model in scene.models.iter() {
-            // if there is no instance_data_buffer it means we have 0 instances for this mesh
-            if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
-                self.draw_model(
-                    model,
-                    &mut secondary_builder,
-                    instance_data_buffer,
-                    &light_descriptor_set,
-                );
+                let mut secondary_builder = AutoCommandBufferBuilder::secondary_graphics(
+                    context.device.clone(),
+                    context.graphics_queue.family(),
+                    CommandBufferUsage::SimultaneousUse,
+                    self.pipeline.subpass().clone(),
+                )
+                .unwrap();
+
+                secondary_builder
+                    .bind_pipeline_graphics(self.pipeline.clone())
+                    .set_viewport(0, [viewport.clone()]);
+
+                for model in scene.models.iter() {
+                    // if there is no instance_data_buffer it means we have 0 instances for this mesh
+                    if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
+                        self.draw_model(
+                            model,
+                            &mut secondary_builder,
+                            instance_data_buffer,
+                            &light_descriptor_set,
+                        );
+                    }
+                }
+
+                let model_command_buffer = Arc::new(secondary_builder.build().unwrap());
+
+                self.update_uniform_buffers(builder, mats[f]);
+
+                builder
+                    .begin_render_pass(
+                        self.framebuffer.clone(),
+                        SubpassContents::SecondaryCommandBuffers,
+                        vec![
+                            ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
+                            ClearValue::Depth(1.0),
+                        ],
+                    )
+                    .unwrap();
+
+                builder
+                    .execute_commands(self.skybox.command_buffer.clone())
+                    .unwrap();
+
+                builder
+                    .execute_commands(model_command_buffer.clone())
+                    .unwrap();
+
+                builder.end_render_pass().unwrap();
+
+                builder
+                    .blit_image(
+                        self.color_attachment.clone(),
+                        [0, 0, 0],
+                        [width as i32, height as i32, 1],
+                        0,
+                        0,
+                        self.cube_attachment.clone(),
+                        [0, 0, 0],
+                        [width as i32, height as i32, 1],
+                        f as u32,
+                        m,
+                        1,
+                        Filter::Linear,
+                    )
+                    .unwrap();
             }
         }
-
-        let model_command_buffer = Arc::new(secondary_builder.build().unwrap());
-
-        let mut builder = AutoCommandBufferBuilder::primary(
-            context.device.clone(),
-            context.graphics_queue.family(),
-            CommandBufferUsage::SimultaneousUse,
-        )
-        .unwrap();
-
-        for f in 0..6 {
-            self.update_uniform_buffers(&mut builder, mats[f]);
-
-            builder
-                .begin_render_pass(
-                    self.framebuffer.clone(),
-                    SubpassContents::SecondaryCommandBuffers,
-                    vec![
-                        ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
-                        ClearValue::Depth(1.0),
-                    ],
-                )
-                .unwrap();
-
-            builder
-                .execute_commands(self.skybox.command_buffer.clone())
-                .unwrap();
-
-            builder
-                .execute_commands(model_command_buffer.clone())
-                .unwrap();
-
-            builder.end_render_pass().unwrap();
-
-            builder
-                .blit_image(
-                    self.color_attachment.clone(),
-                    [0, 0, 0],
-                    [DIM as i32, DIM as i32, 1],
-                    0,
-                    0,
-                    self.cube_attachment.clone(),
-                    [0, 0, 0],
-                    [DIM as i32, DIM as i32, 1],
-                    f as u32,
-                    0,
-                    1,
-                    Filter::Linear,
-                )
-                .unwrap();
-        }
-
-        builder.build().unwrap()
     }
 
     fn create_graphics_pipeline(
@@ -398,7 +405,9 @@ impl LocalProbe {
     }
 
     fn create_cube_attachment(context: &Context) -> Arc<StorageImage> {
-        StorageImage::with_usage(
+        let num_mips = (DIM.log2().floor() + 1.0) as u32;
+
+        StorageImage::with_mipmaps_usage(
             context.device.clone(),
             ImageDimensions::Dim2d {
                 width: DIM as u32,
@@ -406,6 +415,7 @@ impl LocalProbe {
                 array_layers: 6,
             },
             FORMAT,
+            MipmapsCount::Specific(num_mips),
             ImageUsage {
                 transfer_destination: true,
                 transfer_source: true,
@@ -425,7 +435,7 @@ impl LocalProbe {
         &self,
         model: &Model,
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
-        instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
         light_descriptor_set: &Arc<PersistentDescriptorSet>,
     ) {
         for node_index in model.root_nodes.iter() {
@@ -444,7 +454,7 @@ impl LocalProbe {
         model: &Model,
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         node_index: usize,
-        instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
         light_descriptor_set: &Arc<PersistentDescriptorSet>,
     ) {
         let node = model.nodes.get(node_index).unwrap();
@@ -479,22 +489,24 @@ impl LocalProbe {
         model: &Model,
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         primitive_index: usize,
-        instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
         light_descriptor_set: &Arc<PersistentDescriptorSet>,
     ) {
         let primitive = model.primitives.get(primitive_index).unwrap();
         let material = model.materials.get(primitive.material).unwrap();
+
+        println!("Draw primitive");
 
         builder
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
                 self.pipeline.layout().clone(),
                 0,
-                (
+                vec![
                     self.camera_descriptor_set.clone(),
-                    material.descriptor_set.clone(),
+                    material.local_probe_descriptor_set.clone(),
                     light_descriptor_set.clone(),
-                ),
+                ],
             )
             .bind_vertex_buffers(
                 0,

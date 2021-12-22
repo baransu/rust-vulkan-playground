@@ -128,7 +128,7 @@ impl Context {
             engine_name: Some("No Engine".into()),
             engine_version: Some(Version {
                 major: 1,
-                minor: 0,
+                minor: 1,
                 patch: 0,
             }),
         };

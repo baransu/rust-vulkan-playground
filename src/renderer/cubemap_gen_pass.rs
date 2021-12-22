@@ -47,16 +47,17 @@ pub struct CubemapGenPass {
 }
 
 impl CubemapGenPass {
-    pub fn initialize<T>(
+    pub fn initialize<T1, T2>(
         context: &Context,
-        local_cubemap: &Arc<T>,
-        skybox_cubemap: &Arc<T>,
+        local_cubemap: &Arc<T1>,
+        skybox_cubemap: &Arc<T2>,
         fragment_shader_entry_point: EntryPoint,
         format: Format,
         dim: f32,
     ) -> CubemapGenPass
     where
-        T: ImageViewAbstract + 'static,
+        T1: ImageViewAbstract + 'static,
+        T2: ImageViewAbstract + 'static,
     {
         let render_pass = Self::create_render_pass(context, format);
         let pipeline =
@@ -206,17 +207,10 @@ impl CubemapGenPass {
         .unwrap()
     }
 
-    pub fn execute(&self, context: &Context) -> PrimaryAutoCommandBuffer {
+    pub fn add_to_builder(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) {
         let mats = matrices();
 
         let num_mips = (self.dim.log2().floor() + 1.0) as u32;
-
-        let mut builder = AutoCommandBufferBuilder::primary(
-            context.device.clone(),
-            context.graphics_queue.family(),
-            CommandBufferUsage::SimultaneousUse,
-        )
-        .unwrap();
 
         for m in 0..num_mips {
             for f in 0..6 {
@@ -229,7 +223,7 @@ impl CubemapGenPass {
                     depth_range: 0.0..1.0,
                 };
 
-                self.update_uniform_buffers(&mut builder, mats[f], m, num_mips);
+                self.update_uniform_buffers(builder, mats[f], m, num_mips);
 
                 builder
                     .begin_render_pass(
@@ -272,8 +266,6 @@ impl CubemapGenPass {
                     .unwrap();
             }
         }
-
-        builder.build().unwrap()
     }
 
     fn create_graphics_pipeline(
@@ -304,17 +296,18 @@ impl CubemapGenPass {
             .unwrap()
     }
 
-    fn create_descriptor_set<T>(
+    fn create_descriptor_set<T1, T2>(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         roughness_uniform_buffer: &Arc<CpuAccessibleBuffer<RoughnessBufferObject>>,
-        skybox_cubemap: &Arc<T>,
-        local_cubemap: &Arc<T>,
+        skybox_cubemap: &Arc<T1>,
+        local_cubemap: &Arc<T2>,
         dim: f32,
     ) -> Arc<PersistentDescriptorSet>
     where
-        T: ImageViewAbstract + 'static,
+        T1: ImageViewAbstract + 'static,
+        T2: ImageViewAbstract + 'static,
     {
         let layout = graphics_pipeline
             .layout()

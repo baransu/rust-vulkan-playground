@@ -26,8 +26,9 @@ use renderer::{
 };
 use vulkano::{
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        PrimaryCommandBuffer, SecondaryAutoCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferExecError, CommandBufferExecFuture,
+        CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
+        SecondaryAutoCommandBuffer, SubpassContents,
     },
     descriptor_set::layout::{
         DescriptorDesc, DescriptorSetDesc, DescriptorSetLayout, DescriptorType,
@@ -43,7 +44,7 @@ use vulkano::{
     shader::ShaderStages,
     single_pass_renderpass,
     swapchain::{acquire_next_image, AcquireError},
-    sync::{self, GpuFuture},
+    sync::{self, FenceSignalFuture, GpuFuture, NowFuture},
 };
 use winit::{
     event::{
@@ -54,9 +55,12 @@ use winit::{
 
 use crate::renderer::skybox_pass::fs_gbuffer;
 
-const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
-const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
-const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
+const DAMAGED_HELMET: &str =
+    "/Users/baransu/Projects/rust-vulkan/res/models/damaged_helmet/scene.gltf";
+const SPONZA: &str =
+    "/Users/baransu/Projects/rust-vulkan/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
+const BOTTLE: &str =
+    "/Users/baransu/Projects/rust-vulkan/glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
 
 const MODEL_PATHS: [&str; 1] = [
     DAMAGED_HELMET,
@@ -69,14 +73,14 @@ const MODEL_PATHS: [&str; 1] = [
 ];
 
 // const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
-// const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
-const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
+const SKYBOX_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/hdr/gcanyon_cube.ktx";
+// const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
 const RENDER_SKYBOX: bool = true;
 
 const SHADOW_MAP_DIM: f32 = 2048.0;
 
-const BRDF_PATH: &str = "res/ibl_brdf_lut.png";
+const BRDF_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/ibl_brdf_lut.png";
 
 pub struct FramebufferWithAttachment {
     framebuffer: Arc<Framebuffer>,
@@ -134,6 +138,8 @@ struct Application {
      * I don't really understand how it works and why exactly it's needed.
      */
     event_loop: Option<EventLoop<()>>,
+
+    prebuild: bool,
 }
 
 impl Application {
@@ -198,19 +204,21 @@ impl Application {
         let gbuffer_target = Self::create_gbuffer_target(&context);
         let gbuffer = GBuffer::initialize(&context, &layout, &gbuffer_target);
 
+        let local_probe = LocalProbe::initialize(
+            &context,
+            &layout,
+            &SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH),
+        );
+
         let mut scene = Scene::initialize(
             &context,
             MODEL_PATHS.to_vec(),
-            &layout,
             &gbuffer.pipeline,
+            &local_probe.pipeline,
             &shadow_graphics_pipeline,
         );
 
-        let skybox_texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
-
         println!("Creating local probe");
-
-        let local_probe = LocalProbe::initialize(&context, &layout, &skybox_texture);
 
         let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
         let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);
@@ -220,7 +228,7 @@ impl Application {
         let irradiance_convolution = CubemapGenPass::initialize(
             &context,
             &local_probe.cube_attachment_view,
-            &skybox_texture,
+            &SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH),
             irradiance_convolution_fs_mod.entry_point("main").unwrap(),
             Format::R32G32B32A32_SFLOAT,
             64.0,
@@ -230,7 +238,7 @@ impl Application {
         let prefilterenvmap = CubemapGenPass::initialize(
             &context,
             &local_probe.cube_attachment_view,
-            &skybox_texture,
+            &SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH),
             prefilterenvmap_fs_mod.entry_point("main").unwrap(),
             Format::R16G16B16A16_SFLOAT,
             512.0,
@@ -529,6 +537,8 @@ impl Application {
             local_probe,
 
             event_loop: Some(event_loop),
+
+            prebuild: true,
         };
 
         app.create_scene_command_buffers();
@@ -595,8 +605,8 @@ impl Application {
 
         self.screen_frame.recreate_swap_chain(&self.context);
 
-        self.create_scene_command_buffers();
-        self.create_shadow_command_buffers();
+        // self.create_scene_command_buffers();
+        // self.create_shadow_command_buffers();
     }
 
     fn create_shadow_graphics_pipeline(
@@ -836,6 +846,15 @@ impl Application {
             .unwrap();
     }
 
+    fn prebuild(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) {
+        self.local_probe
+            .add_to_builder(&self.context, builder, &self.scene);
+
+        self.irradiance_convolution.add_to_builder(builder);
+
+        self.prefilterenvmap.add_to_builder(builder);
+    }
+
     fn draw_frame(&mut self, delta_time: &f64) {
         self.previous_frame_end.as_mut().unwrap().cleanup_finished();
 
@@ -980,6 +999,12 @@ impl Application {
             .end_render_pass()
             .unwrap();
 
+        if self.prebuild {
+            self.prebuild(&mut builder);
+            println!("Prebuild done");
+            self.prebuild = false;
+        }
+
         let command_buffer = builder.build().unwrap();
 
         let future = self
@@ -1042,21 +1067,6 @@ impl Application {
         }
     }
 
-    fn prebuild(&mut self) {
-        self.local_probe
-            .execute(&self.context, &self.scene)
-            .execute(self.context.graphics_queue.clone())
-            .unwrap()
-            .then_execute_same_queue(self.irradiance_convolution.execute(&self.context))
-            .unwrap()
-            .then_execute_same_queue(self.prefilterenvmap.execute(&self.context))
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None)
-            .unwrap();
-    }
-
     fn main_loop(mut self) {
         let mut mouse_buttons: HashMap<MouseButton, ElementState> = HashMap::new();
         let mut keyboard_buttons: HashMap<VirtualKeyCode, ElementState> = HashMap::new();
@@ -1068,8 +1078,6 @@ impl Application {
         let mut rotation_y = 0.0;
 
         let original_rotation = self.camera.rotation;
-
-        self.prebuild();
 
         self.event_loop
             .take()
