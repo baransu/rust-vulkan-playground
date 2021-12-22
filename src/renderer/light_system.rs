@@ -16,13 +16,11 @@ use vulkano::{
     single_pass_renderpass,
 };
 
-use crate::FramebufferWithAttachment;
-
 use super::{
     context::Context,
     gbuffer::{GBuffer, GBufferTarget},
     screen_frame::{ScreenFrameQuadBuffers, ScreenQuadVertex},
-    shaders::{screen_vertex_shader, CameraUniformBufferObject, LightSpaceUniformBufferObject},
+    shaders::{screen_vertex_shader, CameraUniformBufferObject},
 };
 
 pub struct LightSystem {
@@ -37,10 +35,8 @@ impl LightSystem {
     pub fn initialize(
         context: &Context,
         target: &GBufferTarget,
-        shadow_framebuffer: &FramebufferWithAttachment,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
-        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
         gbuffer: &GBuffer,
         ssao_target: &Arc<ImageView<AttachmentImage>>,
         irradiance_map: &Arc<ImageView<StorageImage>>,
@@ -59,8 +55,6 @@ impl LightSystem {
             &camera_uniform_buffer,
             &gbuffer,
             &light_uniform_buffer,
-            &light_space_uniform_buffer,
-            &shadow_framebuffer,
             &ssao_target,
             &irradiance_map,
             &prefilter_map,
@@ -85,8 +79,6 @@ impl LightSystem {
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         gbuffer: &GBuffer,
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
-        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
-        shadow_framebuffer: &FramebufferWithAttachment,
         ssao_target: &Arc<ImageView<AttachmentImage>>,
         irradiance_map: &Arc<ImageView<StorageImage>>,
         prefilter_map: &Arc<ImageView<StorageImage>>,
@@ -137,14 +129,11 @@ impl LightSystem {
             .unwrap();
 
         set_builder
-            .add_sampled_image(ssao_target.clone(), context.attachment_sampler.clone())
+            .add_sampled_image(gbuffer.shadow_buffer.clone(), context.depth_sampler.clone())
             .unwrap();
 
         set_builder
-            .add_sampled_image(
-                shadow_framebuffer.attachment.clone(),
-                context.depth_sampler.clone(),
-            )
+            .add_sampled_image(ssao_target.clone(), context.attachment_sampler.clone())
             .unwrap();
 
         set_builder
@@ -157,10 +146,6 @@ impl LightSystem {
 
         set_builder
             .add_sampled_image(brdf.clone(), Self::create_sampler(context, 1.0))
-            .unwrap();
-
-        set_builder
-            .add_buffer(light_space_uniform_buffer.clone())
             .unwrap();
 
         set_builder
@@ -303,4 +288,3 @@ mod fs {
 
 pub type LightUniformBufferObject = fs::ty::LightUniformBufferObject;
 pub type ShaderPointLight = fs::ty::PointLight;
-pub type ShaderDirectionalLight = fs::ty::DirectionalLight;

@@ -5,7 +5,6 @@ use vulkano::{
     descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
     device::Queue,
     format::Format,
-    pipeline::{GraphicsPipeline, Pipeline},
     sync::GpuFuture,
 };
 

@@ -30,14 +30,8 @@ layout(set = 1, binding = 0) uniform sampler2D diffuse_sampler;
 layout(set = 1, binding = 1) uniform sampler2D normal_sampler;
 layout(set = 1, binding = 2) uniform sampler2D metalic_roughness_sampler;
 
-// duplicated definition in model.vert and shaders.rs
-layout(set = 2, binding = 0)	uniform LightSpaceUniformBufferObject {
-	mat4 matrix;
-} light_space;
-
-layout(set = 2, binding = 1) uniform LightUniformBufferObject { 
+layout(set = 2, binding = 0) uniform LightUniformBufferObject { 
 	PointLight point_lights[MAX_POINT_LIGHTS];
-	DirectionalLight dir_light;
 	int point_lights_count;
 } lights;
 

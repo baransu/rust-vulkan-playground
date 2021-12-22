@@ -22,9 +22,12 @@ layout(location = 0) out vec2 f_uv;
 layout(location = 1) out vec3 f_normal;
 layout(location = 2) out vec4 f_tangent;
 layout(location = 3) out vec4 f_position;
+layout(location = 4) out vec3 f_position_raw;
 
 void main() {
 	vec4 view_pos = camera.view * model * vec4(position, 1.0);
+
+	f_position_raw = (model * vec4(position, 1.0)).xyz;
 
 	f_position = view_pos;
 

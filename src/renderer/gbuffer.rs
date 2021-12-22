@@ -4,7 +4,7 @@ use std::{
 };
 
 use vulkano::{
-    buffer::{CpuAccessibleBuffer, ImmutableBuffer, TypedBufferAccess},
+    buffer::{ImmutableBuffer, TypedBufferAccess},
     command_buffer::{AutoCommandBufferBuilder, SecondaryAutoCommandBuffer},
     descriptor_set::{
         layout::{DescriptorSetDesc, DescriptorSetLayout, DescriptorSetLayoutError},
@@ -30,6 +30,7 @@ pub struct GBuffer {
     pub albedo_buffer: Arc<ImageView<AttachmentImage>>,
     pub depth_buffer: Arc<ImageView<AttachmentImage>>,
     pub metalic_roughness_buffer: Arc<ImageView<AttachmentImage>>,
+    pub shadow_buffer: Arc<ImageView<AttachmentImage>>,
 
     pub render_pass: Arc<RenderPass>,
     pub framebuffer: Arc<Framebuffer>,
@@ -49,6 +50,8 @@ impl GBuffer {
         let albedo_buffer = Self::create_attachment_image(context, &target, Format::R8G8B8A8_UNORM);
         let metalic_roughness_buffer =
             Self::create_attachment_image(context, &target, Format::R8G8B8A8_UNORM);
+        let shadow_buffer =
+            Self::create_attachment_image(context, &target, Format::R16G16B16A16_SFLOAT);
         let depth_buffer = Self::create_depth_attachment(context, &target);
 
         let render_pass = Self::create_render_pass(context);
@@ -58,6 +61,7 @@ impl GBuffer {
             &normals_buffer,
             &albedo_buffer,
             &metalic_roughness_buffer,
+            &shadow_buffer,
             &depth_buffer,
         );
 
@@ -69,6 +73,7 @@ impl GBuffer {
             albedo_buffer,
             depth_buffer,
             metalic_roughness_buffer,
+            shadow_buffer,
 
             render_pass,
             framebuffer,
@@ -82,6 +87,7 @@ impl GBuffer {
         normals_buffer: &Arc<ImageView<AttachmentImage>>,
         albedo_buffer: &Arc<ImageView<AttachmentImage>>,
         metalic_roughness_buffer: &Arc<ImageView<AttachmentImage>>,
+        shadow_buffer: &Arc<ImageView<AttachmentImage>>,
         depth_buffer: &Arc<ImageView<AttachmentImage>>,
     ) -> Arc<Framebuffer> {
         Framebuffer::start(render_pass.clone())
@@ -92,6 +98,8 @@ impl GBuffer {
             .add(albedo_buffer.clone())
             .unwrap()
             .add(metalic_roughness_buffer.clone())
+            .unwrap()
+            .add(shadow_buffer.clone())
             .unwrap()
             .add(depth_buffer.clone())
             .unwrap()
@@ -126,6 +134,12 @@ impl GBuffer {
                             format: Format::R8G8B8A8_UNORM,
                             samples: 1,
                         },
+                        shadows: {
+                            load: Clear,
+                            store: Store,
+                            format: Format::R16G16B16A16_SFLOAT,
+                            samples: 1,
+                        },
                         depth: {
                             load: Clear,
                             store: Store,
@@ -134,7 +148,7 @@ impl GBuffer {
                         }
                     },
             pass: {
-                color: [position, normals, albedo, metalic_roughness],
+                color: [position, normals, albedo, metalic_roughness, shadows],
                 depth_stencil: {depth}
             }
         )
@@ -243,6 +257,7 @@ impl GBuffer {
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         camera_descriptor_set: &Arc<PersistentDescriptorSet>,
         instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
+        shadow_descriptor_set: &Arc<PersistentDescriptorSet>,
     ) {
         for node_index in model.root_nodes.iter() {
             self.draw_model_node(
@@ -251,6 +266,7 @@ impl GBuffer {
                 *node_index,
                 camera_descriptor_set,
                 instance_data_buffer,
+                shadow_descriptor_set,
             )
         }
     }
@@ -262,6 +278,7 @@ impl GBuffer {
         node_index: usize,
         camera_descriptor_set: &Arc<PersistentDescriptorSet>,
         instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
+        shadow_descriptor_set: &Arc<PersistentDescriptorSet>,
     ) {
         let node = model.nodes.get(node_index).unwrap();
 
@@ -275,6 +292,7 @@ impl GBuffer {
                     *primitive_index,
                     camera_descriptor_set,
                     instance_data_buffer,
+                    shadow_descriptor_set,
                 );
             }
         }
@@ -286,6 +304,7 @@ impl GBuffer {
                 *child_index,
                 camera_descriptor_set,
                 instance_data_buffer,
+                shadow_descriptor_set,
             );
         }
     }
@@ -297,6 +316,7 @@ impl GBuffer {
         primitive_index: usize,
         camera_descriptor_set: &Arc<PersistentDescriptorSet>,
         instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
+        shadow_descriptor_set: &Arc<PersistentDescriptorSet>,
     ) {
         let primitive = model.primitives.get(primitive_index).unwrap();
         let material = model.materials.get(primitive.material).unwrap();
@@ -309,6 +329,7 @@ impl GBuffer {
                 (
                     camera_descriptor_set.clone(),
                     material.descriptor_set.clone(),
+                    shadow_descriptor_set.clone(),
                 ),
             )
             .bind_vertex_buffers(

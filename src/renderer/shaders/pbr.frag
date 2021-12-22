@@ -29,20 +29,14 @@ layout(binding = 2) uniform sampler2D u_normals;
 layout(binding = 3) uniform sampler2D u_albedo;
 layout(binding = 4) uniform sampler2D u_metalic_roughness;
 layout(binding = 5) uniform sampler2D u_depth;
-layout(binding = 6) uniform sampler2D ssao_sampler;
-layout(binding = 7) uniform sampler2D shadow_sampler;
+layout(binding = 6) uniform sampler2D u_shadows;
+layout(binding = 7) uniform sampler2D ssao_sampler;
 layout(binding = 8) uniform samplerCube samplerIrradiance;
 layout(binding = 9) uniform samplerCube prefilteredMap;
-layout(binding = 10) uniform sampler2D   samplerBRDFLUT;  
+layout(binding = 10) uniform sampler2D samplerBRDFLUT;  
 
-// duplicated definition in model.vert and shaders.rs
-layout(binding = 11)	uniform LightSpaceUniformBufferObject {
-	mat4 matrix;
-} light_space;
-
-layout(binding = 12) uniform LightUniformBufferObject { 
+layout(binding = 11) uniform LightUniformBufferObject { 
 	PointLight point_lights[MAX_POINT_LIGHTS];
-	DirectionalLight dir_light;
 	int point_lights_count;
 } lights;
 
@@ -85,7 +79,7 @@ vec3 F_SchlickR(float cosTheta, vec3 F0, float roughness)
 
 vec3 prefilteredReflection(vec3 R, float roughness)
 {
-	const float MAX_REFLECTION_LOD = 9.0; // todo: param/const
+	const float MAX_REFLECTION_LOD = 8.0; // todo: param/const
 	float lod = roughness * MAX_REFLECTION_LOD;
 	// TODO: add parallax correction on R
 	return textureLod(prefilteredMap, R, lod).rgb;
@@ -162,8 +156,8 @@ void main() {
 		vec4 metalic_roughness = texture(u_metalic_roughness, f_uv);
 		float ssao = texture(ssao_sampler, f_uv).r;
 		float ao = 1.0 * ssao; // metalic_roughness.r;
-		float roughness = clamp(metalic_roughness.g, 0.0, 1.0);
-		float metallic = clamp(metalic_roughness.b, 0.0, 1.0);
+		float roughness = metalic_roughness.g;
+		float metallic = metalic_roughness.b;
 
 		vec3 F0 = vec3(0.04);
 		F0 = mix(F0, ALBEDO, metallic);
@@ -194,8 +188,10 @@ void main() {
 		vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
 
 		vec3 ambient = (kD * diffuse + specular) * ao;
+
+		float shadow = texture(u_shadows, f_uv).r;
 		
-		color = ambient + Lo;
+		color = ambient + (1.0 - shadow) * Lo;
 	}
 
 	// tone mapping

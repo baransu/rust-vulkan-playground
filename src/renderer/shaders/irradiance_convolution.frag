@@ -1,11 +1,10 @@
 #version 450
 
 layout (binding = 1) uniform samplerCube samplerEnv;
-layout (binding = 2) uniform samplerCube samplerLocal;
 
 // placeholder because we share same code 
 // for irradiance convolution and prefilter env map
-layout (binding = 3) uniform RoughnessBufferObject { 
+layout (binding = 2) uniform RoughnessBufferObject { 
   float roughness;
   uint numSamples;
 } consts;
@@ -18,8 +17,7 @@ layout (location = 0) out vec4 outColor;
 
 vec4 getEnv(vec3 uv) {
 	vec4 env = texture(samplerEnv, uv);
-	vec4 local = texture(samplerLocal, uv);
-	return local;
+	return env;
 }
 
 void main()
