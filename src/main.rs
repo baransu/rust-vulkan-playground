@@ -26,8 +26,7 @@ use renderer::{
 };
 use vulkano::{
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferExecError, CommandBufferExecFuture,
-        CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
+        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
         SecondaryAutoCommandBuffer, SubpassContents,
     },
     descriptor_set::layout::{
@@ -44,7 +43,7 @@ use vulkano::{
     shader::ShaderStages,
     single_pass_renderpass,
     swapchain::{acquire_next_image, AcquireError},
-    sync::{self, FenceSignalFuture, GpuFuture, NowFuture},
+    sync::{self, GpuFuture},
 };
 use winit::{
     event::{
@@ -55,32 +54,31 @@ use winit::{
 
 use crate::renderer::skybox_pass::fs_gbuffer;
 
-const DAMAGED_HELMET: &str =
-    "/Users/baransu/Projects/rust-vulkan/res/models/damaged_helmet/scene.gltf";
-const SPONZA: &str =
-    "/Users/baransu/Projects/rust-vulkan/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
-const BOTTLE: &str =
-    "/Users/baransu/Projects/rust-vulkan/glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
+const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
+const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
+const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
 
-const MODEL_PATHS: [&str; 1] = [
+const PLANE: &str = "res/models/plane/plane.gltf";
+
+const MODEL_PATHS: [&str; 3] = [
     DAMAGED_HELMET,
-    // BOTTLE,
-    // "res/models/plane/plane.gltf",
+    BOTTLE,
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
+    PLANE,
     // SPONZA,
     // "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
 ];
 
 // const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
-const SKYBOX_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/hdr/gcanyon_cube.ktx";
+const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
 // const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
 const RENDER_SKYBOX: bool = true;
 
 const SHADOW_MAP_DIM: f32 = 2048.0;
 
-const BRDF_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/ibl_brdf_lut.png";
+const BRDF_PATH: &str = "res/ibl_brdf_lut.png";
 
 pub struct FramebufferWithAttachment {
     framebuffer: Arc<Framebuffer>,
@@ -204,17 +202,15 @@ impl Application {
         let gbuffer_target = Self::create_gbuffer_target(&context);
         let gbuffer = GBuffer::initialize(&context, &layout, &gbuffer_target);
 
-        let local_probe = LocalProbe::initialize(
-            &context,
-            &layout,
-            &SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH),
-        );
+        let skybox_texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
+
+        let local_probe = LocalProbe::initialize(&context, &layout, &skybox_texture);
 
         let mut scene = Scene::initialize(
             &context,
             MODEL_PATHS.to_vec(),
             &gbuffer.pipeline,
-            &local_probe.pipeline,
+            &layout,
             &shadow_graphics_pipeline,
         );
 
@@ -228,7 +224,7 @@ impl Application {
         let irradiance_convolution = CubemapGenPass::initialize(
             &context,
             &local_probe.cube_attachment_view,
-            &SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH),
+            &skybox_texture,
             irradiance_convolution_fs_mod.entry_point("main").unwrap(),
             Format::R32G32B32A32_SFLOAT,
             64.0,
@@ -238,7 +234,7 @@ impl Application {
         let prefilterenvmap = CubemapGenPass::initialize(
             &context,
             &local_probe.cube_attachment_view,
-            &SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH),
+            &skybox_texture,
             prefilterenvmap_fs_mod.entry_point("main").unwrap(),
             Format::R16G16B16A16_SFLOAT,
             512.0,
@@ -247,12 +243,15 @@ impl Application {
         let skybox = SkyboxPass::initialize(
             &context,
             &gbuffer.render_pass,
-            // TODO: for debugging
-            &irradiance_convolution.cube_attachment_view,
+            &local_probe.cube_attachment_view,
             fs_gbuffer::load(context.device.clone())
                 .unwrap()
                 .entry_point("main")
                 .unwrap(),
+            [
+                context.swap_chain.dimensions()[0] as f32,
+                context.swap_chain.dimensions()[1] as f32,
+            ],
         );
 
         let light_system = LightSystem::initialize(
@@ -313,7 +312,7 @@ impl Application {
         scene.add_entity(Entity::new(
             DAMAGED_HELMET,
             Transform {
-                translation: Vec3::new(0.0, 0.0, 5.0),
+                translation: Vec3::new(0.0, 0.0, 1.0),
                 rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
                 scale: Vec3::ONE,
             },
@@ -322,22 +321,21 @@ impl Application {
         scene.add_entity(Entity::new(
             BOTTLE,
             Transform {
-                translation: Vec3::new(-5.0, 0.0, 0.0),
+                translation: Vec3::new(-1.0, 0.0, 0.0),
                 rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
                 scale: Vec3::ONE * 5.0,
             },
         ));
 
         // Plane
-        // scene.add_entity(Entity::new(
-        //     "Plane",
-        //     Transform {
-        //         rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
-        //         scale: Vec3::ONE * 25.0,
-        //         translation: Vec3::new(0.0, 0.0, -5.0),
-        //     },
-        //     Default::default(),
-        // ));
+        scene.add_entity(Entity::new(
+            PLANE,
+            Transform {
+                rotation: Quat::from_euler(EulerRot::XYZ, 180.0_f32.to_radians(), 0.0, 0.0),
+                scale: Vec3::ONE * 5.0,
+                translation: Vec3::new(0.0, 5.0, 0.0),
+            },
+        ));
 
         // sponza
         scene.add_entity(Entity::new(

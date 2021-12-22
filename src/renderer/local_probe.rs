@@ -35,8 +35,8 @@ use super::{
     vertex::Vertex,
 };
 
-const DIM: f32 = 64.0;
-const FORMAT: Format = Format::R8G8B8A8_UNORM;
+const DIM: f32 = 1024.0;
+const FORMAT: Format = Format::R16G16B16A16_SFLOAT;
 
 pub struct LocalProbe {
     pub pipeline: Arc<GraphicsPipeline>,
@@ -88,6 +88,7 @@ impl LocalProbe {
                 .unwrap()
                 .entry_point("main")
                 .unwrap(),
+            [DIM, DIM],
         );
 
         LocalProbe {
@@ -128,9 +129,11 @@ impl LocalProbe {
     fn update_uniform_buffers(
         &self,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        matrix: Mat4,
+        f: usize,
     ) {
-        let position = Vec3::ZERO.to_array();
+        let position = Vec3::new(0.0, 0.0, 0.0);
+
+        let view = matrices(position)[f];
 
         let mut proj = Mat4::perspective_rh(90.0_f32.to_radians(), 1.0, 0.1, 10.0);
 
@@ -138,9 +141,9 @@ impl LocalProbe {
 
         // camera buffer
         let camera_buffer_data = Arc::new(CameraUniformBufferObject {
-            view: matrix.to_cols_array_2d(),
+            view: view.to_cols_array_2d(),
             proj: proj.to_cols_array_2d(),
-            position,
+            position: position.to_array(),
         });
 
         builder
@@ -148,9 +151,9 @@ impl LocalProbe {
             .unwrap();
 
         let skybox_buffer_data = Arc::new(CameraUniformBufferObject {
-            view: Mat4::from_mat3(Mat3::from_mat4(matrix)).to_cols_array_2d(),
+            view: Mat4::from_mat3(Mat3::from_mat4(view)).to_cols_array_2d(),
             proj: proj.to_cols_array_2d(),
-            position,
+            position: position.to_array(),
         });
 
         builder
@@ -246,90 +249,81 @@ impl LocalProbe {
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         scene: &Scene,
     ) {
-        let mats = matrices();
-
         let light_descriptor_set = Self::create_light_descriptor_set(&self.pipeline, scene);
         let instance_data_buffers = scene.get_instance_data_buffers(&context);
 
-        let num_mips = (DIM.log2().floor() + 1.0) as u32;
+        for f in 0..6 {
+            let viewport = Viewport {
+                origin: [0.0, 0.0],
+                dimensions: [DIM as f32, DIM as f32],
+                depth_range: 0.0..1.0,
+            };
 
-        for m in 0..num_mips {
-            for f in 0..6 {
-                let width = DIM * 0.5_f32.powf(m as f32);
-                let height = DIM * 0.5_f32.powf(m as f32);
+            let mut secondary_builder = AutoCommandBufferBuilder::secondary_graphics(
+                context.device.clone(),
+                context.graphics_queue.family(),
+                CommandBufferUsage::SimultaneousUse,
+                self.pipeline.subpass().clone(),
+            )
+            .unwrap();
 
-                let viewport = Viewport {
-                    origin: [0.0, 0.0],
-                    dimensions: [width, height],
-                    depth_range: 0.0..1.0,
-                };
+            secondary_builder
+                .bind_pipeline_graphics(self.pipeline.clone())
+                .set_viewport(0, [viewport.clone()]);
 
-                let mut secondary_builder = AutoCommandBufferBuilder::secondary_graphics(
-                    context.device.clone(),
-                    context.graphics_queue.family(),
-                    CommandBufferUsage::SimultaneousUse,
-                    self.pipeline.subpass().clone(),
+            for model in scene.models.iter() {
+                // if there is no instance_data_buffer it means we have 0 instances for this mesh
+                if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
+                    self.draw_model(
+                        model,
+                        &mut secondary_builder,
+                        instance_data_buffer,
+                        &light_descriptor_set,
+                    );
+                }
+            }
+
+            let model_command_buffer = Arc::new(secondary_builder.build().unwrap());
+
+            self.update_uniform_buffers(builder, f);
+
+            builder
+                .begin_render_pass(
+                    self.framebuffer.clone(),
+                    SubpassContents::SecondaryCommandBuffers,
+                    vec![
+                        ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
+                        ClearValue::Depth(1.0),
+                    ],
                 )
                 .unwrap();
 
-                secondary_builder
-                    .bind_pipeline_graphics(self.pipeline.clone())
-                    .set_viewport(0, [viewport.clone()]);
+            builder
+                .execute_commands(self.skybox.command_buffer.clone())
+                .unwrap();
 
-                for model in scene.models.iter() {
-                    // if there is no instance_data_buffer it means we have 0 instances for this mesh
-                    if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
-                        self.draw_model(
-                            model,
-                            &mut secondary_builder,
-                            instance_data_buffer,
-                            &light_descriptor_set,
-                        );
-                    }
-                }
+            builder
+                .execute_commands(model_command_buffer.clone())
+                .unwrap();
 
-                let model_command_buffer = Arc::new(secondary_builder.build().unwrap());
+            builder.end_render_pass().unwrap();
 
-                self.update_uniform_buffers(builder, mats[f]);
-
-                builder
-                    .begin_render_pass(
-                        self.framebuffer.clone(),
-                        SubpassContents::SecondaryCommandBuffers,
-                        vec![
-                            ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
-                            ClearValue::Depth(1.0),
-                        ],
-                    )
-                    .unwrap();
-
-                builder
-                    .execute_commands(self.skybox.command_buffer.clone())
-                    .unwrap();
-
-                builder
-                    .execute_commands(model_command_buffer.clone())
-                    .unwrap();
-
-                builder.end_render_pass().unwrap();
-
-                builder
-                    .blit_image(
-                        self.color_attachment.clone(),
-                        [0, 0, 0],
-                        [width as i32, height as i32, 1],
-                        0,
-                        0,
-                        self.cube_attachment.clone(),
-                        [0, 0, 0],
-                        [width as i32, height as i32, 1],
-                        f as u32,
-                        m,
-                        1,
-                        Filter::Linear,
-                    )
-                    .unwrap();
-            }
+            builder
+                .blit_image(
+                    self.color_attachment.clone(),
+                    [0, 0, 0],
+                    [DIM as i32, DIM as i32, 1],
+                    0,
+                    0,
+                    self.cube_attachment.clone(),
+                    [0, 0, 0],
+                    [DIM as i32, DIM as i32, 1],
+                    f as u32,
+                    0,
+                    1,
+                    Filter::Linear,
+                )
+                .unwrap();
         }
     }
 
@@ -405,8 +399,6 @@ impl LocalProbe {
     }
 
     fn create_cube_attachment(context: &Context) -> Arc<StorageImage> {
-        let num_mips = (DIM.log2().floor() + 1.0) as u32;
-
         StorageImage::with_mipmaps_usage(
             context.device.clone(),
             ImageDimensions::Dim2d {
@@ -415,7 +407,7 @@ impl LocalProbe {
                 array_layers: 6,
             },
             FORMAT,
-            MipmapsCount::Specific(num_mips),
+            MipmapsCount::One,
             ImageUsage {
                 transfer_destination: true,
                 transfer_source: true,
@@ -495,8 +487,6 @@ impl LocalProbe {
         let primitive = model.primitives.get(primitive_index).unwrap();
         let material = model.materials.get(primitive.material).unwrap();
 
-        println!("Draw primitive");
-
         builder
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
@@ -504,7 +494,7 @@ impl LocalProbe {
                 0,
                 vec![
                     self.camera_descriptor_set.clone(),
-                    material.local_probe_descriptor_set.clone(),
+                    material.descriptor_set.clone(),
                     light_descriptor_set.clone(),
                 ],
             )
@@ -541,25 +531,25 @@ pub mod fs {
     }
 }
 
-fn matrices() -> [Mat4; 6] {
+fn matrices(eye: Vec3) -> [Mat4; 6] {
     [
         // POSITIVE_X
-        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0), -Vec3::Y),
+        Mat4::look_at_rh(eye, eye + Vec3::new(1.0, 0.0, 0.0), -Vec3::Y),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
         // NEGATIVE_X
-        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(-1.0, 0.0, 0.0), -Vec3::Y),
+        Mat4::look_at_rh(eye, eye + Vec3::new(-1.0, 0.0, 0.0), -Vec3::Y),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
         // POSITIVE_Y
-        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0), Vec3::Z),
+        Mat4::look_at_rh(eye, eye + Vec3::new(0.0, -1.0, 0.0), -Vec3::Z),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)),
         // NEGATIVE_Y
-        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, -1.0, 0.0), -Vec3::Z),
+        Mat4::look_at_rh(eye, eye + Vec3::new(0.0, 1.0, 0.0), Vec3::Z),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f)),
         // POSITIVE_Z
-        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0), -Vec3::Y),
+        Mat4::look_at_rh(eye, eye + Vec3::new(0.0, 0.0, 1.0), -Vec3::Y),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
         // NEGATIVE_Z
-        Mat4::look_at_rh(Vec3::ZERO, Vec3::new(0.0, 0.0, -1.0), -Vec3::Y),
+        Mat4::look_at_rh(eye, eye + Vec3::new(0.0, 0.0, -1.0), -Vec3::Y),
         // glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))
     ]
 }

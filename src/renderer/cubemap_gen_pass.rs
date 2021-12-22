@@ -17,7 +17,7 @@ use vulkano::{
     },
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{Framebuffer, RenderPass, Subpass},
-    sampler::Filter,
+    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     shader::EntryPoint,
     single_pass_renderpass,
     sync::GpuFuture,
@@ -74,7 +74,6 @@ impl CubemapGenPass {
             &roughness_uniform_buffer,
             &skybox_cubemap,
             &local_cubemap,
-            dim,
         );
 
         let cube_attachment = Self::create_cube_attachment(context, format, dim);
@@ -303,7 +302,6 @@ impl CubemapGenPass {
         roughness_uniform_buffer: &Arc<CpuAccessibleBuffer<RoughnessBufferObject>>,
         skybox_cubemap: &Arc<T1>,
         local_cubemap: &Arc<T2>,
-        dim: f32,
     ) -> Arc<PersistentDescriptorSet>
     where
         T1: ImageViewAbstract + 'static,

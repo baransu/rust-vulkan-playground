@@ -122,7 +122,6 @@ impl Texture {
         let dimensions = ImageDimensions::Dim2d {
             width,
             height,
-            // TODO: what are array_layers?
             array_layers: 1,
         };
 

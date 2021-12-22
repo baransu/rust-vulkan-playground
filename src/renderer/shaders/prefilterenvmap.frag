@@ -74,7 +74,7 @@ float D_GGX(float dotNH, float roughness)
 vec4 getEnv(vec3 uv, float mip) {
 	vec4 env = textureLod(samplerEnv, uv, mip);
 	vec4 local = textureLod(samplerLocal, uv, mip);
-	return env * local;
+	return local;
 }
 
 vec3 prefilterEnvMap(vec3 R, float roughness) {
@@ -89,7 +89,6 @@ vec3 prefilterEnvMap(vec3 R, float roughness) {
 		vec3 H = importanceSample_GGX(Xi, roughness, N);
 		vec3 L = normalize(2.0 * dot(V, H) * H - V);
 		float dotNL = clamp(dot(N, L), 0.0, 1.0);
-
 
 		if(dotNL > 0.0) {
 			// Filtering based on https://placeholderart.wordpress.com/2015/07/28/implementation-notes-runtime-environment-map-filtering-for-image-based-lighting/

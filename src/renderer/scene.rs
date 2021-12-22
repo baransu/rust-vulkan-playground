@@ -4,7 +4,7 @@ use glam::{Mat4, Vec3};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
-    descriptor_set::PersistentDescriptorSet,
+    descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
     pipeline::{GraphicsPipeline, Pipeline},
     sync::GpuFuture,
 };
@@ -45,7 +45,7 @@ impl Scene {
         context: &Context,
         mesh_paths: Vec<&str>,
         gbuffer_pipeline: &Arc<GraphicsPipeline>,
-        local_probe_pipeline: &Arc<GraphicsPipeline>,
+        layout: &Arc<DescriptorSetLayout>,
         shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
     ) -> Self {
         let point_lights = Self::gen_point_lights();
@@ -57,7 +57,7 @@ impl Scene {
         let queue = context.graphics_queue.clone();
         let models = mesh_paths
             .into_iter()
-            .map(|path| Model::load_gltf(&queue, &path, gbuffer_pipeline, local_probe_pipeline))
+            .map(|path| Model::load_gltf(&queue, &path, layout))
             .collect();
 
         let shadow_descriptor_set = Self::create_shadow_descriptor_set(
@@ -181,7 +181,7 @@ impl Scene {
 
     fn gen_point_lights() -> Vec<PointLight> {
         vec![PointLight {
-            position: Vec3::new(0.0, 5.0, 0.0),
+            position: Vec3::new(0.0, 4.0, 0.0),
             color: Vec3::new(0.0, 0.0, 100.0),
         }]
     }

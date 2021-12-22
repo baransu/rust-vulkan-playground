@@ -52,6 +52,7 @@ impl SkyboxPass {
         render_pass: &Arc<RenderPass>,
         texture: &Arc<T>,
         fragment_shader_entry_point: EntryPoint,
+        dimensions: [f32; 2],
     ) -> SkyboxPass
     where
         T: ImageViewAbstract + 'static,
@@ -71,6 +72,7 @@ impl SkyboxPass {
             &graphics_pipeline,
             &descriptor_set,
             &vertex_buffer,
+            dimensions,
         );
 
         SkyboxPass {
@@ -80,15 +82,6 @@ impl SkyboxPass {
             descriptor_set,
             command_buffer,
         }
-    }
-
-    pub fn recreate_swap_chain(&mut self, context: &Context) {
-        self.command_buffer = Self::create_command_buffer(
-            context,
-            &self.graphics_pipeline,
-            &self.descriptor_set,
-            &self.vertex_buffer,
-        );
     }
 
     pub fn create_uniform_buffer(
@@ -118,10 +111,8 @@ impl SkyboxPass {
         graphics_pipeline: &Arc<GraphicsPipeline>,
         descriptor_set: &Arc<PersistentDescriptorSet>,
         vertex_buffer: &Arc<ImmutableBuffer<[SkyboxVertex]>>,
+        dimensions: [f32; 2],
     ) -> Arc<SecondaryAutoCommandBuffer> {
-        let dimensions_u32 = context.swap_chain.dimensions();
-        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-
         let viewport = Viewport {
             origin: [0.0, 0.0],
             dimensions,
@@ -245,17 +236,14 @@ impl SkyboxPass {
         let dimensions = ImageDimensions::Dim2d {
             width,
             height,
-            // TODO: what are array_layers?
             array_layers: 6,
         };
-
-        let data = image::DynamicImage::new_rgba16(width * 6, height * 6).to_rgba16();
 
         let source = CpuAccessibleBuffer::from_iter(
             context.device.clone(),
             BufferUsage::transfer_source(),
             false,
-            data.into_raw().iter().cloned(),
+            image_rgba,
         )
         .unwrap();
 

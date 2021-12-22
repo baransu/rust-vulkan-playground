@@ -19,7 +19,7 @@ layout (location = 0) out vec4 outColor;
 vec4 getEnv(vec3 uv) {
 	vec4 env = texture(samplerEnv, uv);
 	vec4 local = texture(samplerLocal, uv);
-	return env * local;
+	return local;
 }
 
 void main()

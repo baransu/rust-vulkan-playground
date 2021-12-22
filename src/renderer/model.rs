@@ -76,44 +76,32 @@ pub struct Material {
     pub normal: Texture,
 
     pub descriptor_set: Arc<PersistentDescriptorSet>,
-    pub local_probe_descriptor_set: Arc<PersistentDescriptorSet>,
 }
 
 impl Material {
     fn new(
-        gbuffer_pipeline: &Arc<GraphicsPipeline>,
-        local_probe_pipeline: &Arc<GraphicsPipeline>,
+        layout: &Arc<DescriptorSetLayout>,
         diffuse: Texture,
         metallic_roughness: Texture,
         normal: Texture,
     ) -> Material {
         let descriptor_set =
-            Self::create_descriptor_set(gbuffer_pipeline, &diffuse, &metallic_roughness, &normal);
-
-        let local_probe_descriptor_set = Self::create_descriptor_set(
-            local_probe_pipeline,
-            &diffuse,
-            &metallic_roughness,
-            &normal,
-        );
+            Self::create_descriptor_set(layout, &diffuse, &metallic_roughness, &normal);
 
         Material {
             diffuse,
             metallic_roughness,
             normal,
             descriptor_set,
-            local_probe_descriptor_set,
         }
     }
 
     fn create_descriptor_set(
-        pipeline: &Arc<GraphicsPipeline>,
+        layout: &Arc<DescriptorSetLayout>,
         diffuse: &Texture,
         metallic_roughness: &Texture,
         normal: &Texture,
     ) -> Arc<PersistentDescriptorSet> {
-        let layout = pipeline.layout().descriptor_set_layouts().get(1).unwrap();
-
         let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
         set_builder.add_image(diffuse.image.clone()).unwrap();
@@ -152,12 +140,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn load_gltf(
-        queue: &Arc<Queue>,
-        path: &str,
-        gbuffer_pipeline: &Arc<GraphicsPipeline>,
-        local_probe_pipeline: &Arc<GraphicsPipeline>,
-    ) -> Model {
+    pub fn load_gltf(queue: &Arc<Queue>, path: &str, layout: &Arc<DescriptorSetLayout>) -> Model {
         let (document, buffers, images) = gltf::import(path).unwrap();
 
         assert_eq!(
@@ -256,8 +239,7 @@ impl Model {
                 });
 
                 Material::new(
-                    gbuffer_pipeline,
-                    local_probe_pipeline,
+                    layout,
                     // TODO: how to correctly handle optional values?
                     diffuse.unwrap_or_else(|| Texture::empty(&queue)),
                     metalic_roughness.unwrap_or_else(|| Texture::empty(&queue)),

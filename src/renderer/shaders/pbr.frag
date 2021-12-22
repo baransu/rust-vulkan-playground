@@ -87,6 +87,7 @@ vec3 prefilteredReflection(vec3 R, float roughness)
 {
 	const float MAX_REFLECTION_LOD = 9.0; // todo: param/const
 	float lod = roughness * MAX_REFLECTION_LOD;
+	// TODO: add parallax correction on R
 	return textureLod(prefilteredMap, R, lod).rgb;
 }
 
@@ -116,6 +117,25 @@ vec3 specularContribution(vec3 L, vec3 V, vec3 N, vec3 F0, float metallic, float
 	}
 
 	return color;
+}
+
+const vec3 cubePos = vec3(0.0, 5.0, 0.0);
+const vec3 cubeSize = vec3(10, 10, 10);
+
+vec3 parallaxCorrectNormal( vec3 v) {
+  vec3 nDir = normalize(v);
+  vec3 rbmax = (   0.5 * ( cubeSize - cubePos ) - camera.position ) / nDir;
+  vec3 rbmin = ( - 0.5 * ( cubeSize - cubePos ) - camera.position ) / nDir;
+
+  vec3 rbminmax;
+  rbminmax.x = ( nDir.x > 0. ) ? rbmax.x : rbmin.x;
+  rbminmax.y = ( nDir.y > 0. ) ? rbmax.y : rbmin.y;
+  rbminmax.z = ( nDir.z > 0. ) ? rbmax.z : rbmin.z;
+
+  float correction = min(min(rbminmax.x, rbminmax.y), rbminmax.z);
+  vec3 boxIntersection = camera.position + nDir * correction;
+
+  return boxIntersection - cubePos;
 }
 
 void main() {
@@ -164,6 +184,7 @@ void main() {
 		kD *= 1.0 - metallic; 
 
 		// Diffuse based on irradiance
+		// TODO: add parallax correction on N
 		vec3 irradiance = texture(samplerIrradiance, N).rgb;
 		vec3 diffuse = irradiance * ALBEDO;	
 
