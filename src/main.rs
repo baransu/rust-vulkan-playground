@@ -15,6 +15,7 @@ use renderer::{
     gbuffer::GBuffer,
     light_system::LightSystem,
     local_probe::LocalProbe,
+    point_light_shadows::PointLightShadows,
     scene::Scene,
     screen_frame::ScreenFrame,
     skybox_pass::SkyboxPass,
@@ -52,7 +53,7 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
 };
 
-use crate::renderer::skybox_pass::fs_gbuffer;
+use crate::renderer::{point_light_shadows, skybox_pass::fs_gbuffer};
 
 const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
 const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
@@ -60,13 +61,13 @@ const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
 
 const PLANE: &str = "res/models/plane/plane.gltf";
 
-const MODEL_PATHS: [&str; 3] = [
-    DAMAGED_HELMET,
-    BOTTLE,
+const MODEL_PATHS: [&str; 1] = [
+    // DAMAGED_HELMET,
+    // BOTTLE,
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
-    PLANE,
-    // SPONZA,
+    // PLANE,
+    SPONZA,
     // "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
 ];
 
@@ -113,12 +114,12 @@ struct Application {
     imgui_renderer: Renderer,
     platform: WinitPlatform,
 
-    shadow_framebuffer_texture_id: TextureId,
     gbuffer_position_texture_id: TextureId,
     gbuffer_normals_texture_id: TextureId,
     gbuffer_albedo_texture_id: TextureId,
     gbuffer_metalic_texture_id: TextureId,
     ssao_texture_id: TextureId,
+    shadow_texture_id: TextureId,
 
     ssao: Ssao,
     ssao_blur: SsaoBlur,
@@ -127,6 +128,8 @@ struct Application {
     prefilterenvmap: CubemapGenPass,
 
     local_probe: LocalProbe,
+
+    point_light_shadows: PointLightShadows,
 
     /**
      * This is why we need to wrap event_loop into Option
@@ -206,12 +209,14 @@ impl Application {
 
         let local_probe = LocalProbe::initialize(&context, &layout, &skybox_texture);
 
+        let point_light_shadows = PointLightShadows::initialize(&context);
+
         let mut scene = Scene::initialize(
             &context,
             MODEL_PATHS.to_vec(),
             &gbuffer.pipeline,
             &layout,
-            &shadow_graphics_pipeline,
+            &point_light_shadows.cube_attachment_view,
         );
 
         println!("Creating local probe");
@@ -223,7 +228,6 @@ impl Application {
             irradiance_convolution_fs::load(context.device.clone()).unwrap();
         let irradiance_convolution = CubemapGenPass::initialize(
             &context,
-            &local_probe.cube_attachment_view,
             &skybox_texture,
             irradiance_convolution_fs_mod.entry_point("main").unwrap(),
             Format::R32G32B32A32_SFLOAT,
@@ -233,7 +237,6 @@ impl Application {
         let prefilterenvmap_fs_mod = prefilterenvmap_fs::load(context.device.clone()).unwrap();
         let prefilterenvmap = CubemapGenPass::initialize(
             &context,
-            &local_probe.cube_attachment_view,
             &skybox_texture,
             prefilterenvmap_fs_mod.entry_point("main").unwrap(),
             Format::R16G16B16A16_SFLOAT,
@@ -243,7 +246,7 @@ impl Application {
         let skybox = SkyboxPass::initialize(
             &context,
             &gbuffer.render_pass,
-            &local_probe.cube_attachment_view,
+            &skybox_texture,
             fs_gbuffer::load(context.device.clone())
                 .unwrap()
                 .entry_point("main")
@@ -257,10 +260,8 @@ impl Application {
         let light_system = LightSystem::initialize(
             &context,
             &gbuffer_target,
-            &shadow_framebuffer,
             &scene.camera_uniform_buffer,
             &scene.light_uniform_buffer,
-            &scene.light_space_uniform_buffer,
             &gbuffer,
             &ssao_blur.target,
             &irradiance_convolution.cube_attachment_view,
@@ -321,7 +322,7 @@ impl Application {
         scene.add_entity(Entity::new(
             BOTTLE,
             Transform {
-                translation: Vec3::new(-1.0, 0.0, 0.0),
+                translation: Vec3::new(-2.0, 0.0, 0.0),
                 rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
                 scale: Vec3::ONE * 5.0,
             },
@@ -331,11 +332,20 @@ impl Application {
         scene.add_entity(Entity::new(
             PLANE,
             Transform {
-                rotation: Quat::from_euler(EulerRot::XYZ, 180.0_f32.to_radians(), 0.0, 0.0),
+                rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
                 scale: Vec3::ONE * 5.0,
-                translation: Vec3::new(0.0, 5.0, 0.0),
+                translation: Vec3::new(0.0, -2.0, 0.0),
             },
         ));
+
+        // scene.add_entity(Entity::new(
+        //     PLANE,
+        //     Transform {
+        //         rotation: Quat::from_euler(EulerRot::XYZ, 180.0_f32.to_radians(), 0.0, 0.0),
+        //         scale: Vec3::ONE * 5.0,
+        //         translation: Vec3::new(0.0, 5.0, 0.0),
+        //     },
+        // ));
 
         // sponza
         scene.add_entity(Entity::new(
@@ -410,19 +420,6 @@ impl Application {
             &imgui_renderer.target,
         );
 
-        let shadow_framebuffer_texture_id = imgui_renderer
-            .register_texture(
-                &context,
-                &shadow_framebuffer.attachment,
-                TextureUsage {
-                    depth: 1,
-                    normal: 0,
-                    position: 0,
-                    rgb: 0,
-                },
-            )
-            .unwrap();
-
         let gbuffer_position_texture_id = imgui_renderer
             .register_texture(
                 &context,
@@ -490,6 +487,19 @@ impl Application {
             )
             .unwrap();
 
+        let shadow_texture_id = imgui_renderer
+            .register_texture(
+                &context,
+                &gbuffer.shadow_buffer,
+                TextureUsage {
+                    depth: 0,
+                    normal: 0,
+                    position: 0,
+                    rgb: 1,
+                },
+            )
+            .unwrap();
+
         let mut app = Self {
             context,
 
@@ -519,12 +529,12 @@ impl Application {
 
             camera,
 
-            shadow_framebuffer_texture_id,
             gbuffer_albedo_texture_id,
             gbuffer_position_texture_id,
             gbuffer_normals_texture_id,
             gbuffer_metalic_texture_id,
             ssao_texture_id,
+            shadow_texture_id,
 
             ssao,
             ssao_blur,
@@ -534,13 +544,15 @@ impl Application {
 
             local_probe,
 
+            point_light_shadows,
+
             event_loop: Some(event_loop),
 
             prebuild: true,
         };
 
         app.create_scene_command_buffers();
-        app.create_shadow_command_buffers();
+        // app.create_shadow_command_buffers();
 
         app
     }
@@ -614,7 +626,7 @@ impl Application {
         let vert_shader_module =
             renderer::shaders::shadow_vertex_shader::load(context.device.clone()).unwrap();
         let frag_shader_module =
-            renderer::shaders::shadow_fragment_shader::load(context.device.clone()).unwrap();
+            renderer::shaders::shadow_fs::load(context.device.clone()).unwrap();
 
         let viewport = Viewport {
             origin: [0.0, 0.0],
@@ -703,6 +715,7 @@ impl Application {
                         &mut builder,
                         &self.scene.camera_descriptor_set,
                         instance_data_buffer,
+                        &self.scene.shadow_descriptor_set,
                     )
                 }
             }
@@ -715,77 +728,77 @@ impl Application {
         self.scene_command_buffers = command_buffers;
     }
 
-    fn create_shadow_command_buffers(&mut self) {
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [SHADOW_MAP_DIM, SHADOW_MAP_DIM],
-            depth_range: 0.0..1.0,
-        };
+    // fn create_shadow_command_buffers(&mut self) {
+    //     let viewport = Viewport {
+    //         origin: [0.0, 0.0],
+    //         dimensions: [SHADOW_MAP_DIM, SHADOW_MAP_DIM],
+    //         depth_range: 0.0..1.0,
+    //     };
 
-        // let instance_data_buffers = self.create_instance_data_buffers();
+    //     // let instance_data_buffers = self.create_instance_data_buffers();
 
-        let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
+    //     let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
 
-        for _i in 0..self.context.swap_chain.num_images() {
-            let mut builder = AutoCommandBufferBuilder::secondary_graphics(
-                self.context.device.clone(),
-                self.context.graphics_queue.family(),
-                CommandBufferUsage::SimultaneousUse,
-                self.shadow_graphics_pipeline.subpass().clone(),
-            )
-            .unwrap();
+    //     for _i in 0..self.context.swap_chain.num_images() {
+    //         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
+    //             self.context.device.clone(),
+    //             self.context.graphics_queue.family(),
+    //             CommandBufferUsage::SimultaneousUse,
+    //             self.shadow_graphics_pipeline.subpass().clone(),
+    //         )
+    //         .unwrap();
 
-            builder.set_viewport(0, [viewport.clone()]);
+    //         builder.set_viewport(0, [viewport.clone()]);
 
-            builder.bind_pipeline_graphics(self.shadow_graphics_pipeline.clone());
+    //         builder.bind_pipeline_graphics(self.shadow_graphics_pipeline.clone());
 
-            // TODO: set depth bias
+    //         // TODO: set depth bias
 
-            builder.bind_descriptor_sets(
-                PipelineBindPoint::Graphics,
-                self.shadow_graphics_pipeline.layout().clone(),
-                0,
-                self.scene.shadow_descriptor_set.clone(),
-            );
+    //         builder.bind_descriptor_sets(
+    //             PipelineBindPoint::Graphics,
+    //             self.shadow_graphics_pipeline.layout().clone(),
+    //             0,
+    //             self.scene.shadow_descriptor_set.clone(),
+    //         );
 
-            // for model in self.scene.models.iter() {
-            //     // if there is no instance_data_buffer it means we have 0 instances for this mesh
-            //     if let Some(instance_data_buffer) = instance_data_buffers.get(&model.name) {
-            //         for mesh in model.meshes.iter() {
-            //             for primitive_index in mesh.primitives.iter() {
-            //                 let primitive = model.primitives.get(*primitive_index).unwrap();
+    //         // for model in self.scene.models.iter() {
+    //         //     // if there is no instance_data_buffer it means we have 0 instances for this mesh
+    //         //     if let Some(instance_data_buffer) = instance_data_buffers.get(&model.name) {
+    //         //         for mesh in model.meshes.iter() {
+    //         //             for primitive_index in mesh.primitives.iter() {
+    //         //                 let primitive = model.primitives.get(*primitive_index).unwrap();
 
-            //                 builder
-            //                     .bind_vertex_buffers(
-            //                         0,
-            //                         (
-            //                             primitive.vertex_buffer.clone(),
-            //                             instance_data_buffer.clone(),
-            //                         ),
-            //                     )
-            //                     .bind_index_buffer(primitive.index_buffer.clone())
-            //                     .draw_indexed(
-            //                         primitive.index_count,
-            //                         instance_data_buffer.len() as u32,
-            //                         0,
-            //                         0,
-            //                         0,
-            //                     )
-            //                     .unwrap();
-            //             }
-            //         }
-            //     } else {
-            //         println!("No instance data for model: {}", model.name);
-            //     }
-            // }
+    //         //                 builder
+    //         //                     .bind_vertex_buffers(
+    //         //                         0,
+    //         //                         (
+    //         //                             primitive.vertex_buffer.clone(),
+    //         //                             instance_data_buffer.clone(),
+    //         //                         ),
+    //         //                     )
+    //         //                     .bind_index_buffer(primitive.index_buffer.clone())
+    //         //                     .draw_indexed(
+    //         //                         primitive.index_count,
+    //         //                         instance_data_buffer.len() as u32,
+    //         //                         0,
+    //         //                         0,
+    //         //                         0,
+    //         //                     )
+    //         //                     .unwrap();
+    //         //             }
+    //         //         }
+    //         //     } else {
+    //         //         println!("No instance data for model: {}", model.name);
+    //         //     }
+    //         // }
 
-            let command_buffer = Arc::new(builder.build().unwrap());
+    //         let command_buffer = Arc::new(builder.build().unwrap());
 
-            command_buffers.push(command_buffer);
-        }
+    //         command_buffers.push(command_buffer);
+    //     }
 
-        self.shadow_command_buffers = command_buffers;
-    }
+    //     self.shadow_command_buffers = command_buffers;
+    // }
 
     fn create_sync_objects(device: &Arc<Device>) -> Box<dyn GpuFuture> {
         Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>
@@ -797,19 +810,19 @@ impl Application {
         delta_time: &f64,
     ) {
         let ui = self.imgui.frame();
-        let shadow_texture_id = self.shadow_framebuffer_texture_id;
         let gbuffer_position_texture_id = self.gbuffer_position_texture_id;
         let gbuffer_albedo_texture_id = self.gbuffer_albedo_texture_id;
         let gbuffer_normals_texture_id = self.gbuffer_normals_texture_id;
         let gbuffer_metalic_texture_id = self.gbuffer_metalic_texture_id;
         let ssao_texture_id = self.ssao_texture_id;
+        let shadow_texture_id = self.shadow_texture_id;
 
         let camera_pos = self.camera.position;
 
         // Here we create a window with a specific size, and force it to always have a vertical scrollbar visible
         Window::new("Debug")
             .position([0.0, 0.0], Condition::Always)
-            .size([350.0, 600.0], Condition::Always)
+            .size([350.0, 1080.0], Condition::Always)
             .build(&ui, || {
                 let fps = 1.0 / delta_time;
                 ui.text(format!("FPS: {:.2}", fps));
@@ -881,6 +894,12 @@ impl Application {
 
         let light_command_buffer = self.light_system.command_buffers[image_index].clone();
 
+        let offscreen_framebuffer = self.gbuffer.framebuffer.clone();
+        let framebuffer = self.screen_frame.framebuffers[image_index].clone();
+
+        let dimensions_u32 = self.context.swap_chain.dimensions();
+        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
+
         let mut builder = AutoCommandBufferBuilder::primary(
             self.context.device.clone(),
             self.context.graphics_queue.family(),
@@ -888,11 +907,8 @@ impl Application {
         )
         .unwrap();
 
-        let offscreen_framebuffer = self.gbuffer.framebuffer.clone();
-        let framebuffer = self.screen_frame.framebuffers[image_index].clone();
-
-        let dimensions_u32 = self.context.swap_chain.dimensions();
-        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
+        self.point_light_shadows
+            .add_to_builder(&self.context, &mut builder, &self.scene);
 
         builder
             .update_buffer(
@@ -904,17 +920,17 @@ impl Application {
         self.scene
             .update_uniform_buffers(&mut builder, &self.camera, dimensions);
 
-        builder
-            .begin_render_pass(
-                self.shadow_framebuffer.framebuffer.clone(),
-                SubpassContents::SecondaryCommandBuffers,
-                vec![ClearValue::Depth(1.0)],
-            )
-            .unwrap()
-            .execute_commands(self.shadow_command_buffers[image_index].clone())
-            .unwrap()
-            .end_render_pass()
-            .unwrap();
+        // builder
+        //     .begin_render_pass(
+        //         self.shadow_framebuffer.framebuffer.clone(),
+        //         SubpassContents::SecondaryCommandBuffers,
+        //         vec![ClearValue::Depth(1.0)],
+        //     )
+        //     .unwrap()
+        //     .execute_commands(self.shadow_command_buffers[image_index].clone())
+        //     .unwrap()
+        //     .end_render_pass()
+        //     .unwrap();
 
         builder
             .begin_render_pass(
@@ -929,6 +945,8 @@ impl Application {
                     ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
                     // metalic_roughness
                     ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
+                    // shadow
+                    ClearValue::Float([1.0, 1.0, 1.0, 1.0]),
                     // depth
                     ClearValue::Depth(1.0),
                 ],

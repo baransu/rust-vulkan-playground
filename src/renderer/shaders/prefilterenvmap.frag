@@ -1,9 +1,8 @@
 #version 450
 
 layout (binding = 1) uniform samplerCube samplerEnv;
-layout (binding = 2) uniform samplerCube samplerLocal;
 
-layout (binding = 3) uniform RoughnessBufferObject { 
+layout (binding = 2) uniform RoughnessBufferObject { 
   int numSamples;
   float roughness;
 } consts;
@@ -73,8 +72,7 @@ float D_GGX(float dotNH, float roughness)
 
 vec4 getEnv(vec3 uv, float mip) {
 	vec4 env = textureLod(samplerEnv, uv, mip);
-	vec4 local = textureLod(samplerLocal, uv, mip);
-	return local;
+	return env;
 }
 
 vec3 prefilterEnvMap(vec3 R, float roughness) {

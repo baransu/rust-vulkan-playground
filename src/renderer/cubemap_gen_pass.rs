@@ -47,17 +47,15 @@ pub struct CubemapGenPass {
 }
 
 impl CubemapGenPass {
-    pub fn initialize<T1, T2>(
+    pub fn initialize<T1>(
         context: &Context,
-        local_cubemap: &Arc<T1>,
-        skybox_cubemap: &Arc<T2>,
+        skybox_cubemap: &Arc<T1>,
         fragment_shader_entry_point: EntryPoint,
         format: Format,
         dim: f32,
     ) -> CubemapGenPass
     where
         T1: ImageViewAbstract + 'static,
-        T2: ImageViewAbstract + 'static,
     {
         let render_pass = Self::create_render_pass(context, format);
         let pipeline =
@@ -73,7 +71,6 @@ impl CubemapGenPass {
             &camera_uniform_buffer,
             &roughness_uniform_buffer,
             &skybox_cubemap,
-            &local_cubemap,
         );
 
         let cube_attachment = Self::create_cube_attachment(context, format, dim);
@@ -248,19 +245,17 @@ impl CubemapGenPass {
                 builder.end_render_pass().unwrap();
 
                 builder
-                    .blit_image(
+                    .copy_image(
                         self.color_attachment.clone(),
                         [0, 0, 0],
-                        [width as i32, height as i32, 1],
                         0,
                         0,
                         self.cube_attachment.clone(),
                         [0, 0, 0],
-                        [width as i32, height as i32, 1],
                         f as u32,
-                        m as u32,
+                        m,
+                        [width as u32, height as u32, 1],
                         1,
-                        Filter::Linear,
                     )
                     .unwrap();
             }
@@ -295,17 +290,15 @@ impl CubemapGenPass {
             .unwrap()
     }
 
-    fn create_descriptor_set<T1, T2>(
+    fn create_descriptor_set<T1>(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         roughness_uniform_buffer: &Arc<CpuAccessibleBuffer<RoughnessBufferObject>>,
         skybox_cubemap: &Arc<T1>,
-        local_cubemap: &Arc<T2>,
     ) -> Arc<PersistentDescriptorSet>
     where
         T1: ImageViewAbstract + 'static,
-        T2: ImageViewAbstract + 'static,
     {
         let layout = graphics_pipeline
             .layout()
@@ -321,10 +314,6 @@ impl CubemapGenPass {
 
         set_builder
             .add_sampled_image(skybox_cubemap.clone(), context.attachment_sampler.clone())
-            .unwrap();
-
-        set_builder
-            .add_sampled_image(local_cubemap.clone(), context.attachment_sampler.clone())
             .unwrap();
 
         set_builder

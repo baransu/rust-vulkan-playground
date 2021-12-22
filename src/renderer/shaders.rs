@@ -38,7 +38,7 @@ pub mod shadow_vertex_shader {
     }
 }
 
-pub mod shadow_fragment_shader {
+pub mod shadow_fs {
     vulkano_shaders::shader! {
                                     ty: "fragment",
                                     src: "

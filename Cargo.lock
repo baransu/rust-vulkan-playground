@@ -1480,7 +1480,7 @@ dependencies = [
 [[package]]
 name = "vulkano"
 version = "0.27.1"
-source = "git+https://github.com/baransu/vulkano?rev=5a1b940a#5a1b940ab4dba8a533a958b156a4d5e0cbdbab5f"
+source = "git+https://github.com/baransu/vulkano?rev=092b1940#092b1940560db08a0b0165e5ed97098675bd0a25"
 dependencies = [
  "ash",
  "crossbeam-queue",
@@ -1503,7 +1503,7 @@ dependencies = [
 [[package]]
 name = "vulkano-shaders"
 version = "0.27.1"
-source = "git+https://github.com/baransu/vulkano?rev=5a1b940a#5a1b940ab4dba8a533a958b156a4d5e0cbdbab5f"
+source = "git+https://github.com/baransu/vulkano?rev=092b1940#092b1940560db08a0b0165e5ed97098675bd0a25"
 dependencies = [
  "fnv",
  "heck",
@@ -1517,7 +1517,7 @@ dependencies = [
 [[package]]
 name = "vulkano-win"
 version = "0.27.1"
-source = "git+https://github.com/baransu/vulkano?rev=5a1b940a#5a1b940ab4dba8a533a958b156a4d5e0cbdbab5f"
+source = "git+https://github.com/baransu/vulkano?rev=092b1940#092b1940560db08a0b0165e5ed97098675bd0a25"
 dependencies = [
  "cocoa 0.20.2",
  "metal",

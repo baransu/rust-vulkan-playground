@@ -5,6 +5,7 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
+    image::{view::ImageView, StorageImage},
     pipeline::{GraphicsPipeline, Pipeline},
     sync::GpuFuture,
 };
@@ -13,9 +14,9 @@ use super::{
     camera::Camera,
     context::Context,
     entity::{Entity, InstanceData},
-    light_system::{LightUniformBufferObject, ShaderDirectionalLight, ShaderPointLight},
+    light_system::{LightUniformBufferObject, ShaderPointLight},
     model::Model,
-    shaders::{CameraUniformBufferObject, LightSpaceUniformBufferObject},
+    shaders::CameraUniformBufferObject,
 };
 
 const MAX_POINT_LIGHTS: usize = 32;
@@ -29,10 +30,8 @@ pub struct PointLight {
 pub struct Scene {
     pub camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     pub camera_descriptor_set: Arc<PersistentDescriptorSet>,
-    pub light_uniform_buffer: Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
-    pub light_space_uniform_buffer: Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
-
     pub shadow_descriptor_set: Arc<PersistentDescriptorSet>,
+    pub light_uniform_buffer: Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
 
     pub point_lights: Vec<PointLight>,
 
@@ -46,13 +45,12 @@ impl Scene {
         mesh_paths: Vec<&str>,
         gbuffer_pipeline: &Arc<GraphicsPipeline>,
         layout: &Arc<DescriptorSetLayout>,
-        shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
+        shadow_cubemap: &Arc<ImageView<StorageImage>>,
     ) -> Self {
         let point_lights = Self::gen_point_lights();
 
         let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
         let light_uniform_buffer = Self::create_light_uniform_buffer(context, &point_lights);
-        let light_space_uniform_buffer = Self::create_light_space_uniform_buffer(context);
 
         let queue = context.graphics_queue.clone();
         let models = mesh_paths
@@ -60,13 +58,15 @@ impl Scene {
             .map(|path| Model::load_gltf(&queue, &path, layout))
             .collect();
 
-        let shadow_descriptor_set = Self::create_shadow_descriptor_set(
-            &shadow_graphics_pipeline,
-            &light_space_uniform_buffer,
-        );
-
         let camera_descriptor_set =
             Self::create_camera_descriptor_set(gbuffer_pipeline, &camera_uniform_buffer);
+
+        let shadow_descriptor_set = Self::create_shadow_descriptor_set(
+            context,
+            gbuffer_pipeline,
+            shadow_cubemap,
+            &light_uniform_buffer,
+        );
 
         Scene {
             models,
@@ -75,7 +75,6 @@ impl Scene {
             camera_uniform_buffer,
             camera_descriptor_set,
             light_uniform_buffer,
-            light_space_uniform_buffer,
 
             shadow_descriptor_set,
 
@@ -87,25 +86,6 @@ impl Scene {
         self.entities.push(entity);
 
         self
-    }
-
-    fn create_shadow_descriptor_set(
-        graphics_pipeline: &Arc<GraphicsPipeline>,
-        light_space_uniform_buffer: &Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>>,
-    ) -> Arc<PersistentDescriptorSet> {
-        let layout = graphics_pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(0)
-            .unwrap();
-
-        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-        set_builder
-            .add_buffer(light_space_uniform_buffer.clone())
-            .unwrap();
-
-        set_builder.build().unwrap()
     }
 
     fn create_camera_uniform_buffer(
@@ -149,40 +129,35 @@ impl Scene {
         set_builder.build().unwrap()
     }
 
-    fn create_light_space_uniform_buffer(
+    fn create_shadow_descriptor_set(
         context: &Context,
-    ) -> Arc<CpuAccessibleBuffer<LightSpaceUniformBufferObject>> {
-        // NOTE: vulkan has Y flipped from OpenGL so I guess that's why bottom/top has to be reversed
-        let mut light_projection = Mat4::orthographic_rh(-25.0, 25.0, 25.0, -25.0, 0.1, 1000.0);
+        graphics_pipeline: &Arc<GraphicsPipeline>,
+        shadow_cubemap: &Arc<ImageView<StorageImage>>,
+        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
+    ) -> Arc<PersistentDescriptorSet> {
+        let layout = graphics_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(2)
+            .unwrap();
 
-        light_projection.y_axis.y *= -1.0;
+        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-        let position = Self::dir_light_position();
-        let direction = Vec3::new(-0.2, -1.0, -0.3);
+        set_builder
+            .add_sampled_image(shadow_cubemap.clone(), context.depth_sampler.clone())
+            .unwrap();
 
-        let light_view = Mat4::look_at_rh(position, direction, Vec3::Y);
+        set_builder
+            .add_buffer(light_uniform_buffer.clone())
+            .unwrap();
 
-        let matrix = light_projection * light_view;
-
-        let uniform_buffer_data = LightSpaceUniformBufferObject {
-            matrix: matrix.to_cols_array_2d(),
-        };
-
-        let buffer = CpuAccessibleBuffer::from_data(
-            context.device.clone(),
-            BufferUsage::uniform_buffer_transfer_destination(),
-            false,
-            uniform_buffer_data,
-        )
-        .unwrap();
-
-        buffer
+        set_builder.build().unwrap()
     }
 
     fn gen_point_lights() -> Vec<PointLight> {
         vec![PointLight {
-            position: Vec3::new(0.0, 4.0, 0.0),
-            color: Vec3::new(0.0, 0.0, 100.0),
+            position: Vec3::new(1.0, 4.0, -1.0),
+            color: Vec3::new(100.0, 100.0, 100.0),
         }]
     }
 
@@ -217,16 +192,8 @@ impl Scene {
             }
         }
 
-        let dir_light = ShaderDirectionalLight {
-            direction: Vec3::new(-0.2, -1.0, -0.3).to_array(),
-            _dummy0: [0, 0, 0, 0],
-            color: Vec3::ZERO.to_array(),
-        };
-
         let buffer_data = LightUniformBufferObject {
             point_lights: shader_point_lights,
-            _dummy0: [0, 0, 0, 0],
-            dir_light,
             point_lights_count: point_lights.len() as i32,
         };
 
