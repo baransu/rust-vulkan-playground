@@ -1,10 +1,11 @@
 #version 450
 
 layout (binding = 1) uniform samplerCube samplerEnv;
+layout (binding = 2) uniform samplerCube samplerLocal;
 
 // placeholder because we share same code 
 // for irradiance convolution and prefilter env map
-layout (binding = 2) uniform RoughnessBufferObject { 
+layout (binding = 3) uniform RoughnessBufferObject { 
   float roughness;
   uint numSamples;
 } consts;
@@ -14,6 +15,12 @@ layout(location = 0) in vec3 inPos;
 layout (location = 0) out vec4 outColor;
 
 #define PI 3.1415926535897932384626433832795
+
+vec4 getEnv(vec3 uv) {
+	vec4 env = texture(samplerEnv, uv);
+	vec4 local = texture(samplerLocal, uv);
+	return local;
+}
 
 void main()
 {
@@ -34,7 +41,7 @@ void main()
 		for (float theta = 0.0; theta < HALF_PI; theta += deltaTheta) {
 			vec3 tempVec = cos(phi) * right + sin(phi) * up;
 			vec3 sampleVector = cos(theta) * N + sin(theta) * tempVec;
-			color += texture(samplerEnv, sampleVector).rgb * cos(theta) * sin(theta);
+			color += getEnv(sampleVector).rgb * cos(theta) * sin(theta);
 			sampleCount++;
 		}
 	}

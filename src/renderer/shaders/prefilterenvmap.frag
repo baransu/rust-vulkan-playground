@@ -1,8 +1,9 @@
 #version 450
 
 layout (binding = 1) uniform samplerCube samplerEnv;
+layout (binding = 2) uniform samplerCube samplerLocal;
 
-layout (binding = 2) uniform RoughnessBufferObject { 
+layout (binding = 3) uniform RoughnessBufferObject { 
   int numSamples;
   float roughness;
 } consts;
@@ -70,6 +71,12 @@ float D_GGX(float dotNH, float roughness)
 	return (alpha2)/(PI * denom*denom); 
 }
 
+vec4 getEnv(vec3 uv, float mip) {
+	vec4 env = textureLod(samplerEnv, uv, mip);
+	vec4 local = textureLod(samplerLocal, uv, mip);
+	return local;
+}
+
 vec3 prefilterEnvMap(vec3 R, float roughness) {
 	vec3 N = R;
 	vec3 V = R;
@@ -82,7 +89,6 @@ vec3 prefilterEnvMap(vec3 R, float roughness) {
 		vec3 H = importanceSample_GGX(Xi, roughness, N);
 		vec3 L = normalize(2.0 * dot(V, H) * H - V);
 		float dotNL = clamp(dot(N, L), 0.0, 1.0);
-
 
 		if(dotNL > 0.0) {
 			// Filtering based on https://placeholderart.wordpress.com/2015/07/28/implementation-notes-runtime-environment-map-filtering-for-image-based-lighting/
@@ -98,7 +104,7 @@ vec3 prefilterEnvMap(vec3 R, float roughness) {
 			float omegaP = 4.0 * PI / (6.0 * envMapDim * envMapDim);
 			// Biased (+1.0) mip level for better result
 			float mipLevel = roughness == 0.0 ? 0.0 : max(0.5 * log2(omegaS / omegaP) + 1.0, 0.0f);
-			color += textureLod(samplerEnv, L, mipLevel).rgb * dotNL;
+			color += getEnv(L, mipLevel).rgb * dotNL;
 			totalWeight += dotNL;
 		}
 	}

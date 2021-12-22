@@ -14,6 +14,7 @@ use renderer::{
     entity::{Entity, InstanceData},
     gbuffer::GBuffer,
     light_system::LightSystem,
+    local_probe::LocalProbe,
     scene::Scene,
     screen_frame::ScreenFrame,
     skybox_pass::SkyboxPass,
@@ -24,10 +25,12 @@ use renderer::{
     vertex::Vertex,
 };
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
         SecondaryAutoCommandBuffer, SubpassContents,
+    },
+    descriptor_set::layout::{
+        DescriptorDesc, DescriptorSetDesc, DescriptorSetLayout, DescriptorType,
     },
     device::Device,
     format::{ClearValue, Format},
@@ -37,6 +40,7 @@ use vulkano::{
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
+    shader::ShaderStages,
     single_pass_renderpass,
     swapchain::{acquire_next_image, AcquireError},
     sync::{self, GpuFuture},
@@ -48,21 +52,27 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
 };
 
+use crate::renderer::skybox_pass::fs_gbuffer;
+
 const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
 const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
+const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
 
-const MODEL_PATHS: [&str; 1] = [
-    // DAMAGED_HELMET,
-    // "res/models/plane/plane.gltf",
+const PLANE: &str = "res/models/plane/plane.gltf";
+
+const MODEL_PATHS: [&str; 3] = [
+    DAMAGED_HELMET,
+    BOTTLE,
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
-    SPONZA,
+    PLANE,
+    // SPONZA,
     // "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
 ];
 
 // const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
-// const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
-const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
+const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
+// const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
 const RENDER_SKYBOX: bool = true;
 
@@ -116,6 +126,8 @@ struct Application {
     irradiance_convolution: CubemapGenPass,
     prefilterenvmap: CubemapGenPass,
 
+    local_probe: LocalProbe,
+
     /**
      * This is why we need to wrap event_loop into Option
      *
@@ -124,6 +136,8 @@ struct Application {
      * I don't really understand how it works and why exactly it's needed.
      */
     event_loop: Option<EventLoop<()>>,
+
+    prebuild: bool,
 }
 
 impl Application {
@@ -145,26 +159,72 @@ impl Application {
         let shadow_graphics_pipeline =
             Self::create_shadow_graphics_pipeline(&context, &shadow_render_pass);
 
+        let layout = DescriptorSetLayout::new(
+            context.device.clone(),
+            DescriptorSetDesc::new([
+                // diffuse texture
+                Some(DescriptorDesc {
+                    ty: DescriptorType::CombinedImageSampler,
+                    descriptor_count: 1,
+                    variable_count: false,
+                    stages: ShaderStages {
+                        fragment: true,
+                        ..ShaderStages::none()
+                    },
+                    immutable_samplers: vec![context.image_sampler.clone()],
+                }),
+                // normal texture
+                Some(DescriptorDesc {
+                    ty: DescriptorType::CombinedImageSampler,
+                    descriptor_count: 1,
+                    variable_count: false,
+                    stages: ShaderStages {
+                        fragment: true,
+                        ..ShaderStages::none()
+                    },
+                    immutable_samplers: vec![context.image_sampler.clone()],
+                }),
+                // metallic roughness texture
+                Some(DescriptorDesc {
+                    ty: DescriptorType::CombinedImageSampler,
+                    descriptor_count: 1,
+                    variable_count: false,
+                    stages: ShaderStages {
+                        fragment: true,
+                        ..ShaderStages::none()
+                    },
+                    immutable_samplers: vec![context.image_sampler.clone()],
+                }),
+            ]),
+        )
+        .unwrap();
+
         let gbuffer_target = Self::create_gbuffer_target(&context);
-        let gbuffer = GBuffer::initialize(&context, &gbuffer_target);
+        let gbuffer = GBuffer::initialize(&context, &layout, &gbuffer_target);
+
+        let skybox_texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
+
+        let local_probe = LocalProbe::initialize(&context, &layout, &skybox_texture);
 
         let mut scene = Scene::initialize(
             &context,
             MODEL_PATHS.to_vec(),
             &gbuffer.pipeline,
+            &layout,
             &shadow_graphics_pipeline,
         );
 
+        println!("Creating local probe");
+
         let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
         let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);
-
-        let skybox_texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
 
         let irradiance_convolution_fs_mod =
             irradiance_convolution_fs::load(context.device.clone()).unwrap();
         let irradiance_convolution = CubemapGenPass::initialize(
             &context,
-            &skybox_texture.image,
+            &local_probe.cube_attachment_view,
+            &skybox_texture,
             irradiance_convolution_fs_mod.entry_point("main").unwrap(),
             Format::R32G32B32A32_SFLOAT,
             64.0,
@@ -173,13 +233,26 @@ impl Application {
         let prefilterenvmap_fs_mod = prefilterenvmap_fs::load(context.device.clone()).unwrap();
         let prefilterenvmap = CubemapGenPass::initialize(
             &context,
-            &skybox_texture.image,
+            &local_probe.cube_attachment_view,
+            &skybox_texture,
             prefilterenvmap_fs_mod.entry_point("main").unwrap(),
             Format::R16G16B16A16_SFLOAT,
             512.0,
         );
 
-        let skybox = SkyboxPass::initialize(&context, &gbuffer.render_pass, &skybox_texture.image);
+        let skybox = SkyboxPass::initialize(
+            &context,
+            &gbuffer.render_pass,
+            &local_probe.cube_attachment_view,
+            fs_gbuffer::load(context.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap(),
+            [
+                context.swap_chain.dimensions()[0] as f32,
+                context.swap_chain.dimensions()[1] as f32,
+            ],
+        );
 
         let light_system = LightSystem::initialize(
             &context,
@@ -239,31 +312,30 @@ impl Application {
         scene.add_entity(Entity::new(
             DAMAGED_HELMET,
             Transform {
-                translation: Vec3::new(0.0, 0.0, 5.0),
+                translation: Vec3::new(0.0, 0.0, 1.0),
                 rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
                 scale: Vec3::ONE,
             },
         ));
 
-        // scene.add_entity(Entity::new(
-        //     "WaterBottle",
-        //     Transform {
-        //         translation: Vec3::new(-5.0, 0.0, 0.0),
-        //         rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
-        //         scale: Vec3::ONE * 5.0,
-        //     },
-        // ));
+        scene.add_entity(Entity::new(
+            BOTTLE,
+            Transform {
+                translation: Vec3::new(-1.0, 0.0, 0.0),
+                rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
+                scale: Vec3::ONE * 5.0,
+            },
+        ));
 
         // Plane
-        // scene.add_entity(Entity::new(
-        //     "Plane",
-        //     Transform {
-        //         rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
-        //         scale: Vec3::ONE * 25.0,
-        //         translation: Vec3::new(0.0, 0.0, -5.0),
-        //     },
-        //     Default::default(),
-        // ));
+        scene.add_entity(Entity::new(
+            PLANE,
+            Transform {
+                rotation: Quat::from_euler(EulerRot::XYZ, 180.0_f32.to_radians(), 0.0, 0.0),
+                scale: Vec3::ONE * 5.0,
+                translation: Vec3::new(0.0, 5.0, 0.0),
+            },
+        ));
 
         // sponza
         scene.add_entity(Entity::new(
@@ -460,7 +532,11 @@ impl Application {
             irradiance_convolution,
             prefilterenvmap,
 
+            local_probe,
+
             event_loop: Some(event_loop),
+
+            prebuild: true,
         };
 
         app.create_scene_command_buffers();
@@ -527,8 +603,8 @@ impl Application {
 
         self.screen_frame.recreate_swap_chain(&self.context);
 
-        self.create_scene_command_buffers();
-        self.create_shadow_command_buffers();
+        // self.create_scene_command_buffers();
+        // self.create_shadow_command_buffers();
     }
 
     fn create_shadow_graphics_pipeline(
@@ -592,42 +668,6 @@ impl Application {
         }
     }
 
-    fn create_instance_data_buffers(
-        &self,
-    ) -> HashMap<String, Arc<CpuAccessibleBuffer<[InstanceData]>>> {
-        let mut instance_data: HashMap<String, Vec<InstanceData>> = HashMap::new();
-
-        for entity in self.scene.entities.iter() {
-            let model = entity.transform.get_model_matrix();
-
-            let instances = instance_data
-                .entry(entity.model_id.clone())
-                .or_insert(Vec::new());
-
-            (*instances).push(InstanceData {
-                model: model.to_cols_array_2d(),
-            });
-        }
-
-        // TODO: we should create one buffer that we'll update with the data from the scene
-        let mut instance_data_buffers: HashMap<String, Arc<CpuAccessibleBuffer<[InstanceData]>>> =
-            HashMap::new();
-
-        instance_data.iter().for_each(|(mesh_id, instances)| {
-            let buffer = CpuAccessibleBuffer::from_iter(
-                self.context.device.clone(),
-                BufferUsage::all(),
-                false,
-                instances.iter().cloned(),
-            )
-            .unwrap();
-
-            instance_data_buffers.insert(mesh_id.clone(), buffer);
-        });
-
-        instance_data_buffers
-    }
-
     fn create_scene_command_buffers(&mut self) {
         let dimensions_u32 = self.context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
@@ -638,7 +678,7 @@ impl Application {
             depth_range: 0.0..1.0,
         };
 
-        let instance_data_buffers = self.create_instance_data_buffers();
+        let instance_data_buffers = self.scene.get_instance_data_buffers(&self.context);
 
         let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
 
@@ -804,6 +844,15 @@ impl Application {
             .unwrap();
     }
 
+    fn prebuild(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) {
+        self.local_probe
+            .add_to_builder(&self.context, builder, &self.scene);
+
+        self.irradiance_convolution.add_to_builder(builder);
+
+        self.prefilterenvmap.add_to_builder(builder);
+    }
+
     fn draw_frame(&mut self, delta_time: &f64) {
         self.previous_frame_end.as_mut().unwrap().cleanup_finished();
 
@@ -948,6 +997,12 @@ impl Application {
             .end_render_pass()
             .unwrap();
 
+        if self.prebuild {
+            self.prebuild(&mut builder);
+            println!("Prebuild done");
+            self.prebuild = false;
+        }
+
         let command_buffer = builder.build().unwrap();
 
         let future = self
@@ -1021,10 +1076,6 @@ impl Application {
         let mut rotation_y = 0.0;
 
         let original_rotation = self.camera.rotation;
-
-        self.irradiance_convolution.execute(&self.context);
-        self.prefilterenvmap.execute(&self.context);
-        // self.brdf.execute(&self.context);
 
         self.event_loop
             .take()

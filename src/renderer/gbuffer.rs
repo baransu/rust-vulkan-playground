@@ -1,16 +1,23 @@
-use std::sync::Arc;
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    sync::Arc,
+};
 
 use vulkano::{
-    buffer::{CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{CpuAccessibleBuffer, ImmutableBuffer, TypedBufferAccess},
     command_buffer::{AutoCommandBufferBuilder, SecondaryAutoCommandBuffer},
-    descriptor_set::PersistentDescriptorSet,
+    descriptor_set::{
+        layout::{DescriptorSetDesc, DescriptorSetLayout, DescriptorSetLayoutError},
+        PersistentDescriptorSet,
+    },
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage},
     pipeline::{
         graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
-        GraphicsPipeline, Pipeline, PipelineBindPoint,
+        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
+    shader::{DescriptorRequirements, EntryPoint},
 };
 
 use super::{context::Context, entity::InstanceData, model::Model, vertex::Vertex};
@@ -30,7 +37,11 @@ pub struct GBuffer {
 }
 
 impl GBuffer {
-    pub fn initialize(context: &Context, target: &GBufferTarget) -> GBuffer {
+    pub fn initialize(
+        context: &Context,
+        layout: &Arc<DescriptorSetLayout>,
+        target: &GBufferTarget,
+    ) -> GBuffer {
         let position_buffer =
             Self::create_attachment_image(context, &target, Format::R16G16B16A16_SFLOAT);
         let normals_buffer =
@@ -38,7 +49,7 @@ impl GBuffer {
         let albedo_buffer = Self::create_attachment_image(context, &target, Format::R8G8B8A8_UNORM);
         let metalic_roughness_buffer =
             Self::create_attachment_image(context, &target, Format::R8G8B8A8_UNORM);
-        let depth_buffer = Self::create_attachment_image(context, &target, context.depth_format);
+        let depth_buffer = Self::create_depth_attachment(context, &target);
 
         let render_pass = Self::create_render_pass(context);
         let framebuffer = Self::create_framebuffer(
@@ -50,7 +61,7 @@ impl GBuffer {
             &depth_buffer,
         );
 
-        let pipeline = Self::create_pipeline(context, &render_pass, &target);
+        let pipeline = Self::create_pipeline(context, &layout, &render_pass, &target);
 
         GBuffer {
             position_buffer,
@@ -132,6 +143,7 @@ impl GBuffer {
 
     fn create_pipeline(
         context: &Context,
+        layout: &Arc<DescriptorSetLayout>,
         render_pass: &Arc<RenderPass>,
         target: &GBufferTarget,
     ) -> Arc<GraphicsPipeline> {
@@ -145,6 +157,15 @@ impl GBuffer {
             dimensions: [dimensions[0] as f32, dimensions[1] as f32],
             depth_range: 0.0..1.0,
         };
+
+        let pipeline_layout = Self::create_pipeline_layout(
+            context,
+            vec![
+                Arc::new(fs.entry_point("main").unwrap()).as_ref(),
+                Arc::new(vs.entry_point("main").unwrap()).as_ref(),
+            ],
+            &layout,
+        );
 
         GraphicsPipeline::start()
             .vertex_input_state(
@@ -161,14 +182,7 @@ impl GBuffer {
             .cull_mode_back()
             .viewports_dynamic_scissors_irrelevant(1)
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .with_auto_layout(context.device.clone(), |descriptor_set_desc| {
-                // diffuse texture
-                descriptor_set_desc[1].set_immutable_samplers(0, [context.image_sampler.clone()]);
-                // normal texture
-                descriptor_set_desc[1].set_immutable_samplers(1, [context.image_sampler.clone()]);
-                // metallic roughness texture
-                descriptor_set_desc[1].set_immutable_samplers(2, [context.image_sampler.clone()]);
-            })
+            .with_pipeline_layout(context.device.clone(), pipeline_layout)
             .unwrap()
     }
 
@@ -191,6 +205,27 @@ impl GBuffer {
         .unwrap()
     }
 
+    fn create_depth_attachment(
+        context: &Context,
+        target: &GBufferTarget,
+    ) -> Arc<ImageView<AttachmentImage>> {
+        let (usage, dimensions) = Self::usage_dimensions(target);
+
+        ImageView::new(
+            AttachmentImage::with_usage(
+                context.graphics_queue.device().clone(),
+                dimensions,
+                context.depth_format,
+                ImageUsage {
+                    // depth_stencil_attachment: true,
+                    ..usage
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    }
+
     fn usage_dimensions(target: &GBufferTarget) -> (ImageUsage, [u32; 2]) {
         let dimensions = target.image().dimensions().width_height();
 
@@ -207,7 +242,7 @@ impl GBuffer {
         model: &Model,
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         camera_descriptor_set: &Arc<PersistentDescriptorSet>,
-        instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
     ) {
         for node_index in model.root_nodes.iter() {
             self.draw_model_node(
@@ -226,7 +261,7 @@ impl GBuffer {
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         node_index: usize,
         camera_descriptor_set: &Arc<PersistentDescriptorSet>,
-        instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
     ) {
         let node = model.nodes.get(node_index).unwrap();
 
@@ -261,7 +296,7 @@ impl GBuffer {
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         primitive_index: usize,
         camera_descriptor_set: &Arc<PersistentDescriptorSet>,
-        instance_data_buffer: &Arc<CpuAccessibleBuffer<[InstanceData]>>,
+        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
     ) {
         let primitive = model.primitives.get(primitive_index).unwrap();
         let material = model.materials.get(primitive.material).unwrap();
@@ -292,5 +327,60 @@ impl GBuffer {
                 0,
             )
             .unwrap();
+    }
+
+    pub fn create_pipeline_layout(
+        context: &Context,
+        entries: Vec<&EntryPoint>,
+        layout: &Arc<DescriptorSetLayout>,
+    ) -> Arc<PipelineLayout> {
+        // Produce `DescriptorRequirements` for each binding, by iterating over all shaders
+        // and adding the requirements of each.
+        let mut descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements> =
+            HashMap::default();
+
+        for (loc, reqs) in entries
+            .iter()
+            .map(|shader| shader.descriptor_requirements())
+            .flatten()
+        {
+            match descriptor_requirements.entry(loc) {
+                Entry::Occupied(entry) => {
+                    // Previous shaders already added requirements, so we produce the
+                    // intersection of the previous requirements and those of the
+                    // current shader.
+                    let previous = entry.into_mut();
+                    *previous = previous.intersection(reqs).expect(
+                        "Could not produce an intersection of the shader descriptor requirements",
+                    );
+                }
+                Entry::Vacant(entry) => {
+                    // No previous shader had this descriptor yet, so we just insert the
+                    // requirements.
+                    entry.insert(reqs.clone());
+                }
+            }
+        }
+
+        let descriptor_set_layout_descs = DescriptorSetDesc::from_requirements(
+            descriptor_requirements
+                .iter()
+                .map(|(&loc, reqs)| (loc, reqs)),
+        );
+
+        let descriptor_set_layouts = descriptor_set_layout_descs
+            .into_iter()
+            .enumerate()
+            .map(|(index, desc)| {
+                if index == 1 {
+                    Ok(layout.clone())
+                } else {
+                    Ok(DescriptorSetLayout::new(context.device.clone(), desc.clone()).unwrap())
+                }
+            })
+            .collect::<Result<Vec<_>, DescriptorSetLayoutError>>()
+            .unwrap();
+
+        PipelineLayout::new(context.device.clone(), descriptor_set_layouts, []).unwrap()
     }
 }

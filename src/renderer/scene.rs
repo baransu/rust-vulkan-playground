@@ -1,17 +1,18 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use glam::{Mat4, Vec3};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
-    descriptor_set::PersistentDescriptorSet,
+    descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
     pipeline::{GraphicsPipeline, Pipeline},
+    sync::GpuFuture,
 };
 
 use super::{
     camera::Camera,
     context::Context,
-    entity::Entity,
+    entity::{Entity, InstanceData},
     light_system::{LightUniformBufferObject, ShaderDirectionalLight, ShaderPointLight},
     model::Model,
     shaders::{CameraUniformBufferObject, LightSpaceUniformBufferObject},
@@ -43,7 +44,8 @@ impl Scene {
     pub fn initialize(
         context: &Context,
         mesh_paths: Vec<&str>,
-        graphics_pipeline: &Arc<GraphicsPipeline>,
+        gbuffer_pipeline: &Arc<GraphicsPipeline>,
+        layout: &Arc<DescriptorSetLayout>,
         shadow_graphics_pipeline: &Arc<GraphicsPipeline>,
     ) -> Self {
         let point_lights = Self::gen_point_lights();
@@ -55,7 +57,7 @@ impl Scene {
         let queue = context.graphics_queue.clone();
         let models = mesh_paths
             .into_iter()
-            .map(|path| Model::load_gltf(&queue, &graphics_pipeline, &path))
+            .map(|path| Model::load_gltf(&queue, &path, layout))
             .collect();
 
         let shadow_descriptor_set = Self::create_shadow_descriptor_set(
@@ -64,7 +66,7 @@ impl Scene {
         );
 
         let camera_descriptor_set =
-            Self::create_camera_descriptor_set(graphics_pipeline, &camera_uniform_buffer);
+            Self::create_camera_descriptor_set(gbuffer_pipeline, &camera_uniform_buffer);
 
         Scene {
             models,
@@ -179,7 +181,7 @@ impl Scene {
 
     fn gen_point_lights() -> Vec<PointLight> {
         vec![PointLight {
-            position: Vec3::new(0.0, 5.0, 0.0),
+            position: Vec3::new(0.0, 4.0, 0.0),
             color: Vec3::new(0.0, 0.0, 100.0),
         }]
     }
@@ -266,5 +268,47 @@ impl Scene {
                 self.get_camera_uniform_buffer_data(&camera, dimensions),
             )
             .unwrap();
+    }
+
+    pub fn get_instance_data_buffers(
+        &self,
+        context: &Context,
+    ) -> HashMap<String, Arc<ImmutableBuffer<[InstanceData]>>> {
+        let mut instance_data: HashMap<String, Vec<InstanceData>> = HashMap::new();
+
+        for entity in self.entities.iter() {
+            let model = entity.transform.get_model_matrix();
+
+            let instances = instance_data
+                .entry(entity.model_id.clone())
+                .or_insert(Vec::new());
+
+            (*instances).push(InstanceData {
+                model: model.to_cols_array_2d(),
+            });
+        }
+
+        // TODO: we should create one buffer that we'll update with the data from the scene if new entity is added
+        let mut instance_data_buffers: HashMap<String, Arc<ImmutableBuffer<[InstanceData]>>> =
+            HashMap::new();
+
+        instance_data.iter().for_each(|(mesh_id, instances)| {
+            let (buffer, future) = ImmutableBuffer::from_iter(
+                instances.iter().cloned(),
+                BufferUsage::all(),
+                context.graphics_queue.clone(),
+            )
+            .unwrap();
+
+            future
+                .then_signal_fence_and_flush()
+                .unwrap()
+                .wait(None)
+                .unwrap();
+
+            instance_data_buffers.insert(mesh_id.clone(), buffer);
+        });
+
+        instance_data_buffers
     }
 }
