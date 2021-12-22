@@ -11,10 +11,7 @@ struct DirectionalLight {
 
 struct PointLight {
 	vec3 position;
-	// TODO: make it just color
-	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
+	vec3 color;
 	// NOTE: is constant reserved keyword?
 	float constant_;
 	float linear;
@@ -94,7 +91,7 @@ void main() {
 
 		float distance = length(light.position - Position);
 		float attenuation = 1.0 / (light.constant_ + light.linear * distance + light.quadratic * distance * distance);
-		vec3 radiance = light.diffuse * attenuation;
+		vec3 radiance = light.color * attenuation;
 
 		vec3 F = fresnelShlick(max(dot(H, V), 0.0), F0);
 
