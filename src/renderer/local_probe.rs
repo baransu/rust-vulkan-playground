@@ -131,7 +131,8 @@ impl LocalProbe {
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         f: usize,
     ) {
-        let position = Vec3::new(0.0, 0.0, 0.0);
+        // NOTE: probe position
+        let position = Vec3::new(0.0, 5.0, 0.0);
 
         let view = matrices(position)[f];
 

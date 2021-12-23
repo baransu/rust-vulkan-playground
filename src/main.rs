@@ -11,6 +11,7 @@ use renderer::{
     camera::Camera,
     context::Context,
     cubemap_gen_pass::{irradiance_convolution_fs, prefilterenvmap_fs, CubemapGenPass},
+    dir_light_shadows::DirLightShadows,
     entity::{Entity, InstanceData},
     gbuffer::GBuffer,
     light_system::LightSystem,
@@ -77,14 +78,7 @@ const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
 
 const RENDER_SKYBOX: bool = true;
 
-const SHADOW_MAP_DIM: f32 = 2048.0;
-
 const BRDF_PATH: &str = "res/ibl_brdf_lut.png";
-
-pub struct FramebufferWithAttachment {
-    framebuffer: Arc<Framebuffer>,
-    attachment: Arc<ImageView<AttachmentImage>>,
-}
 
 struct Application {
     context: Context,
@@ -92,10 +86,6 @@ struct Application {
     gbuffer: GBuffer,
     scene_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
     light_system: LightSystem,
-
-    shadow_graphics_pipeline: Arc<GraphicsPipeline>,
-    shadow_framebuffer: FramebufferWithAttachment,
-    shadow_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
 
     screen_frame: ScreenFrame,
 
@@ -120,6 +110,7 @@ struct Application {
     gbuffer_metalic_texture_id: TextureId,
     ssao_texture_id: TextureId,
     shadow_texture_id: TextureId,
+    dir_shadow_texture_id: TextureId,
 
     ssao: Ssao,
     ssao_blur: SsaoBlur,
@@ -130,6 +121,7 @@ struct Application {
     local_probe: LocalProbe,
 
     point_light_shadows: PointLightShadows,
+    dir_light_shadows: DirLightShadows,
 
     /**
      * This is why we need to wrap event_loop into Option
@@ -156,11 +148,6 @@ impl Application {
         // TODO: generate brdf texture instead of loading it?
         let brdf_texture =
             Texture::create_image_view(&context.graphics_queue, &img, Format::R8G8B8A8_UNORM);
-
-        let shadow_render_pass = Self::create_shadow_render_pass(&context);
-        let shadow_framebuffer = Self::create_shadow_framebuffer(&context, &shadow_render_pass);
-        let shadow_graphics_pipeline =
-            Self::create_shadow_graphics_pipeline(&context, &shadow_render_pass);
 
         let layout = DescriptorSetLayout::new(
             context.device.clone(),
@@ -210,6 +197,7 @@ impl Application {
         let local_probe = LocalProbe::initialize(&context, &layout, &skybox_texture);
 
         let point_light_shadows = PointLightShadows::initialize(&context);
+        let dir_light_shadows = DirLightShadows::initialize(&context);
 
         let mut scene = Scene::initialize(
             &context,
@@ -413,12 +401,8 @@ impl Application {
 
         let mut imgui_renderer = Renderer::init(&context, &mut imgui).unwrap();
 
-        let screen_frame = ScreenFrame::initialize(
-            &context,
-            &gbuffer_target,
-            &shadow_framebuffer,
-            &imgui_renderer.target,
-        );
+        let screen_frame =
+            ScreenFrame::initialize(&context, &gbuffer_target, &imgui_renderer.target);
 
         let gbuffer_position_texture_id = imgui_renderer
             .register_texture(
@@ -492,6 +476,19 @@ impl Application {
                 &context,
                 &gbuffer.shadow_buffer,
                 TextureUsage {
+                    depth: 1,
+                    normal: 0,
+                    position: 0,
+                    rgb: 0,
+                },
+            )
+            .unwrap();
+
+        let dir_shadow_texture_id = imgui_renderer
+            .register_texture(
+                &context,
+                &dir_light_shadows.target_attachment,
+                TextureUsage {
                     depth: 0,
                     normal: 0,
                     position: 0,
@@ -516,10 +513,6 @@ impl Application {
             scene_command_buffers: vec![],
             light_system,
 
-            shadow_framebuffer,
-            shadow_graphics_pipeline,
-            shadow_command_buffers: vec![],
-
             previous_frame_end,
             recreate_swap_chain: false,
 
@@ -535,6 +528,7 @@ impl Application {
             gbuffer_metalic_texture_id,
             ssao_texture_id,
             shadow_texture_id,
+            dir_shadow_texture_id,
 
             ssao,
             ssao_blur,
@@ -545,6 +539,7 @@ impl Application {
             local_probe,
 
             point_light_shadows,
+            dir_light_shadows,
 
             event_loop: Some(event_loop),
 
@@ -555,22 +550,6 @@ impl Application {
         // app.create_shadow_command_buffers();
 
         app
-    }
-
-    fn create_shadow_depth_image(context: &Context) -> Arc<ImageView<AttachmentImage>> {
-        let image = AttachmentImage::with_usage(
-            context.device.clone(),
-            [SHADOW_MAP_DIM as u32, SHADOW_MAP_DIM as u32],
-            context.depth_format,
-            ImageUsage {
-                sampled: true,
-                depth_stencil_attachment: true,
-                ..ImageUsage::none()
-            },
-        )
-        .unwrap();
-
-        ImageView::new(image).unwrap()
     }
 
     fn create_gbuffer_target(context: &Context) -> Arc<ImageView<AttachmentImage>> {
@@ -588,26 +567,6 @@ impl Application {
         ImageView::new(image).unwrap()
     }
 
-    fn create_shadow_render_pass(context: &Context) -> Arc<RenderPass> {
-        let depth_format = context.depth_format;
-
-        single_pass_renderpass!(context.device.clone(),
-                attachments: {
-                    depth: {
-                        load: Clear,
-                        store: Store,
-                        format: depth_format,
-                        samples: 1,
-                    }
-                },
-                pass: {
-                    color: [],
-                    depth_stencil: {depth}
-                }
-        )
-        .unwrap()
-    }
-
     fn recreate_swap_chain(&mut self) {
         self.context.recreate_swap_chain();
 
@@ -617,67 +576,6 @@ impl Application {
 
         // self.create_scene_command_buffers();
         // self.create_shadow_command_buffers();
-    }
-
-    fn create_shadow_graphics_pipeline(
-        context: &Context,
-        render_pass: &Arc<RenderPass>,
-    ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module =
-            renderer::shaders::shadow_vertex_shader::load(context.device.clone()).unwrap();
-        let frag_shader_module =
-            renderer::shaders::shadow_fs::load(context.device.clone()).unwrap();
-
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [SHADOW_MAP_DIM, SHADOW_MAP_DIM],
-            depth_range: 0.0..1.0,
-        };
-
-        GraphicsPipeline::start()
-            .vertex_input_state(
-                BuffersDefinition::new()
-                    .vertex::<Vertex>()
-                    .instance::<InstanceData>(),
-            )
-            .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
-            .triangle_list()
-            .primitive_restart(false)
-            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-            .fragment_shader(frag_shader_module.entry_point("main").unwrap(), ())
-            .depth_clamp(false)
-            // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
-            .polygon_mode_fill() // = default
-            .line_width(1.0) // = default
-            // NOTE: when we render shadows we render inners of the models (via front_face_clockwise and cull_mode_front)
-            // this is to reduce peter panning as described in learnopengl.com/Advanced-Lighting/Shadows/Shadow-Mapping
-            .cull_mode_front()
-            .front_face_clockwise()
-            // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
-            .blend_pass_through()
-            .depth_stencil_simple_depth()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(context.device.clone())
-            .unwrap()
-    }
-
-    fn create_shadow_framebuffer(
-        context: &Context,
-        render_pass: &Arc<RenderPass>,
-    ) -> FramebufferWithAttachment {
-        let depth_image = Self::create_shadow_depth_image(&context);
-
-        let framebuffer: Arc<Framebuffer> = Framebuffer::start(render_pass.clone())
-            .add(depth_image.clone())
-            .unwrap()
-            .build()
-            .unwrap();
-
-        FramebufferWithAttachment {
-            framebuffer,
-            attachment: depth_image,
-        }
     }
 
     fn create_scene_command_buffers(&mut self) {
@@ -728,78 +626,6 @@ impl Application {
         self.scene_command_buffers = command_buffers;
     }
 
-    // fn create_shadow_command_buffers(&mut self) {
-    //     let viewport = Viewport {
-    //         origin: [0.0, 0.0],
-    //         dimensions: [SHADOW_MAP_DIM, SHADOW_MAP_DIM],
-    //         depth_range: 0.0..1.0,
-    //     };
-
-    //     // let instance_data_buffers = self.create_instance_data_buffers();
-
-    //     let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
-
-    //     for _i in 0..self.context.swap_chain.num_images() {
-    //         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
-    //             self.context.device.clone(),
-    //             self.context.graphics_queue.family(),
-    //             CommandBufferUsage::SimultaneousUse,
-    //             self.shadow_graphics_pipeline.subpass().clone(),
-    //         )
-    //         .unwrap();
-
-    //         builder.set_viewport(0, [viewport.clone()]);
-
-    //         builder.bind_pipeline_graphics(self.shadow_graphics_pipeline.clone());
-
-    //         // TODO: set depth bias
-
-    //         builder.bind_descriptor_sets(
-    //             PipelineBindPoint::Graphics,
-    //             self.shadow_graphics_pipeline.layout().clone(),
-    //             0,
-    //             self.scene.shadow_descriptor_set.clone(),
-    //         );
-
-    //         // for model in self.scene.models.iter() {
-    //         //     // if there is no instance_data_buffer it means we have 0 instances for this mesh
-    //         //     if let Some(instance_data_buffer) = instance_data_buffers.get(&model.name) {
-    //         //         for mesh in model.meshes.iter() {
-    //         //             for primitive_index in mesh.primitives.iter() {
-    //         //                 let primitive = model.primitives.get(*primitive_index).unwrap();
-
-    //         //                 builder
-    //         //                     .bind_vertex_buffers(
-    //         //                         0,
-    //         //                         (
-    //         //                             primitive.vertex_buffer.clone(),
-    //         //                             instance_data_buffer.clone(),
-    //         //                         ),
-    //         //                     )
-    //         //                     .bind_index_buffer(primitive.index_buffer.clone())
-    //         //                     .draw_indexed(
-    //         //                         primitive.index_count,
-    //         //                         instance_data_buffer.len() as u32,
-    //         //                         0,
-    //         //                         0,
-    //         //                         0,
-    //         //                     )
-    //         //                     .unwrap();
-    //         //             }
-    //         //         }
-    //         //     } else {
-    //         //         println!("No instance data for model: {}", model.name);
-    //         //     }
-    //         // }
-
-    //         let command_buffer = Arc::new(builder.build().unwrap());
-
-    //         command_buffers.push(command_buffer);
-    //     }
-
-    //     self.shadow_command_buffers = command_buffers;
-    // }
-
     fn create_sync_objects(device: &Arc<Device>) -> Box<dyn GpuFuture> {
         Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>
     }
@@ -816,6 +642,7 @@ impl Application {
         let gbuffer_metalic_texture_id = self.gbuffer_metalic_texture_id;
         let ssao_texture_id = self.ssao_texture_id;
         let shadow_texture_id = self.shadow_texture_id;
+        let dir_shadow_texture_id = self.dir_shadow_texture_id;
 
         let camera_pos = self.camera.position;
 
@@ -832,11 +659,14 @@ impl Application {
                 ));
                 ui.separator();
 
-                Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("SSAO with Blur");
+                Image::new(dir_shadow_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("Dir shadow map");
 
                 Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("Directional light shadow map");
+                ui.text("GBuffer shadow map");
+
+                Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
+                ui.text("SSAO with Blur");
 
                 Image::new(gbuffer_metalic_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("GBuffer metalic");
@@ -910,6 +740,9 @@ impl Application {
         self.point_light_shadows
             .add_to_builder(&self.context, &mut builder, &self.scene);
 
+        self.dir_light_shadows
+            .add_to_builder(&self.context, &mut builder, &self.scene);
+
         builder
             .update_buffer(
                 self.skybox.uniform_buffer.clone(),
@@ -919,18 +752,6 @@ impl Application {
 
         self.scene
             .update_uniform_buffers(&mut builder, &self.camera, dimensions);
-
-        // builder
-        //     .begin_render_pass(
-        //         self.shadow_framebuffer.framebuffer.clone(),
-        //         SubpassContents::SecondaryCommandBuffers,
-        //         vec![ClearValue::Depth(1.0)],
-        //     )
-        //     .unwrap()
-        //     .execute_commands(self.shadow_command_buffers[image_index].clone())
-        //     .unwrap()
-        //     .end_render_pass()
-        //     .unwrap();
 
         builder
             .begin_render_pass(

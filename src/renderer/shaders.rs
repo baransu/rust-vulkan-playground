@@ -65,17 +65,12 @@ pub mod screen_fragment_shader {
 
 		layout (set = 0, binding = 0) uniform sampler2D screen_texture;
 		layout (set = 0, binding = 1) uniform sampler2D ui_texture;
-		layout (set = 0, binding = 2) uniform sampler2D shadow_texture;
 		
 		layout (location = 0) in vec2 inUV;
 		
 		layout (location = 0) out vec4 outFragColor;
 
 		vec4 no_effect() {
-			// for shadow map testing
-			// float depthValue = texture(shadow_texture, inUV).r;
-			// return vec4(vec3(depthValue), 1.0);
-	
 			return texture(screen_texture, inUV);	
 		}
 

@@ -11,8 +11,6 @@ use vulkano::{
     sync::GpuFuture,
 };
 
-use crate::FramebufferWithAttachment;
-
 use super::context::Context;
 
 #[derive(Default, Debug, Clone)]
@@ -83,7 +81,6 @@ impl ScreenFrame {
     pub fn initialize(
         context: &Context,
         scene_frame: &Arc<ImageView<AttachmentImage>>,
-        shadow_framebuffer: &FramebufferWithAttachment,
         ui_frame: &Arc<ImageView<AttachmentImage>>,
     ) -> ScreenFrame {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
@@ -93,13 +90,8 @@ impl ScreenFrame {
 
         let framebuffers = Self::create_framebuffers_from_swap_chain_images(context, &render_pass);
 
-        let descriptor_sets = Self::create_descriptor_sets(
-            context,
-            &graphics_pipeline,
-            &scene_frame,
-            &shadow_framebuffer,
-            ui_frame,
-        );
+        let descriptor_sets =
+            Self::create_descriptor_sets(context, &graphics_pipeline, &scene_frame, ui_frame);
 
         let command_buffers = Self::create_command_buffers(
             context,
@@ -183,7 +175,6 @@ impl ScreenFrame {
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
         scene_frame: &Arc<ImageView<AttachmentImage>>,
-        shadow_framebuffer: &FramebufferWithAttachment,
         ui_frame: &Arc<ImageView<AttachmentImage>>,
     ) -> Vec<Arc<PersistentDescriptorSet>> {
         let mut descriptor_sets = Vec::new();
@@ -200,9 +191,6 @@ impl ScreenFrame {
             // NOTE: this works because we're setting immutable sampler when creating GraphicsPipeline
             set_builder.add_image(scene_frame.clone()).unwrap();
             set_builder.add_image(ui_frame.clone()).unwrap();
-            set_builder
-                .add_image(shadow_framebuffer.attachment.clone())
-                .unwrap();
 
             descriptor_sets.push(set_builder.build().unwrap());
         }
@@ -277,8 +265,6 @@ impl ScreenFrame {
                 set_descs[0].set_immutable_samplers(0, [context.attachment_sampler.clone()]);
                 // set 0 binding 1.
                 set_descs[0].set_immutable_samplers(1, [context.attachment_sampler.clone()]);
-                // set 0 binding 2.
-                set_descs[0].set_immutable_samplers(2, [context.depth_sampler.clone()]);
             })
             .unwrap()
     }
