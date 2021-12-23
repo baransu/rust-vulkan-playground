@@ -1,11 +1,34 @@
 #version 450
 
+struct PointLight {
+	vec3 position;
+	vec3 color;
+	// NOTE: is constant reserved keyword?
+	float constant_;
+	float linear;
+	float quadratic;	
+};
+
+struct DirLight {
+	mat4 view;
+	mat4 proj;
+	vec3 direction;
+};
+
+
 // duplicated definition in model.frag too
 layout(set = 0, binding = 0) uniform CameraUniformBufferObject {
 	mat4 view;
 	mat4 proj;
 	vec3 position;
 } camera;
+
+
+layout(set = 2, binding = 2) uniform LightUniformBufferObject { 
+	PointLight point_lights[32];
+	DirLight dir_light;
+	int point_lights_count;
+} lights;
 
 // in per vertex
 layout(location = 0) in vec3 position;
@@ -23,11 +46,15 @@ layout(location = 1) out vec3 f_normal;
 layout(location = 2) out vec4 f_tangent;
 layout(location = 3) out vec4 f_position;
 layout(location = 4) out vec3 f_position_raw;
+layout(location = 5) out vec4 f_position_light;
 
 void main() {
-	vec4 view_pos = camera.view * model * vec4(position, 1.0);
+	vec3 frag_pos = vec3(model * vec4(position, 1.0));
+	vec4 view_pos = camera.view * vec4(frag_pos, 1.0);
 
 	f_position_raw = (model * vec4(position, 1.0)).xyz;
+
+	f_position_light = lights.dir_light.proj * lights.dir_light.view * model * vec4(position, 1.0);
 
 	f_position = view_pos;
 

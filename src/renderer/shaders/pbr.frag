@@ -2,9 +2,11 @@
 
 #define MAX_POINT_LIGHTS 32
 
-struct DirectionalLight { 
+// struct is shaded with gbuffer.frag
+struct DirLight {
+	mat4 view;
+	mat4 proj;
 	vec3 direction;
-	vec3 color;
 };
 
 struct PointLight {
@@ -37,6 +39,7 @@ layout(binding = 10) uniform sampler2D samplerBRDFLUT;
 
 layout(binding = 11) uniform LightUniformBufferObject { 
 	PointLight point_lights[MAX_POINT_LIGHTS];
+	DirLight dir_light;
 	int point_lights_count;
 } lights;
 
@@ -191,7 +194,9 @@ void main() {
 
 		float shadow = texture(u_shadows, f_uv).r;
 		
-		color = ambient + (1.0 - shadow) * Lo;
+		float ambientShadow = (1.0 - shadow);
+		float lightShadow = 1.0; // (1.0 - shadow);
+		color = ambientShadow * ambient + lightShadow * Lo;
 	}
 
 	// tone mapping

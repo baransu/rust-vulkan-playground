@@ -288,3 +288,4 @@ mod fs {
 
 pub type LightUniformBufferObject = fs::ty::LightUniformBufferObject;
 pub type ShaderPointLight = fs::ty::PointLight;
+pub type ShaderDirLight = fs::ty::DirLight;

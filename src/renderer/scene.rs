@@ -5,7 +5,7 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
-    image::{view::ImageView, StorageImage},
+    image::{view::ImageView, AttachmentImage, StorageImage},
     pipeline::{GraphicsPipeline, Pipeline},
     sync::GpuFuture,
 };
@@ -13,8 +13,9 @@ use vulkano::{
 use super::{
     camera::Camera,
     context::Context,
+    dir_light_shadows::DirLightShadows,
     entity::{Entity, InstanceData},
-    light_system::{LightUniformBufferObject, ShaderPointLight},
+    light_system::{LightUniformBufferObject, ShaderDirLight, ShaderPointLight},
     model::Model,
     shaders::CameraUniformBufferObject,
 };
@@ -45,7 +46,8 @@ impl Scene {
         mesh_paths: Vec<&str>,
         gbuffer_pipeline: &Arc<GraphicsPipeline>,
         layout: &Arc<DescriptorSetLayout>,
-        shadow_cubemap: &Arc<ImageView<StorageImage>>,
+        point_shadow_cubemap: &Arc<ImageView<StorageImage>>,
+        dir_shadow_map: &Arc<ImageView<AttachmentImage>>,
     ) -> Self {
         let point_lights = Self::gen_point_lights();
 
@@ -64,7 +66,8 @@ impl Scene {
         let shadow_descriptor_set = Self::create_shadow_descriptor_set(
             context,
             gbuffer_pipeline,
-            shadow_cubemap,
+            point_shadow_cubemap,
+            dir_shadow_map,
             &light_uniform_buffer,
         );
 
@@ -132,7 +135,8 @@ impl Scene {
     fn create_shadow_descriptor_set(
         context: &Context,
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        shadow_cubemap: &Arc<ImageView<StorageImage>>,
+        point_shadow_cubemap: &Arc<ImageView<StorageImage>>,
+        dir_shadow_map: &Arc<ImageView<AttachmentImage>>,
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
@@ -144,7 +148,11 @@ impl Scene {
         let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
         set_builder
-            .add_sampled_image(shadow_cubemap.clone(), context.depth_sampler.clone())
+            .add_sampled_image(point_shadow_cubemap.clone(), context.depth_sampler.clone())
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(dir_shadow_map.clone(), context.depth_sampler.clone())
             .unwrap();
 
         set_builder
@@ -192,8 +200,16 @@ impl Scene {
             }
         }
 
+        let (dir_proj, dir_view, _dir_position, dir_direction) = DirLightShadows::light_space();
+
         let buffer_data = LightUniformBufferObject {
             point_lights: shader_point_lights,
+            _dummy0: [0, 0, 0, 0],
+            dir_light: ShaderDirLight {
+                view: dir_view.to_cols_array_2d(),
+                proj: dir_proj.to_cols_array_2d(),
+                direction: dir_direction.to_array(),
+            },
             point_lights_count: point_lights.len() as i32,
         };
 

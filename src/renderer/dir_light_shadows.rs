@@ -46,7 +46,7 @@ impl DirLightShadows {
 
         let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
 
-        let target_attachment = Self::create_color_attachment(context);
+        let target_attachment = Self::create_depth_attachment(context);
         let framebuffer = Self::create_framebuffer(&context, &render_pass, &target_attachment);
 
         let camera_descriptor_set =
@@ -84,20 +84,28 @@ impl DirLightShadows {
         buffer
     }
 
+    pub fn light_space() -> (Mat4, Mat4, Vec3, Vec3) {
+        let position = Vec3::new(30.0, 42.0, -13.0);
+        let direction = -Vec3::new(30.0, 42.0, -13.0).normalize();
+
+        let mut proj = Mat4::orthographic_rh(-25.0, 25.0, 25.0, -25.0, 0.1, 250.0);
+
+        proj.y_axis.y *= -1.0;
+
+        let view = Mat4::look_at_rh(position, direction, Vec3::Y);
+
+        (proj, view, position, direction)
+    }
+
     fn update_uniform_buffers(
         &self,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
-        let position = Vec3::new(30.0, 42.0, -13.0);
-
-        let far_plane = 100.0;
-        let mut proj = Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 0.1, far_plane);
-
-        proj.y_axis.y *= -1.0;
+        let (proj, view, position, _) = Self::light_space();
 
         // camera buffer
         let camera_buffer_data = Arc::new(CameraUniformBufferObject {
-            view: Mat4::look_at_rh(position, Vec3::ZERO, Vec3::Y).to_cols_array_2d(),
+            view: view.to_cols_array_2d(),
             proj: proj.to_cols_array_2d(),
             position: position.to_array(),
         });
@@ -131,12 +139,10 @@ impl DirLightShadows {
         render_pass: &Arc<RenderPass>,
         target: &Arc<ImageView<AttachmentImage>>,
     ) -> Arc<Framebuffer> {
-        let depth = Self::create_depth_attachment(context);
+        // let depth = Self::create_depth_attachment(context);
 
         Framebuffer::start(render_pass.clone())
             .add(target.clone())
-            .unwrap()
-            .add(depth)
             .unwrap()
             .build()
             .unwrap()
@@ -145,21 +151,15 @@ impl DirLightShadows {
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
         single_pass_renderpass!(context.device.clone(),
                 attachments: {
-                    color: {
-                        load: Clear,
-                        store: Store,
-                        format: Format::R16G16B16A16_SFLOAT,
-                        samples: 1,
-                    },
                     depth: {
                         load: Clear,
-                        store: DontCare,
+                        store: Store,
                         format: context.depth_format,
                         samples: 1,
                     }
                 },
                 pass: {
-                    color: [color],
+                    color: [],
                     depth_stencil: {depth}
                 }
         )
@@ -208,7 +208,7 @@ impl DirLightShadows {
                 self.framebuffer.clone(),
                 SubpassContents::SecondaryCommandBuffers,
                 vec![
-                    ClearValue::Float([1.0, 1.0, 1.0, 1.0]),
+                    // ClearValue::Float([1.0, 1.0, 1.0, 1.0]),
                     ClearValue::Depth(1.0),
                 ],
             )
@@ -246,28 +246,31 @@ impl DirLightShadows {
             .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
             .fragment_shader(fs.entry_point("main").unwrap(), ())
             .depth_stencil_simple_depth()
-            // .cull_mode_back()
+            .depth_clamp(false)
+            .cull_mode_front()
+            .front_face_clockwise()
             .viewports_dynamic_scissors_irrelevant(1)
+            .blend_pass_through()
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())
             .unwrap()
     }
 
-    fn create_color_attachment(context: &Context) -> Arc<ImageView<AttachmentImage>> {
-        ImageView::new(
-            AttachmentImage::with_usage(
-                context.graphics_queue.device().clone(),
-                [DIM as u32, DIM as u32],
-                Format::R16G16B16A16_SFLOAT,
-                ImageUsage {
-                    sampled: true,
-                    ..ImageUsage::none()
-                },
-            )
-            .unwrap(),
-        )
-        .unwrap()
-    }
+    // fn create_color_attachment(context: &Context) -> Arc<ImageView<AttachmentImage>> {
+    //     ImageView::new(
+    //         AttachmentImage::with_usage(
+    //             context.graphics_queue.device().clone(),
+    //             [DIM as u32, DIM as u32],
+    //             Format::R16G16B16A16_SFLOAT,
+    //             ImageUsage {
+    //                 sampled: true,
+    //                 ..ImageUsage::none()
+    //             },
+    //         )
+    //         .unwrap(),
+    //     )
+    //     .unwrap()
+    // }
 
     fn create_depth_attachment(context: &Context) -> Arc<ImageView<AttachmentImage>> {
         ImageView::new(
@@ -276,7 +279,7 @@ impl DirLightShadows {
                 [DIM as u32, DIM as u32],
                 context.depth_format,
                 ImageUsage {
-                    transfer_source: true,
+                    sampled: true,
                     ..ImageUsage::none()
                 },
             )
@@ -384,11 +387,7 @@ pub mod fs {
                                     src: "
 			#version 450
 
-            layout(location = 0) out vec4 color;
-
 			void main() {
-                float l = gl_FragCoord.z;
-                color = vec4(l, l, l, 1.0);
 			}
 "
     }

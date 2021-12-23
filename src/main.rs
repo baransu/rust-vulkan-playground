@@ -62,13 +62,13 @@ const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
 
 const PLANE: &str = "res/models/plane/plane.gltf";
 
-const MODEL_PATHS: [&str; 1] = [
-    // DAMAGED_HELMET,
-    // BOTTLE,
+const MODEL_PATHS: [&str; 3] = [
+    DAMAGED_HELMET,
+    BOTTLE,
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
-    // PLANE,
-    SPONZA,
+    PLANE,
+    // SPONZA,
     // "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
 ];
 
@@ -205,6 +205,7 @@ impl Application {
             &gbuffer.pipeline,
             &layout,
             &point_light_shadows.cube_attachment_view,
+            &dir_light_shadows.target_attachment,
         );
 
         println!("Creating local probe");
@@ -489,10 +490,10 @@ impl Application {
                 &context,
                 &dir_light_shadows.target_attachment,
                 TextureUsage {
-                    depth: 0,
+                    depth: 1,
                     normal: 0,
                     position: 0,
-                    rgb: 1,
+                    rgb: 0,
                 },
             )
             .unwrap();
