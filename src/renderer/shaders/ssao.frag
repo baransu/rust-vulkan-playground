@@ -27,7 +27,7 @@ const float radius = 0.5;
 const float bias = 0.025;
 
 void main() {
-	vec3 position = texture(u_position, f_uv).rgb;
+	vec3 position = (camera.view * texture(u_position, f_uv)).rgb;
 
 	// NOTE: G-Buffer normals are world space so we have to move them to view space
 	vec3 normal = normalize(camera.view * (texture(u_normals, f_uv) * 2.0 - 1.0)).rgb;
@@ -53,7 +53,7 @@ void main() {
 			offset.xyz /= offset.w;               // perspective divide
 			offset.xyz  = offset.xyz * 0.5 + 0.5; // transform to range 0.0 - 1.0  
 
-			float sample_depth = texture(u_position, offset.xy).z; 
+			float sample_depth = (camera.view * texture(u_position, offset.xy)).z; 
 			
 			float range_check = smoothstep(0.0, 1.0, radius / abs(position.z - sample_depth));
 			occlusion += (sample_depth >= sample_pos.z + bias ? 1.0 : 0.0) * range_check;  

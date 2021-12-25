@@ -9,11 +9,8 @@ use vulkano::{
         SecondaryAutoCommandBuffer, SubpassContents,
     },
     descriptor_set::PersistentDescriptorSet,
-    format::{ClearValue, Format},
-    image::{
-        view::{ImageView, ImageViewType},
-        AttachmentImage, ImageCreateFlags, ImageDimensions, ImageUsage, MipmapsCount, StorageImage,
-    },
+    format::ClearValue,
+    image::{view::ImageView, AttachmentImage, ImageUsage},
     pipeline::{
         graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
         GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -47,7 +44,7 @@ impl DirLightShadows {
         let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
 
         let target_attachment = Self::create_depth_attachment(context);
-        let framebuffer = Self::create_framebuffer(&context, &render_pass, &target_attachment);
+        let framebuffer = Self::create_framebuffer(&render_pass, &target_attachment);
 
         let camera_descriptor_set =
             Self::create_camera_descriptor_set(&pipeline, &camera_uniform_buffer);
@@ -135,12 +132,9 @@ impl DirLightShadows {
     }
 
     fn create_framebuffer(
-        context: &Context,
         render_pass: &Arc<RenderPass>,
         target: &Arc<ImageView<AttachmentImage>>,
     ) -> Arc<Framebuffer> {
-        // let depth = Self::create_depth_attachment(context);
-
         Framebuffer::start(render_pass.clone())
             .add(target.clone())
             .unwrap()
@@ -255,22 +249,6 @@ impl DirLightShadows {
             .build(context.device.clone())
             .unwrap()
     }
-
-    // fn create_color_attachment(context: &Context) -> Arc<ImageView<AttachmentImage>> {
-    //     ImageView::new(
-    //         AttachmentImage::with_usage(
-    //             context.graphics_queue.device().clone(),
-    //             [DIM as u32, DIM as u32],
-    //             Format::R16G16B16A16_SFLOAT,
-    //             ImageUsage {
-    //                 sampled: true,
-    //                 ..ImageUsage::none()
-    //             },
-    //         )
-    //         .unwrap(),
-    //     )
-    //     .unwrap()
-    // }
 
     fn create_depth_attachment(context: &Context) -> Arc<ImageView<AttachmentImage>> {
         ImageView::new(

@@ -142,9 +142,9 @@ void main() {
 	vec3 Normal = texture(u_normals, f_uv).xyz;
 	
 	// NOTE: G-Buffer position is in view space so we have to transform it back to world space
-	vec4 InPosition = texture(u_position, f_uv);
-	InPosition /= InPosition.w;
-	vec3 Position = (inverse(camera.view) * InPosition).xyz;
+	vec3 Position = texture(u_position, f_uv).xyz;
+	// InPosition /= InPosition.w;
+	// vec3 Position = (inverse(camera.view) * InPosition).xyz;
 
 	vec3 color = vec3(0.0);
 

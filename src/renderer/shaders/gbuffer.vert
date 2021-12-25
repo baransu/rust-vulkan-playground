@@ -45,20 +45,16 @@ layout(location = 0) out vec2 f_uv;
 layout(location = 1) out vec3 f_normal;
 layout(location = 2) out vec4 f_tangent;
 layout(location = 3) out vec4 f_position;
-layout(location = 4) out vec3 f_position_raw;
-layout(location = 5) out vec4 f_position_light;
+layout(location = 4) out vec4 f_position_light;
 
 void main() {
-	vec3 frag_pos = vec3(model * vec4(position, 1.0));
-	vec4 view_pos = camera.view * vec4(frag_pos, 1.0);
+	vec4 world_pos = model * vec4(position, 1.0);
 
-	f_position_raw = (model * vec4(position, 1.0)).xyz;
+	f_position_light = lights.dir_light.proj * lights.dir_light.view * world_pos;
 
-	f_position_light = lights.dir_light.proj * lights.dir_light.view * model * vec4(position, 1.0);
+	f_position = world_pos;
 
-	f_position = view_pos;
-
-	gl_Position = camera.proj * view_pos;
+	gl_Position = camera.proj * camera.view * world_pos;
 
 	f_uv = uv;
 
