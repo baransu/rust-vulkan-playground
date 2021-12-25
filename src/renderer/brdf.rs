@@ -5,15 +5,9 @@ use vulkano::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents,
     },
     format::{ClearValue, Format},
-    image::{
-        view::ImageView, AttachmentImage, ImageCreateFlags, ImageDimensions, ImageUsage,
-        StorageImage,
-    },
+    image::{view::ImageView, AttachmentImage, ImageUsage},
     pipeline::{
-        graphics::{
-            color_blend::ColorBlendState, input_assembly::InputAssemblyState,
-            vertex_input::BuffersDefinition, viewport::Viewport,
-        },
+        graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
         GraphicsPipeline,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},

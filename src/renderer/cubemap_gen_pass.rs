@@ -4,10 +4,7 @@ use glam::{Mat4, Vec3};
 
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
-    command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        PrimaryCommandBuffer, SubpassContents,
-    },
+    command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SubpassContents},
     descriptor_set::PersistentDescriptorSet,
     format::{ClearValue, Format},
     image::{
@@ -17,10 +14,8 @@ use vulkano::{
     },
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{Framebuffer, RenderPass, Subpass},
-    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     shader::EntryPoint,
     single_pass_renderpass,
-    sync::GpuFuture,
 };
 
 use super::{

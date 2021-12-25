@@ -12,8 +12,8 @@ use vulkano::{
     format::Format,
     image::{
         view::{ImageView, ImageViewType},
-        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, ImmutableImage,
-        MipmapsCount, StorageImage,
+        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, MipmapsCount,
+        StorageImage,
     },
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{RenderPass, Subpass},

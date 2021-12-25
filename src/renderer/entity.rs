@@ -1,8 +1,4 @@
-use std::sync::Arc;
-
-use vulkano::{buffer::ImmutableBuffer, descriptor_set::PersistentDescriptorSet};
-
-use super::{transform::Transform, vertex::Vertex};
+use super::transform::Transform;
 
 pub struct Entity {
     pub model_id: String,

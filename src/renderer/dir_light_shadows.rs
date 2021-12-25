@@ -24,7 +24,7 @@ use super::{
     shaders::CameraUniformBufferObject, vertex::Vertex,
 };
 
-const DIM: f32 = 512.0;
+const DIM: f32 = 1024.0;
 
 pub struct DirLightShadows {
     pipeline: Arc<GraphicsPipeline>,

@@ -31,13 +31,17 @@ layout(binding = 2) uniform sampler2D u_normals;
 layout(binding = 3) uniform sampler2D u_albedo;
 layout(binding = 4) uniform sampler2D u_metalic_roughness;
 layout(binding = 5) uniform sampler2D u_depth;
-layout(binding = 6) uniform sampler2D u_shadows;
-layout(binding = 7) uniform sampler2D ssao_sampler;
-layout(binding = 8) uniform samplerCube samplerIrradiance;
-layout(binding = 9) uniform samplerCube prefilteredMap;
-layout(binding = 10) uniform sampler2D samplerBRDFLUT;  
 
-layout(binding = 11) uniform LightUniformBufferObject { 
+layout(binding = 6) uniform samplerCube point_shadow_map;
+layout(binding = 7) uniform sampler2D dir_shadow_map;
+
+
+layout(binding = 8) uniform sampler2D ssao_sampler;
+layout(binding = 9) uniform samplerCube samplerIrradiance;
+layout(binding = 10) uniform samplerCube prefilteredMap;
+layout(binding = 11) uniform sampler2D samplerBRDFLUT;  
+
+layout(binding = 12) uniform LightUniformBufferObject { 
 	PointLight point_lights[MAX_POINT_LIGHTS];
 	DirLight dir_light;
 	int point_lights_count;
@@ -135,16 +139,84 @@ vec3 parallaxCorrectNormal( vec3 v) {
   return boxIntersection - cubePos;
 }
 
+
+vec3 gridSamplingDisk[20] = vec3[]
+(
+   vec3(1, 1,  1), vec3( 1, -1,  1), vec3(-1, -1,  1), vec3(-1, 1,  1), 
+   vec3(1, 1, -1), vec3( 1, -1, -1), vec3(-1, -1, -1), vec3(-1, 1, -1),
+   vec3(1, 1,  0), vec3( 1, -1,  0), vec3(-1, -1,  0), vec3(-1, 1,  0),
+   vec3(1, 0,  1), vec3(-1,  0,  1), vec3( 1,  0, -1), vec3(-1, 0, -1),
+   vec3(0, 1,  1), vec3( 0, -1,  1), vec3( 0, -1, -1), vec3( 0, 1, -1)
+);
+
+// TODO: move to light pass
+const float farPlane = 100.0;
+float PointShadowCalculation(vec3 fragPos, vec3 lightPos) {
+	// get vector between fragment position and light position
+	vec3 fragToLight = fragPos - lightPos;
+
+	float currentDepth = length(fragToLight);
+
+	float shadow = 0.0;
+	float bias = 0.15;
+	int samples = 20;
+
+	float viewDistance = length(camera.position - fragPos);
+	float diskRadius = (1.0 + (viewDistance / farPlane)) / 25.0;
+	for(int i = 0; i < samples; ++i)
+	{
+			float closestDepth = texture(point_shadow_map, (fragToLight * vec3(1, -1, 1)) + gridSamplingDisk[i] * diskRadius).r;
+			closestDepth *= farPlane;   // undo mapping [0;1]
+			if(currentDepth - bias > closestDepth)
+					shadow += 1.0;
+	}
+	shadow /= float(samples);
+
+ 	return shadow;
+}
+
+
+float DirShadowCalculation(vec4 fragPosLightSpace, vec3 normal)
+{
+    // perform perspective divide
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    // transform to [0,1] range
+    vec2 uv = (projCoords * 0.5 + 0.5).xy;
+   
+    // get depth of current fragment from light's perspective
+    float currentDepth = projCoords.z;
+
+		float bias = 0.05; // max(0.05 * (1.0 - dot(normal, lights.dir_light.direction)), 0.005); 
+
+		float shadow = 0.0;
+		vec2 texelSize = 1.0 / textureSize(dir_shadow_map, 0);
+		for(int x = -1; x <= 1; ++x)
+		{
+				for(int y = -1; y <= 1; ++y)
+				{
+						float pcfDepth = texture(dir_shadow_map, uv + vec2(x, y) * texelSize).r; 
+						// NOTE: 0.8 is because we apply dir shadows to ambient
+						// and I don't have global illumination so everything is super dark then
+						shadow += currentDepth > pcfDepth ? 0.8 : 0.0;        
+				}    
+		}
+		shadow /= 9.0;
+
+		if(projCoords.z > 1.0) {
+        shadow = 0.0;
+		}
+
+		return shadow;
+}  
+
 void main() {
 	vec3 raw_albedo = texture(u_albedo, f_uv).xyz;
 	float depth = texture(u_depth, f_uv).r;
 
 	vec3 Normal = texture(u_normals, f_uv).xyz;
 	
-	// NOTE: G-Buffer position is in view space so we have to transform it back to world space
-	vec3 Position = texture(u_position, f_uv).xyz;
-	// InPosition /= InPosition.w;
-	// vec3 Position = (inverse(camera.view) * InPosition).xyz;
+	vec4 RawPosition = texture(u_position, f_uv); 
+	vec3 Position = RawPosition.xyz;
 
 	vec3 color = vec3(0.0);
 
@@ -166,12 +238,14 @@ void main() {
 		F0 = mix(F0, ALBEDO, metallic);
 
 		vec3 Lo = vec3(0.0);
+		float pointLightShadows = 0;
 
 		for(int i = 0; i < lights.point_lights_count; i++) {
 			PointLight light = lights.point_lights[i];
 			vec3 L = normalize(light.position - Position);
 			float distance = length(light.position - Position);
 			Lo += specularContribution(L, V, N, F0, metallic, roughness, distance, light.color);
+			pointLightShadows += PointShadowCalculation(Position, light.position);
 		}
 
 		float NoV = max(dot(N, V), 0.0);
@@ -192,11 +266,10 @@ void main() {
 
 		vec3 ambient = (kD * diffuse + specular) * ao;
 
-		float shadow = texture(u_shadows, f_uv).r;
-		
-		float ambientShadow = (1.0 - shadow);
-		float lightShadow = 1.0; // (1.0 - shadow);
-		color = ambientShadow * ambient + lightShadow * Lo;
+		vec4 lightSpacePosition = lights.dir_light.proj * lights.dir_light.view * RawPosition;
+		float dirShadow = DirShadowCalculation(lightSpacePosition, Normal);
+				
+		color = (1.0 - dirShadow) * ambient + (1.0 - pointLightShadows) * Lo;
 	}
 
 	// tone mapping

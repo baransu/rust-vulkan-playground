@@ -23,13 +23,6 @@ layout(set = 0, binding = 0) uniform CameraUniformBufferObject {
 	vec3 position;
 } camera;
 
-
-layout(set = 2, binding = 2) uniform LightUniformBufferObject { 
-	PointLight point_lights[32];
-	DirLight dir_light;
-	int point_lights_count;
-} lights;
-
 // in per vertex
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -45,12 +38,9 @@ layout(location = 0) out vec2 f_uv;
 layout(location = 1) out vec3 f_normal;
 layout(location = 2) out vec4 f_tangent;
 layout(location = 3) out vec4 f_position;
-layout(location = 4) out vec4 f_position_light;
 
 void main() {
 	vec4 world_pos = model * vec4(position, 1.0);
-
-	f_position_light = lights.dir_light.proj * lights.dir_light.view * world_pos;
 
 	f_position = world_pos;
 

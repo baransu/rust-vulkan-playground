@@ -42,6 +42,8 @@ impl LightSystem {
         irradiance_map: &Arc<ImageView<StorageImage>>,
         prefilter_map: &Arc<ImageView<StorageImage>>,
         brdf: &Arc<ImageView<ImmutableImage>>,
+        point_shadow_map: &Arc<ImageView<StorageImage>>,
+        dir_shadow_map: &Arc<ImageView<AttachmentImage>>,
     ) -> LightSystem {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
 
@@ -59,6 +61,8 @@ impl LightSystem {
             &irradiance_map,
             &prefilter_map,
             &brdf,
+            &point_shadow_map,
+            &dir_shadow_map,
         );
 
         let command_buffers =
@@ -83,6 +87,8 @@ impl LightSystem {
         irradiance_map: &Arc<ImageView<StorageImage>>,
         prefilter_map: &Arc<ImageView<StorageImage>>,
         brdf: &Arc<ImageView<ImmutableImage>>,
+        point_shadow_map: &Arc<ImageView<StorageImage>>,
+        dir_shadow_map: &Arc<ImageView<AttachmentImage>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = light_graphics_pipeline
             .layout()
@@ -129,7 +135,11 @@ impl LightSystem {
             .unwrap();
 
         set_builder
-            .add_sampled_image(gbuffer.shadow_buffer.clone(), context.depth_sampler.clone())
+            .add_sampled_image(point_shadow_map.clone(), context.depth_sampler.clone())
+            .unwrap();
+
+        set_builder
+            .add_sampled_image(dir_shadow_map.clone(), context.depth_sampler.clone())
             .unwrap();
 
         set_builder

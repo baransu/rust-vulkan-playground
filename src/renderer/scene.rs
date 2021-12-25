@@ -5,7 +5,6 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
-    image::{view::ImageView, AttachmentImage, StorageImage},
     pipeline::{GraphicsPipeline, Pipeline},
     sync::GpuFuture,
 };
@@ -31,7 +30,6 @@ pub struct PointLight {
 pub struct Scene {
     pub camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     pub camera_descriptor_set: Arc<PersistentDescriptorSet>,
-    pub shadow_descriptor_set: Arc<PersistentDescriptorSet>,
     pub light_uniform_buffer: Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
 
     pub point_lights: Vec<PointLight>,
@@ -46,8 +44,6 @@ impl Scene {
         mesh_paths: Vec<&str>,
         gbuffer_pipeline: &Arc<GraphicsPipeline>,
         layout: &Arc<DescriptorSetLayout>,
-        point_shadow_cubemap: &Arc<ImageView<StorageImage>>,
-        dir_shadow_map: &Arc<ImageView<AttachmentImage>>,
     ) -> Self {
         let point_lights = Self::gen_point_lights();
 
@@ -63,14 +59,6 @@ impl Scene {
         let camera_descriptor_set =
             Self::create_camera_descriptor_set(gbuffer_pipeline, &camera_uniform_buffer);
 
-        let shadow_descriptor_set = Self::create_shadow_descriptor_set(
-            context,
-            gbuffer_pipeline,
-            point_shadow_cubemap,
-            dir_shadow_map,
-            &light_uniform_buffer,
-        );
-
         Scene {
             models,
             entities: vec![],
@@ -78,8 +66,6 @@ impl Scene {
             camera_uniform_buffer,
             camera_descriptor_set,
             light_uniform_buffer,
-
-            shadow_descriptor_set,
 
             point_lights,
         }
@@ -132,40 +118,10 @@ impl Scene {
         set_builder.build().unwrap()
     }
 
-    fn create_shadow_descriptor_set(
-        context: &Context,
-        graphics_pipeline: &Arc<GraphicsPipeline>,
-        point_shadow_cubemap: &Arc<ImageView<StorageImage>>,
-        dir_shadow_map: &Arc<ImageView<AttachmentImage>>,
-        light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
-    ) -> Arc<PersistentDescriptorSet> {
-        let layout = graphics_pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(2)
-            .unwrap();
-
-        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-        set_builder
-            .add_sampled_image(point_shadow_cubemap.clone(), context.depth_sampler.clone())
-            .unwrap();
-
-        set_builder
-            .add_sampled_image(dir_shadow_map.clone(), context.depth_sampler.clone())
-            .unwrap();
-
-        set_builder
-            .add_buffer(light_uniform_buffer.clone())
-            .unwrap();
-
-        set_builder.build().unwrap()
-    }
-
     fn gen_point_lights() -> Vec<PointLight> {
         vec![PointLight {
             position: Vec3::new(1.0, 4.0, -1.0),
-            color: Vec3::new(100.0, 100.0, 100.0),
+            color: Vec3::new(10.0, 10.0, 10.0),
         }]
     }
 

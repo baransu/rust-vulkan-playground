@@ -12,7 +12,7 @@ use renderer::{
     context::Context,
     cubemap_gen_pass::{irradiance_convolution_fs, prefilterenvmap_fs, CubemapGenPass},
     dir_light_shadows::DirLightShadows,
-    entity::{Entity, InstanceData},
+    entity::Entity,
     gbuffer::GBuffer,
     light_system::LightSystem,
     local_probe::LocalProbe,
@@ -24,7 +24,6 @@ use renderer::{
     ssao_blur::SsaoBlur,
     texture::Texture,
     transform::Transform,
-    vertex::Vertex,
 };
 use vulkano::{
     command_buffer::{
@@ -37,13 +36,8 @@ use vulkano::{
     device::Device,
     format::{ClearValue, Format},
     image::{view::ImageView, AttachmentImage, ImageUsage},
-    pipeline::{
-        graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
-        GraphicsPipeline, Pipeline, PipelineBindPoint,
-    },
-    render_pass::{Framebuffer, RenderPass, Subpass},
+    pipeline::graphics::viewport::Viewport,
     shader::ShaderStages,
-    single_pass_renderpass,
     swapchain::{acquire_next_image, AcquireError},
     sync::{self, GpuFuture},
 };
@@ -54,7 +48,7 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
 };
 
-use crate::renderer::{point_light_shadows, skybox_pass::fs_gbuffer};
+use crate::renderer::skybox_pass::fs_gbuffer;
 
 const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
 const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
@@ -62,13 +56,13 @@ const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
 
 const PLANE: &str = "res/models/plane/plane.gltf";
 
-const MODEL_PATHS: [&str; 1] = [
-    // DAMAGED_HELMET,
-    // BOTTLE,
+const MODEL_PATHS: [&str; 3] = [
+    DAMAGED_HELMET,
+    BOTTLE,
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
-    // PLANE,
-    SPONZA,
+    PLANE,
+    // SPONZA,
     // "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
 ];
 
@@ -109,7 +103,7 @@ struct Application {
     gbuffer_albedo_texture_id: TextureId,
     gbuffer_metalic_texture_id: TextureId,
     ssao_texture_id: TextureId,
-    shadow_texture_id: TextureId,
+    // shadow_texture_id: TextureId,
     dir_shadow_texture_id: TextureId,
 
     ssao: Ssao,
@@ -145,7 +139,7 @@ impl Application {
             .decode()
             .unwrap();
 
-        // TODO: generate brdf texture instead of loading it?
+        // TODO: generate brdf texture instead of loading it - why I have black spots???
         let brdf_texture =
             Texture::create_image_view(&context.graphics_queue, &img, Format::R8G8B8A8_UNORM);
 
@@ -199,14 +193,8 @@ impl Application {
         let point_light_shadows = PointLightShadows::initialize(&context);
         let dir_light_shadows = DirLightShadows::initialize(&context);
 
-        let mut scene = Scene::initialize(
-            &context,
-            MODEL_PATHS.to_vec(),
-            &gbuffer.pipeline,
-            &layout,
-            &point_light_shadows.cube_attachment_view,
-            &dir_light_shadows.target_attachment,
-        );
+        let mut scene =
+            Scene::initialize(&context, MODEL_PATHS.to_vec(), &gbuffer.pipeline, &layout);
 
         println!("Creating local probe");
 
@@ -256,6 +244,8 @@ impl Application {
             &irradiance_convolution.cube_attachment_view,
             &prefilterenvmap.cube_attachment_view,
             &brdf_texture,
+            &point_light_shadows.cube_attachment_view,
+            &dir_light_shadows.target_attachment,
         );
 
         // let count = 10;
@@ -472,18 +462,18 @@ impl Application {
             )
             .unwrap();
 
-        let shadow_texture_id = imgui_renderer
-            .register_texture(
-                &context,
-                &gbuffer.shadow_buffer,
-                TextureUsage {
-                    depth: 1,
-                    normal: 0,
-                    position: 0,
-                    rgb: 0,
-                },
-            )
-            .unwrap();
+        // let shadow_texture_id = imgui_renderer
+        //     .register_texture(
+        //         &context,
+        //         &gbuffer.shadow_buffer,
+        //         TextureUsage {
+        //             depth: 1,
+        //             normal: 0,
+        //             position: 0,
+        //             rgb: 0,
+        //         },
+        //     )
+        //     .unwrap();
 
         let dir_shadow_texture_id = imgui_renderer
             .register_texture(
@@ -528,7 +518,7 @@ impl Application {
             gbuffer_normals_texture_id,
             gbuffer_metalic_texture_id,
             ssao_texture_id,
-            shadow_texture_id,
+            // shadow_texture_id,
             dir_shadow_texture_id,
 
             ssao,
@@ -571,12 +561,9 @@ impl Application {
     fn recreate_swap_chain(&mut self) {
         self.context.recreate_swap_chain();
 
-        // TODO: recreate shadow framebuffer and graphics pipeline
+        // TODO: recreate shadow framebuffer and graphics pipeline???
 
         self.screen_frame.recreate_swap_chain(&self.context);
-
-        // self.create_scene_command_buffers();
-        // self.create_shadow_command_buffers();
     }
 
     fn create_scene_command_buffers(&mut self) {
@@ -614,7 +601,6 @@ impl Application {
                         &mut builder,
                         &self.scene.camera_descriptor_set,
                         instance_data_buffer,
-                        &self.scene.shadow_descriptor_set,
                     )
                 }
             }
@@ -642,7 +628,7 @@ impl Application {
         let gbuffer_normals_texture_id = self.gbuffer_normals_texture_id;
         let gbuffer_metalic_texture_id = self.gbuffer_metalic_texture_id;
         let ssao_texture_id = self.ssao_texture_id;
-        let shadow_texture_id = self.shadow_texture_id;
+        // let shadow_texture_id = self.shadow_texture_id;
         let dir_shadow_texture_id = self.dir_shadow_texture_id;
 
         let camera_pos = self.camera.position;
@@ -663,8 +649,8 @@ impl Application {
                 Image::new(dir_shadow_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("Dir shadow map");
 
-                Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("GBuffer shadow map");
+                // Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
+                // ui.text("GBuffer shadow map");
 
                 Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("SSAO with Blur");
@@ -767,8 +753,6 @@ impl Application {
                     ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
                     // metalic_roughness
                     ClearValue::Float([0.0, 0.0, 0.0, 0.0]),
-                    // shadow
-                    ClearValue::Float([1.0, 1.0, 1.0, 1.0]),
                     // depth
                     ClearValue::Depth(1.0),
                 ],
