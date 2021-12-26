@@ -7,6 +7,7 @@ use glam::{EulerRot, Quat, Vec3};
 use imgui::*;
 use imgui_renderer::{shaders::TextureUsage, Renderer};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
+use puffin_imgui::ProfilerUi;
 use renderer::{
     camera::Camera,
     context::Context,
@@ -56,13 +57,13 @@ const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
 
 const PLANE: &str = "res/models/plane/plane.gltf";
 
-const MODEL_PATHS: [&str; 3] = [
-    DAMAGED_HELMET,
-    BOTTLE,
+const MODEL_PATHS: [&str; 1] = [
+    // DAMAGED_HELMET,
+    // BOTTLE,
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
-    PLANE,
-    // SPONZA,
+    // PLANE,
+    SPONZA,
     // "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
 ];
 
@@ -127,6 +128,8 @@ struct Application {
     event_loop: Option<EventLoop<()>>,
 
     prebuild: bool,
+
+    puffin_ui: ProfilerUi,
 }
 
 impl Application {
@@ -488,6 +491,8 @@ impl Application {
             )
             .unwrap();
 
+        let mut puffin_ui = puffin_imgui::ProfilerUi::default();
+
         let mut app = Self {
             context,
 
@@ -535,6 +540,7 @@ impl Application {
             event_loop: Some(event_loop),
 
             prebuild: true,
+            puffin_ui,
         };
 
         app.create_scene_command_buffers();
@@ -622,16 +628,21 @@ impl Application {
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         delta_time: &f64,
     ) {
+        self.platform
+            .prepare_frame(self.imgui.io_mut(), self.context.surface.window())
+            .unwrap();
+
         let ui = self.imgui.frame();
         let gbuffer_position_texture_id = self.gbuffer_position_texture_id;
         let gbuffer_albedo_texture_id = self.gbuffer_albedo_texture_id;
         let gbuffer_normals_texture_id = self.gbuffer_normals_texture_id;
         let gbuffer_metalic_texture_id = self.gbuffer_metalic_texture_id;
         let ssao_texture_id = self.ssao_texture_id;
-        // let shadow_texture_id = self.shadow_texture_id;
         let dir_shadow_texture_id = self.dir_shadow_texture_id;
 
         let camera_pos = self.camera.position;
+
+        self.puffin_ui.window(&ui);
 
         // Here we create a window with a specific size, and force it to always have a vertical scrollbar visible
         Window::new("Debug")
@@ -649,9 +660,6 @@ impl Application {
                 Image::new(dir_shadow_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("Dir shadow map");
 
-                // Image::new(shadow_texture_id, [300.0, 300.0]).build(&ui);
-                // ui.text("GBuffer shadow map");
-
                 Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("SSAO with Blur");
 
@@ -667,6 +675,9 @@ impl Application {
                 Image::new(gbuffer_albedo_texture_id, [300.0, 300.0]).build(&ui);
                 ui.text("GBuffer albedo");
             });
+
+        self.platform
+            .prepare_render(&ui, self.context.surface.window());
 
         let draw_data = ui.render();
         self.imgui_renderer
@@ -986,14 +997,21 @@ impl Application {
                     }
 
                     Event::RedrawRequested { .. } => {
+                        puffin::GlobalProfiler::lock().new_frame();
                         let now = Instant::now();
                         delta_time = now.duration_since(self.last_time).as_secs_f64();
 
                         self.last_time = now;
 
-                        self.update(&keyboard_buttons, delta_time);
+                        {
+                            puffin::profile_scope!("update");
+                            self.update(&keyboard_buttons, delta_time);
+                        }
 
-                        self.draw_frame(&delta_time);
+                        {
+                            puffin::profile_scope!("draw");
+                            self.draw_frame(&delta_time);
+                        }
                     }
 
                     _ => (),
@@ -1003,6 +1021,8 @@ impl Application {
 }
 
 fn main() {
+    puffin::set_scopes_on(true);
+
     let app = Application::initialize();
     app.main_loop();
 }
