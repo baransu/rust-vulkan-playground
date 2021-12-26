@@ -71,7 +71,17 @@ pub mod screen_fragment_shader {
 		layout (location = 0) out vec4 outFragColor;
 
 		vec4 no_effect() {
-			return texture(screen_texture, inUV);	
+			vec3 color = texture(screen_texture, inUV).rgb;	
+
+			// exposure tone mapping
+			float exposure = 1.0;
+			color = vec3(1.0) - exp(-color * exposure);
+		
+			// gamma correction
+			float gamma = 2.2;
+			color = pow(color, vec3(1.0/gamma));
+			
+			return vec4(color, 1.0);
 		}
 
 		vec4 negative_effect() {

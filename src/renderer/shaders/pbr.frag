@@ -53,7 +53,7 @@ layout(location = 0) out vec4 out_color;
 
 #define PI 3.1415926535897932384626433832795
 
-#define ALBEDO pow(texture(u_albedo, f_uv).xyz, vec3(2.2))
+#define ALBEDO texture(u_albedo, f_uv).rgb
 
 // Normal Distribution function --------------------------------------
 float D_GGX(float dotNH, float roughness)
@@ -210,7 +210,6 @@ float DirShadowCalculation(vec4 fragPosLightSpace, vec3 normal)
 }  
 
 void main() {
-	vec3 raw_albedo = texture(u_albedo, f_uv).xyz;
 	float depth = texture(u_depth, f_uv).r;
 
 	vec3 Normal = texture(u_normals, f_uv).xyz;
@@ -222,7 +221,7 @@ void main() {
 
 	// if our depth is 1.0 it means there is nothing so draw skybox
 	if(depth == 1.0) {
-		color = raw_albedo;
+		color = ALBEDO;
 	} else {
 		vec3 N = normalize(Normal);
 		vec3 V = normalize(camera.position - Position);
@@ -271,12 +270,6 @@ void main() {
 				
 		color = (1.0 - dirShadow) * ambient + (1.0 - pointLightShadows) * Lo;
 	}
-
-	// tone mapping
-	color = color / (color + vec3(1.0));
-	// gamma correction
-	float gamma = 2.2;
-	color = pow(color, vec3(1.0/gamma));
 
 	out_color = vec4(color, 1.0);
 }

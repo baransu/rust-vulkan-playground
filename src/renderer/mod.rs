@@ -5,6 +5,7 @@ pub mod cubemap_gen_pass;
 pub mod dir_light_shadows;
 pub mod entity;
 pub mod gbuffer;
+pub mod gen_hdr_cubemap;
 pub mod light_system;
 pub mod local_probe;
 pub mod model;
