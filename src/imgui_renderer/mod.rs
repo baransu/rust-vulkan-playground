@@ -70,8 +70,7 @@ impl std::error::Error for RendererError {}
 
 pub type Texture = (
     Arc<dyn ImageViewAbstract + 'static>,
-    Arc<Sampler>,
-    Arc<ImmutableBuffer<TextureUsage>>,
+    Arc<PersistentDescriptorSet>,
 );
 
 pub struct ImguiRenderer {
@@ -97,7 +96,7 @@ impl ImguiRenderer {
     /// `queue`: the Vulkano `Queue` object for the queue the font atlas texture will be created on.
     ///
     /// `format`: the Vulkano `Format` that the render pass will use when storing the frame in the target image.
-    pub fn init(
+    pub fn initialize(
         context: &Context,
         imgui: &mut imgui::Context,
     ) -> Result<ImguiRenderer, Box<dyn std::error::Error>> {
@@ -122,9 +121,6 @@ impl ImguiRenderer {
         )
         .unwrap();
 
-        // let dimensions_u32 = context.swap_chain.dimensions();
-        // let [width, height] = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-
         let pipeline = GraphicsPipeline::start()
             .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
             .vertex_shader(vs.entry_point("main").unwrap(), ())
@@ -137,7 +133,7 @@ impl ImguiRenderer {
 
         let textures = Textures::new();
 
-        let font_texture = Self::upload_font_texture(context, imgui.fonts())?;
+        let font_texture = Self::upload_font_texture(context, &pipeline, imgui.fonts())?;
 
         let vrt_buffer_pool = CpuBufferPool::new(
             context.device.clone(),
@@ -231,13 +227,6 @@ impl ImguiRenderer {
         let clip_off = draw_data.display_pos;
         let clip_scale = draw_data.framebuffer_scale;
 
-        let layout = self
-            .pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(0)
-            .unwrap();
-
         cmd_buf_builder.begin_render_pass(
             self.framebuffer.clone(),
             SubpassContents::Inline,
@@ -297,26 +286,15 @@ impl ImguiRenderer {
                                 ],
                             };
 
-                            let (texture_image, texture_sampler, usage) =
+                            let (_texture_image, descriptor_set) =
                                 self.lookup_texture(texture_id)?;
-
-                            let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-                            set_builder.add_sampled_image(
-                                texture_image.clone(),
-                                texture_sampler.clone(),
-                            )?;
-
-                            set_builder.add_buffer(usage.clone())?;
-
-                            let set = set_builder.build()?;
 
                             cmd_buf_builder
                                 .bind_descriptor_sets(
                                     PipelineBindPoint::Graphics,
                                     self.pipeline.layout().clone(),
                                     0,
-                                    set,
+                                    descriptor_set.clone(),
                                 )
                                 .bind_vertex_buffers(0, vertex_buffer.clone())
                                 .bind_index_buffer(
@@ -340,26 +318,9 @@ impl ImguiRenderer {
                 }
             }
         }
+
         cmd_buf_builder.end_render_pass()?;
 
-        Ok(())
-    }
-
-    /// Update the ImGui font atlas texture.
-    ///
-    /// ---
-    ///
-    /// `ctx`: the ImGui `Context` object
-    ///
-    /// `device`: the Vulkano `Device` object for the device you want to render the UI on.
-    ///
-    /// `queue`: the Vulkano `Queue` object for the queue the font atlas texture will be created on.
-    pub fn reload_font_texture(
-        &mut self,
-        context: &Context,
-        ctx: &mut imgui::Context,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        self.font_texture = Self::upload_font_texture(context, ctx.fonts())?;
         Ok(())
     }
 
@@ -393,13 +354,30 @@ impl ImguiRenderer {
         .unwrap();
 
         let usage = Self::create_texture_usage_buffer(context, usage);
-        let texture_id = self.textures.insert((image.clone(), sampler, usage));
+
+        let layout = self
+            .pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(0)
+            .unwrap();
+
+        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        set_builder.add_sampled_image(image.clone(), sampler.clone())?;
+
+        set_builder.add_buffer(usage.clone())?;
+
+        let descriptor_set = set_builder.build().unwrap();
+
+        let texture_id = self.textures.insert((image.clone(), descriptor_set));
 
         Ok(texture_id)
     }
 
     fn upload_font_texture(
         context: &Context,
+        pipeline: &Arc<GraphicsPipeline>,
         mut fonts: imgui::FontAtlasRefMut,
     ) -> Result<Texture, Box<dyn std::error::Error>> {
         let texture = fonts.build_rgba32_texture();
@@ -418,11 +396,13 @@ impl ImguiRenderer {
 
         fut.then_signal_fence_and_flush()?.wait(None)?;
 
+        let image_view = ImageView::new(image)?;
+
         let sampler = Sampler::simple_repeat_linear(context.device.clone());
 
         fonts.tex_id = TextureId::from(usize::MAX);
 
-        let ctx = Self::create_texture_usage_buffer(
+        let usage = Self::create_texture_usage_buffer(
             context,
             TextureUsage {
                 depth: 0,
@@ -432,7 +412,17 @@ impl ImguiRenderer {
             },
         );
 
-        Ok((ImageView::new(image)?, sampler, ctx))
+        let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+
+        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        set_builder.add_sampled_image(image_view.clone(), sampler.clone())?;
+
+        set_builder.add_buffer(usage.clone())?;
+
+        let descriptor_set = set_builder.build().unwrap();
+
+        Ok((image_view, descriptor_set))
     }
 
     fn lookup_texture(&self, texture_id: TextureId) -> Result<&Texture, RendererError> {

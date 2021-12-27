@@ -2,10 +2,14 @@ use std::{collections::HashMap, sync::Arc};
 
 use glam::{Mat4, Vec3};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
-    command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
-    descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
-    pipeline::{GraphicsPipeline, Pipeline},
+    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer, TypedBufferAccess},
+    command_buffer::{
+        AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer,
+    },
+    descriptor_set::{
+        layout::DescriptorSetLayout, DescriptorSetsCollection, PersistentDescriptorSet,
+    },
+    pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint},
     sync::GpuFuture,
 };
 
@@ -15,7 +19,7 @@ use super::{
     dir_light_shadows::DirLightShadows,
     entity::{Entity, InstanceData},
     light_system::{LightUniformBufferObject, ShaderPointLight},
-    model::Model,
+    model::{Material, Model},
     shaders::CameraUniformBufferObject,
 };
 
@@ -240,5 +244,114 @@ impl Scene {
         });
 
         instance_data_buffers
+    }
+
+    pub fn draw<S>(
+        &self,
+        context: &Context,
+        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
+        pipeline: &Arc<GraphicsPipeline>,
+        get_descriptor_sets: impl Fn(&Material) -> S,
+    ) where
+        S: DescriptorSetsCollection,
+    {
+        let instance_data_buffers = self.get_instance_data_buffers(&context);
+
+        for model in self.models.iter() {
+            // if there is no instance_data_buffer it means we have 0 instances for this mesh
+            if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
+                for node_index in model.root_nodes.iter() {
+                    self.draw_model_node(
+                        model,
+                        &pipeline,
+                        builder,
+                        *node_index,
+                        instance_data_buffer,
+                        &get_descriptor_sets,
+                    );
+                }
+            }
+        }
+    }
+
+    fn draw_model_node<S>(
+        &self,
+        model: &Model,
+        pipeline: &Arc<GraphicsPipeline>,
+        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
+        node_index: usize,
+        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
+        get_descriptor_sets: &impl Fn(&Material) -> S,
+    ) where
+        S: DescriptorSetsCollection,
+    {
+        let node = model.nodes.get(node_index).unwrap();
+
+        if let Some(mesh_index) = node.mesh {
+            let mesh = model.meshes.get(mesh_index).unwrap();
+
+            for primitive_index in mesh.primitives.iter() {
+                self.draw_model_primitive(
+                    pipeline,
+                    model,
+                    builder,
+                    *primitive_index,
+                    instance_data_buffer,
+                    get_descriptor_sets,
+                );
+            }
+        }
+
+        for child_index in node.children.iter() {
+            self.draw_model_node(
+                model,
+                pipeline,
+                builder,
+                *child_index,
+                instance_data_buffer,
+                get_descriptor_sets,
+            );
+        }
+    }
+
+    fn draw_model_primitive<S>(
+        &self,
+        pipeline: &Arc<GraphicsPipeline>,
+        model: &Model,
+        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
+        primitive_index: usize,
+        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
+        get_descriptor_sets: &impl Fn(&Material) -> S,
+    ) where
+        S: DescriptorSetsCollection,
+    {
+        let primitive = model.primitives.get(primitive_index).unwrap();
+        let material = model.materials.get(primitive.material).unwrap();
+
+        let descriptor_sets = get_descriptor_sets(material);
+
+        builder
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                pipeline.layout().clone(),
+                0,
+                descriptor_sets,
+            )
+            .bind_vertex_buffers(
+                0,
+                (
+                    primitive.vertex_buffer.clone(),
+                    instance_data_buffer.clone(),
+                ),
+            )
+            .bind_index_buffer(primitive.index_buffer.clone())
+            .draw_indexed(
+                primitive.index_count,
+                instance_data_buffer.len() as u32,
+                0,
+                0,
+                0,
+            )
+            .unwrap();
     }
 }

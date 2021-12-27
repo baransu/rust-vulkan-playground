@@ -78,7 +78,7 @@ const BRDF_PATH: &str = "res/ibl_brdf_lut.png";
 struct RenderContext {
     context: Context,
     gbuffer: GBuffer,
-    scene_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
+    scene_command_buffer: Arc<SecondaryAutoCommandBuffer>,
     light_system: LightSystem,
 
     screen_frame: ScreenFrame,
@@ -480,11 +480,13 @@ impl Application {
 
         let puffin_ui = puffin_imgui::ProfilerUi::default();
 
-        let mut app = Self {
+        let scene_command_buffer = gbuffer.draw(&context, &scene);
+
+        Application {
             rc: RenderContext {
                 context,
                 gbuffer,
-                scene_command_buffers: vec![],
+                scene_command_buffer,
                 light_system,
                 screen_frame,
                 skybox,
@@ -519,12 +521,7 @@ impl Application {
 
             prebuild: true,
             puffin_ui,
-        };
-
-        app.create_scene_command_buffers();
-        // app.create_shadow_command_buffers();
-
-        app
+        }
     }
 
     fn create_gbuffer_target(context: &Context) -> Arc<ImageView<AttachmentImage>> {
@@ -545,45 +542,7 @@ impl Application {
     fn recreate_swap_chain(rc: &mut RenderContext) {
         rc.context.recreate_swap_chain();
 
-        // TODO: recreate shadow framebuffer and graphics pipeline???
-
-        rc.screen_frame.recreate_swap_chain(&rc.context);
-    }
-
-    fn create_scene_command_buffers(&mut self) {
-        let instance_data_buffers = self.rc.scene.get_instance_data_buffers(&self.rc.context);
-
-        let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
-
-        for _i in 0..self.rc.context.swap_chain.num_images() {
-            let mut builder = AutoCommandBufferBuilder::secondary_graphics(
-                self.rc.context.device.clone(),
-                self.rc.context.graphics_queue.family(),
-                CommandBufferUsage::SimultaneousUse,
-                self.rc.gbuffer.pipeline.subpass().clone(),
-            )
-            .unwrap();
-
-            builder.bind_pipeline_graphics(self.rc.gbuffer.pipeline.clone());
-
-            for model in self.rc.scene.models.iter() {
-                // if there is no instance_data_buffer it means we have 0 instances for this mesh
-                if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
-                    self.rc.gbuffer.draw_model(
-                        model,
-                        &mut builder,
-                        &self.rc.scene.camera_descriptor_set,
-                        instance_data_buffer,
-                    )
-                }
-            }
-
-            let command_buffer = Arc::new(builder.build().unwrap());
-
-            command_buffers.push(command_buffer);
-        }
-
-        self.rc.scene_command_buffers = command_buffers;
+        println!("Recreating swap chain");
     }
 
     fn create_sync_objects(device: &Arc<Device>) -> Box<dyn GpuFuture> {
@@ -652,6 +611,8 @@ impl Application {
         rc: &RenderContext,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
+        puffin::profile_scope!("prebuild");
+
         rc.gen_hdr_cubemap.add_to_builder(builder);
 
         rc.local_probe
@@ -694,7 +655,7 @@ impl Application {
             *recreate_swap_chain = true;
         }
 
-        let offscreen_command_buffer = rc.scene_command_buffers[image_index].clone();
+        let offscreen_command_buffer = rc.scene_command_buffer.clone();
 
         let command_buffer = rc.screen_frame.command_buffers[image_index].clone();
 
@@ -837,7 +798,6 @@ impl Application {
             .then_execute(rc.context.graphics_queue.clone(), command_buffer)
             .unwrap()
             .then_swapchain_present(
-                // TODO: swap to present queue???
                 rc.context.graphics_queue.clone(),
                 rc.context.swap_chain.clone(),
                 image_index,

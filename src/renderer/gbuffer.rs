@@ -4,12 +4,8 @@ use std::{
 };
 
 use vulkano::{
-    buffer::{ImmutableBuffer, TypedBufferAccess},
-    command_buffer::{AutoCommandBufferBuilder, SecondaryAutoCommandBuffer},
-    descriptor_set::{
-        layout::{DescriptorSetDesc, DescriptorSetLayout, DescriptorSetLayoutError},
-        PersistentDescriptorSet,
-    },
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
+    descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout, DescriptorSetLayoutError},
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage},
     pipeline::{
@@ -19,13 +15,13 @@ use vulkano::{
             vertex_input::BuffersDefinition,
             viewport::{Viewport, ViewportState},
         },
-        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        GraphicsPipeline, PipelineLayout,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
     shader::{DescriptorRequirements, EntryPoint},
 };
 
-use super::{context::Context, entity::InstanceData, model::Model, vertex::Vertex};
+use super::{context::Context, entity::InstanceData, scene::Scene, vertex::Vertex};
 
 pub type GBufferTarget = Arc<ImageView<AttachmentImage>>;
 
@@ -242,96 +238,25 @@ impl GBuffer {
         (usage, dimensions)
     }
 
-    pub fn draw_model(
-        &self,
-        model: &Model,
-        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
-        camera_descriptor_set: &Arc<PersistentDescriptorSet>,
-        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
-    ) {
-        for node_index in model.root_nodes.iter() {
-            self.draw_model_node(
-                model,
-                builder,
-                *node_index,
-                camera_descriptor_set,
-                instance_data_buffer,
+    pub fn draw(&self, context: &Context, scene: &Scene) -> Arc<SecondaryAutoCommandBuffer> {
+        let mut builder = AutoCommandBufferBuilder::secondary_graphics(
+            context.device.clone(),
+            context.graphics_queue.family(),
+            CommandBufferUsage::SimultaneousUse,
+            self.pipeline.subpass().clone(),
+        )
+        .unwrap();
+
+        builder.bind_pipeline_graphics(self.pipeline.clone());
+
+        scene.draw(context, &mut builder, &self.pipeline, |material| {
+            (
+                scene.camera_descriptor_set.clone(),
+                material.descriptor_set.clone(),
             )
-        }
-    }
+        });
 
-    fn draw_model_node(
-        &self,
-        model: &Model,
-        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
-        node_index: usize,
-        camera_descriptor_set: &Arc<PersistentDescriptorSet>,
-        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
-    ) {
-        let node = model.nodes.get(node_index).unwrap();
-
-        if let Some(mesh_index) = node.mesh {
-            let mesh = model.meshes.get(mesh_index).unwrap();
-
-            for primitive_index in mesh.primitives.iter() {
-                self.draw_model_primitive(
-                    model,
-                    builder,
-                    *primitive_index,
-                    camera_descriptor_set,
-                    instance_data_buffer,
-                );
-            }
-        }
-
-        for child_index in node.children.iter() {
-            self.draw_model_node(
-                model,
-                builder,
-                *child_index,
-                camera_descriptor_set,
-                instance_data_buffer,
-            );
-        }
-    }
-
-    fn draw_model_primitive(
-        &self,
-        model: &Model,
-        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
-        primitive_index: usize,
-        camera_descriptor_set: &Arc<PersistentDescriptorSet>,
-        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
-    ) {
-        let primitive = model.primitives.get(primitive_index).unwrap();
-        let material = model.materials.get(primitive.material).unwrap();
-
-        builder
-            .bind_descriptor_sets(
-                PipelineBindPoint::Graphics,
-                self.pipeline.layout().clone(),
-                0,
-                (
-                    camera_descriptor_set.clone(),
-                    material.descriptor_set.clone(),
-                ),
-            )
-            .bind_vertex_buffers(
-                0,
-                (
-                    primitive.vertex_buffer.clone(),
-                    instance_data_buffer.clone(),
-                ),
-            )
-            .bind_index_buffer(primitive.index_buffer.clone())
-            .draw_indexed(
-                primitive.index_count,
-                instance_data_buffer.len() as u32,
-                0,
-                0,
-                0,
-            )
-            .unwrap();
+        Arc::new(builder.build().unwrap())
     }
 
     pub fn create_pipeline_layout(

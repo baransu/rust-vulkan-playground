@@ -3,10 +3,9 @@ use std::sync::Arc;
 use glam::{Mat4, Vec3};
 
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer, TypedBufferAccess},
+    buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        SecondaryAutoCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SubpassContents,
     },
     descriptor_set::PersistentDescriptorSet,
     format::{ClearValue, Format},
@@ -20,15 +19,15 @@ use vulkano::{
             vertex_input::BuffersDefinition,
             viewport::{Viewport, ViewportState},
         },
-        GraphicsPipeline, Pipeline, PipelineBindPoint,
+        GraphicsPipeline, Pipeline,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
     single_pass_renderpass,
 };
 
 use super::{
-    context::Context, entity::InstanceData, model::Model, scene::Scene,
-    shaders::CameraUniformBufferObject, vertex::Vertex,
+    context::Context, entity::InstanceData, scene::Scene, shaders::CameraUniformBufferObject,
+    vertex::Vertex,
 };
 
 const DIM: f32 = 512.0;
@@ -192,8 +191,6 @@ impl PointLightShadows {
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         scene: &Scene,
     ) {
-        let instance_data_buffers = scene.get_instance_data_buffers(&context);
-
         let mut secondary_builder = AutoCommandBufferBuilder::secondary_graphics(
             context.device.clone(),
             context.graphics_queue.family(),
@@ -204,12 +201,12 @@ impl PointLightShadows {
 
         secondary_builder.bind_pipeline_graphics(self.pipeline.clone());
 
-        for model in scene.models.iter() {
-            // if there is no instance_data_buffer it means we have 0 instances for this mesh
-            if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
-                self.draw_model(model, &mut secondary_builder, instance_data_buffer);
-            }
-        }
+        scene.draw(
+            context,
+            &mut secondary_builder,
+            &self.pipeline,
+            |_material| self.camera_descriptor_set.clone(),
+        );
 
         let model_command_buffer = Arc::new(secondary_builder.build().unwrap());
 
@@ -329,73 +326,6 @@ impl PointLightShadows {
             [context.graphics_queue.family()].iter().cloned(),
         )
         .unwrap()
-    }
-
-    fn draw_model(
-        &self,
-        model: &Model,
-        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
-        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
-    ) {
-        for node_index in model.root_nodes.iter() {
-            self.draw_model_node(model, builder, *node_index, instance_data_buffer);
-        }
-    }
-
-    fn draw_model_node(
-        &self,
-        model: &Model,
-        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
-        node_index: usize,
-        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
-    ) {
-        let node = model.nodes.get(node_index).unwrap();
-
-        if let Some(mesh_index) = node.mesh {
-            let mesh = model.meshes.get(mesh_index).unwrap();
-
-            for primitive_index in mesh.primitives.iter() {
-                self.draw_model_primitive(model, builder, *primitive_index, instance_data_buffer);
-            }
-        }
-
-        for child_index in node.children.iter() {
-            self.draw_model_node(model, builder, *child_index, instance_data_buffer);
-        }
-    }
-
-    fn draw_model_primitive(
-        &self,
-        model: &Model,
-        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
-        primitive_index: usize,
-        instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
-    ) {
-        let primitive = model.primitives.get(primitive_index).unwrap();
-
-        builder
-            .bind_descriptor_sets(
-                PipelineBindPoint::Graphics,
-                self.pipeline.layout().clone(),
-                0,
-                self.camera_descriptor_set.clone(),
-            )
-            .bind_vertex_buffers(
-                0,
-                (
-                    primitive.vertex_buffer.clone(),
-                    instance_data_buffer.clone(),
-                ),
-            )
-            .bind_index_buffer(primitive.index_buffer.clone())
-            .draw_indexed(
-                primitive.index_count,
-                instance_data_buffer.len() as u32,
-                0,
-                0,
-                0,
-            )
-            .unwrap();
     }
 }
 

@@ -40,7 +40,7 @@ impl ImguiBackend {
                 }),
             }]);
 
-        let renderer = ImguiRenderer::init(&context, imgui).unwrap();
+        let renderer = ImguiRenderer::initialize(&context, imgui).unwrap();
 
         ImguiBackend { platform, renderer }
     }
