@@ -9,13 +9,6 @@ struct PointLight {
 	float quadratic;	
 };
 
-struct DirLight {
-	mat4 view;
-	mat4 proj;
-	vec3 direction;
-};
-
-
 // duplicated definition in model.frag too
 layout(set = 0, binding = 0) uniform CameraUniformBufferObject {
 	mat4 view;

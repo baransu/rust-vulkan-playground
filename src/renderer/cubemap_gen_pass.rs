@@ -14,6 +14,7 @@ use vulkano::{
     },
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{Framebuffer, RenderPass, Subpass},
+    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     shader::EntryPoint,
     single_pass_renderpass,
 };
@@ -307,8 +308,26 @@ impl CubemapGenPass {
             .add_buffer(camera_uniform_buffer.clone())
             .unwrap();
 
+        let max_lod = 1024.0_f32.log2().floor() + 1.0;
+
         set_builder
-            .add_sampled_image(skybox_cubemap.clone(), context.attachment_sampler.clone())
+            .add_sampled_image(
+                skybox_cubemap.clone(),
+                Sampler::new(
+                    context.device.clone(),
+                    Filter::Linear,
+                    Filter::Linear,
+                    MipmapMode::Linear,
+                    SamplerAddressMode::ClampToEdge,
+                    SamplerAddressMode::ClampToEdge,
+                    SamplerAddressMode::ClampToEdge,
+                    0.0,
+                    1.0,
+                    0.0,
+                    max_lod,
+                )
+                .unwrap(),
+            )
             .unwrap();
 
         set_builder

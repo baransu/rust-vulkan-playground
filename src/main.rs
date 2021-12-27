@@ -15,6 +15,7 @@ use renderer::{
     dir_light_shadows::DirLightShadows,
     entity::Entity,
     gbuffer::GBuffer,
+    gen_hdr_cubemap::GenHdrCubemap,
     light_system::LightSystem,
     local_probe::LocalProbe,
     point_light_shadows::PointLightShadows,
@@ -68,7 +69,7 @@ const MODEL_PATHS: [&str; 1] = [
 ];
 
 // const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
-const SKYBOX_PATH: &str = "res/hdr/gcanyon_cube.ktx";
+const SKYBOX_PATH: &str = "res/hdr/je_gray_park_4k.pic";
 // const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
 const RENDER_SKYBOX: bool = true;
@@ -109,6 +110,8 @@ struct Application {
 
     ssao: Ssao,
     ssao_blur: SsaoBlur,
+
+    gen_hdr_cubemap: GenHdrCubemap,
 
     irradiance_convolution: CubemapGenPass,
     prefilterenvmap: CubemapGenPass,
@@ -189,9 +192,10 @@ impl Application {
         let gbuffer_target = Self::create_gbuffer_target(&context);
         let gbuffer = GBuffer::initialize(&context, &layout, &gbuffer_target);
 
-        let skybox_texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
+        let gen_hdr_cubemap = GenHdrCubemap::initialize(&context, SKYBOX_PATH);
 
-        let local_probe = LocalProbe::initialize(&context, &layout, &skybox_texture);
+        let local_probe =
+            LocalProbe::initialize(&context, &layout, &gen_hdr_cubemap.cube_attachment_view);
 
         let point_light_shadows = PointLightShadows::initialize(&context);
         let dir_light_shadows = DirLightShadows::initialize(&context);
@@ -208,7 +212,7 @@ impl Application {
             irradiance_convolution_fs::load(context.device.clone()).unwrap();
         let irradiance_convolution = CubemapGenPass::initialize(
             &context,
-            &skybox_texture,
+            &gen_hdr_cubemap.cube_attachment_view,
             irradiance_convolution_fs_mod.entry_point("main").unwrap(),
             Format::R32G32B32A32_SFLOAT,
             64.0,
@@ -217,7 +221,7 @@ impl Application {
         let prefilterenvmap_fs_mod = prefilterenvmap_fs::load(context.device.clone()).unwrap();
         let prefilterenvmap = CubemapGenPass::initialize(
             &context,
-            &skybox_texture,
+            &gen_hdr_cubemap.cube_attachment_view,
             prefilterenvmap_fs_mod.entry_point("main").unwrap(),
             Format::R16G16B16A16_SFLOAT,
             512.0,
@@ -226,7 +230,7 @@ impl Application {
         let skybox = SkyboxPass::initialize(
             &context,
             &gbuffer.render_pass,
-            &skybox_texture,
+            &gen_hdr_cubemap.cube_attachment_view,
             fs_gbuffer::load(context.device.clone())
                 .unwrap()
                 .entry_point("main")
@@ -491,7 +495,7 @@ impl Application {
             )
             .unwrap();
 
-        let mut puffin_ui = puffin_imgui::ProfilerUi::default();
+        let puffin_ui = puffin_imgui::ProfilerUi::default();
 
         let mut app = Self {
             context,
@@ -529,6 +533,8 @@ impl Application {
             ssao,
             ssao_blur,
 
+            gen_hdr_cubemap,
+
             irradiance_convolution,
             prefilterenvmap,
 
@@ -553,7 +559,7 @@ impl Application {
         let image = AttachmentImage::with_usage(
             context.device.clone(),
             context.swap_chain.dimensions(),
-            context.swap_chain.format(),
+            Format::R16G16B16A16_SFLOAT, // context.swap_chain.format(),
             ImageUsage {
                 sampled: true,
                 ..ImageUsage::none()
@@ -686,6 +692,8 @@ impl Application {
     }
 
     fn prebuild(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) {
+        self.gen_hdr_cubemap.add_to_builder(builder);
+
         self.local_probe
             .add_to_builder(&self.context, builder, &self.scene);
 

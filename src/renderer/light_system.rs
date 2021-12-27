@@ -4,6 +4,7 @@ use vulkano::{
     buffer::CpuAccessibleBuffer,
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
+    format::Format,
     image::{view::ImageView, AttachmentImage, ImmutableImage, StorageImage},
     pipeline::{
         graphics::{
@@ -221,14 +222,12 @@ impl LightSystem {
     }
 
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
-        let color_format = context.swap_chain.format();
-
         single_pass_renderpass!(context.device.clone(),
                 attachments: {
                     color: {
                         load: Clear,
                         store: Store,
-                        format: color_format,
+                        format: Format::R16G16B16A16_SFLOAT,
                         samples: 1,
                     }
                 },
@@ -298,4 +297,3 @@ mod fs {
 
 pub type LightUniformBufferObject = fs::ty::LightUniformBufferObject;
 pub type ShaderPointLight = fs::ty::PointLight;
-pub type ShaderDirLight = fs::ty::DirLight;

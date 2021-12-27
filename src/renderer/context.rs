@@ -307,7 +307,7 @@ impl Context {
     ) -> (Format, ColorSpace) {
         let format = *available_formats
             .iter()
-            .find(|(format, __color_space)| *format == Format::B8G8R8A8_UNORM)
+            .find(|(format, _color_space)| *format == Format::B8G8R8A8_UNORM)
             .unwrap_or_else(|| &available_formats[0]);
 
         println!("Using swap surface format: {:?}", format);

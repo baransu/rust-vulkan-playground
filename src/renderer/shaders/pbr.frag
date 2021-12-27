@@ -2,13 +2,6 @@
 
 #define MAX_POINT_LIGHTS 32
 
-// struct is shaded with gbuffer.frag
-struct DirLight {
-	mat4 view;
-	mat4 proj;
-	vec3 direction;
-};
-
 struct PointLight {
 	vec3 position;
 	vec3 color;
@@ -42,8 +35,8 @@ layout(binding = 10) uniform samplerCube prefilteredMap;
 layout(binding = 11) uniform sampler2D samplerBRDFLUT;  
 
 layout(binding = 12) uniform LightUniformBufferObject { 
+	mat4 dir_light_space_matrix;
 	PointLight point_lights[MAX_POINT_LIGHTS];
-	DirLight dir_light;
 	int point_lights_count;
 } lights;
 
@@ -53,7 +46,7 @@ layout(location = 0) out vec4 out_color;
 
 #define PI 3.1415926535897932384626433832795
 
-#define ALBEDO pow(texture(u_albedo, f_uv).xyz, vec3(2.2))
+#define ALBEDO texture(u_albedo, f_uv).rgb
 
 // Normal Distribution function --------------------------------------
 float D_GGX(float dotNH, float roughness)
@@ -210,7 +203,6 @@ float DirShadowCalculation(vec4 fragPosLightSpace, vec3 normal)
 }  
 
 void main() {
-	vec3 raw_albedo = texture(u_albedo, f_uv).xyz;
 	float depth = texture(u_depth, f_uv).r;
 
 	vec3 Normal = texture(u_normals, f_uv).xyz;
@@ -222,7 +214,7 @@ void main() {
 
 	// if our depth is 1.0 it means there is nothing so draw skybox
 	if(depth == 1.0) {
-		color = raw_albedo;
+		color = ALBEDO;
 	} else {
 		vec3 N = normalize(Normal);
 		vec3 V = normalize(camera.position - Position);
@@ -266,17 +258,11 @@ void main() {
 
 		vec3 ambient = (kD * diffuse + specular) * ao;
 
-		vec4 lightSpacePosition = lights.dir_light.proj * lights.dir_light.view * RawPosition;
+		vec4 lightSpacePosition = lights.dir_light_space_matrix * RawPosition;
 		float dirShadow = DirShadowCalculation(lightSpacePosition, Normal);
 				
 		color = (1.0 - dirShadow) * ambient + (1.0 - pointLightShadows) * Lo;
 	}
-
-	// tone mapping
-	color = color / (color + vec3(1.0));
-	// gamma correction
-	float gamma = 2.2;
-	color = pow(color, vec3(1.0/gamma));
 
 	out_color = vec4(color, 1.0);
 }

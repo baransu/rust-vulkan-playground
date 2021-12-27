@@ -46,7 +46,8 @@ impl GBuffer {
             Self::create_attachment_image(context, &target, Format::R16G16B16A16_SFLOAT);
         let normals_buffer =
             Self::create_attachment_image(context, &target, Format::R16G16B16A16_SFLOAT);
-        let albedo_buffer = Self::create_attachment_image(context, &target, Format::R8G8B8A8_UNORM);
+        let albedo_buffer =
+            Self::create_attachment_image(context, &target, Format::R16G16B16A16_SFLOAT);
         let metalic_roughness_buffer =
             Self::create_attachment_image(context, &target, Format::R8G8B8A8_UNORM);
         let depth_buffer = Self::create_depth_attachment(context, &target);
@@ -117,7 +118,7 @@ impl GBuffer {
                         albedo: {
                             load: Clear,
                             store: Store,
-                            format: Format::R8G8B8A8_UNORM,
+                            format: Format::R16G16B16A16_SFLOAT,
                             samples: 1,
                         },
                         metalic_roughness: {

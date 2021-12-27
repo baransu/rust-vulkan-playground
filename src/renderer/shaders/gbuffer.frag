@@ -9,12 +9,6 @@ struct PointLight {
 	float quadratic;	
 };
 
-struct DirLight {
-	mat4 view;
-	mat4 proj;
-	vec3 direction;
-};
-
 // duplicated definition in model.vert
 layout(set = 0, binding = 0) uniform CameraUniformBufferObject {
 	mat4 view;
@@ -52,6 +46,6 @@ void main() {
 
 	out_normal = normalize(TBN * tangentNormal);
 
-	out_albedo = texture(diffuse_sampler, f_uv);
-	out_albedo.a = 1.0;
+	// from srgb to linear (revert gamma correction)
+	out_albedo = vec4(pow(texture(diffuse_sampler, f_uv).rgb, vec3(2.2)), 1.0);
 }

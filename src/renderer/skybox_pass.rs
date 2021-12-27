@@ -1,6 +1,7 @@
-use std::{fs::File, io::BufReader, sync::Arc};
+use std::{fs::File, io::BufReader, path::Path, sync::Arc};
 
 use glam::{Mat4, Vec3};
+use image::{hdr::HdrDecoder, GenericImageView, Rgb};
 use ktx::{Decoder, KtxInfo};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
@@ -10,10 +11,11 @@ use vulkano::{
     },
     descriptor_set::PersistentDescriptorSet,
     format::Format,
+    half::f16,
     image::{
         view::{ImageView, ImageViewType},
-        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, MipmapsCount,
-        StorageImage,
+        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, ImmutableImage,
+        MipmapsCount, StorageImage,
     },
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{RenderPass, Subpass},
@@ -200,7 +202,7 @@ impl SkyboxPass {
         set_builder.add_buffer(uniform_buffer.clone()).unwrap();
 
         set_builder
-            .add_sampled_image(image.clone(), context.image_sampler.clone())
+            .add_sampled_image(image.clone(), context.attachment_sampler.clone())
             .unwrap();
 
         set_builder.build().unwrap()
@@ -220,82 +222,46 @@ impl SkyboxPass {
         vertex_buffer
     }
 
-    pub fn load_skybox_texture(context: &Context, path: &str) -> Arc<ImageView<StorageImage>> {
-        let ktx_file = BufReader::new(File::open(path).unwrap());
-        let image: Decoder<BufReader<File>> = ktx::Decoder::new(ktx_file).unwrap();
+    pub fn load_skybox_texture(context: &Context, path: &str) -> Arc<ImageView<ImmutableImage>> {
+        let buf_reader = HdrDecoder::new(BufReader::new(File::open(&path).unwrap())).unwrap();
 
-        let width = image.pixel_width();
-        let height = image.pixel_height();
+        let metadata = buf_reader.metadata();
 
-        println!("Loading cubemap texture: {}x{}", width, height);
+        let hdr = buf_reader
+            .read_image_hdr()
+            .unwrap()
+            .iter()
+            .flat_map(|v| [v.0[0], v.0[1], v.0[2], 1.0])
+            .collect::<Vec<_>>();
 
-        let image_rgba = image.read_textures().next().unwrap().to_vec();
+        let width = metadata.width;
+        let height = metadata.height;
 
-        let format = Format::R16G16B16A16_SFLOAT;
+        println!(
+            "Loading HDR texture: {}x{}, exposure: {:?}",
+            width, height, metadata.exposure
+        );
+
+        let format = Format::R32G32B32A32_SFLOAT;
 
         let dimensions = ImageDimensions::Dim2d {
             width,
             height,
-            array_layers: 6,
+            array_layers: 1,
         };
 
-        let source = CpuAccessibleBuffer::from_iter(
-            context.device.clone(),
-            BufferUsage::transfer_source(),
-            false,
-            image_rgba,
-        )
-        .unwrap();
-
-        let image = StorageImage::with_mipmaps_usage(
-            context.device.clone(),
+        let (immutable_image, future) = ImmutableImage::from_iter(
+            hdr.iter().cloned(),
             dimensions,
-            format,
             MipmapsCount::One,
-            ImageUsage {
-                sampled: true,
-                transfer_destination: true,
-                ..ImageUsage::none()
-            },
-            ImageCreateFlags {
-                cube_compatible: true,
-                ..ImageCreateFlags::none()
-            },
-            [context.graphics_queue.family().clone()],
+            format,
+            context.graphics_queue.clone(),
         )
         .unwrap();
-
-        let mut builder = AutoCommandBufferBuilder::primary(
-            context.device.clone(),
-            context.graphics_queue.family(),
-            CommandBufferUsage::OneTimeSubmit,
-        )
-        .unwrap();
-
-        builder
-            .copy_buffer_to_image_dimensions(
-                source,
-                image.clone(),
-                [0, 0, 0],
-                dimensions.width_height_depth(),
-                0,
-                dimensions.array_layers(),
-                0,
-            )
-            .unwrap();
-
-        let future = builder
-            .build()
-            .unwrap()
-            .execute(context.graphics_queue.clone())
-            .unwrap();
 
         future.flush().unwrap();
 
-        ImageView::start(image)
-            .with_type(ImageViewType::Cube)
-            .build()
-            .unwrap()
+        ImageView::new(immutable_image).unwrap()
     }
 }
 
