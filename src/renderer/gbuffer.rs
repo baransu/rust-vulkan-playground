@@ -238,7 +238,11 @@ impl GBuffer {
         (usage, dimensions)
     }
 
-    pub fn draw(&self, context: &Context, scene: &Scene) -> Arc<SecondaryAutoCommandBuffer> {
+    pub fn create_command_buffer(
+        &self,
+        context: &Context,
+        scene: &Scene,
+    ) -> Arc<SecondaryAutoCommandBuffer> {
         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
             context.device.clone(),
             context.graphics_queue.family(),

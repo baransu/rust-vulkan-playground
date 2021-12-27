@@ -46,8 +46,8 @@ impl Scene {
     pub fn initialize(
         context: &Context,
         mesh_paths: Vec<&str>,
-        gbuffer_pipeline: &Arc<GraphicsPipeline>,
-        layout: &Arc<DescriptorSetLayout>,
+        camera_layout: &Arc<DescriptorSetLayout>,
+        materials_layout: &Arc<DescriptorSetLayout>,
     ) -> Self {
         let point_lights = Self::gen_point_lights();
 
@@ -57,11 +57,11 @@ impl Scene {
         let queue = context.graphics_queue.clone();
         let models = mesh_paths
             .into_iter()
-            .map(|path| Model::load_gltf(&queue, &path, layout))
+            .map(|path| Model::load_gltf(&queue, &path, materials_layout))
             .collect();
 
         let camera_descriptor_set =
-            Self::create_camera_descriptor_set(gbuffer_pipeline, &camera_uniform_buffer);
+            Self::create_camera_descriptor_set(camera_layout, &camera_uniform_buffer);
 
         Scene {
             models,
@@ -104,15 +104,9 @@ impl Scene {
     }
 
     fn create_camera_descriptor_set(
-        graphics_pipeline: &Arc<GraphicsPipeline>,
+        layout: &Arc<DescriptorSetLayout>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     ) -> Arc<PersistentDescriptorSet> {
-        let layout = graphics_pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(0)
-            .unwrap();
-
         let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
         set_builder

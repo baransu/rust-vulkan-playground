@@ -9,6 +9,7 @@ pub mod light_system;
 pub mod local_probe;
 pub mod model;
 pub mod point_light_shadows;
+pub mod renderer;
 pub mod scene;
 pub mod screen_frame;
 pub mod shaders;
