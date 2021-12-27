@@ -2,13 +2,6 @@
 
 #define MAX_POINT_LIGHTS 32
 
-// struct is shaded with gbuffer.frag
-struct DirLight {
-	mat4 view;
-	mat4 proj;
-	vec3 direction;
-};
-
 struct PointLight {
 	vec3 position;
 	vec3 color;
@@ -42,8 +35,8 @@ layout(binding = 10) uniform samplerCube prefilteredMap;
 layout(binding = 11) uniform sampler2D samplerBRDFLUT;  
 
 layout(binding = 12) uniform LightUniformBufferObject { 
+	mat4 dir_light_space_matrix;
 	PointLight point_lights[MAX_POINT_LIGHTS];
-	DirLight dir_light;
 	int point_lights_count;
 } lights;
 
@@ -265,7 +258,7 @@ void main() {
 
 		vec3 ambient = (kD * diffuse + specular) * ao;
 
-		vec4 lightSpacePosition = lights.dir_light.proj * lights.dir_light.view * RawPosition;
+		vec4 lightSpacePosition = lights.dir_light_space_matrix * RawPosition;
 		float dirShadow = DirShadowCalculation(lightSpacePosition, Normal);
 				
 		color = (1.0 - dirShadow) * ambient + (1.0 - pointLightShadows) * Lo;

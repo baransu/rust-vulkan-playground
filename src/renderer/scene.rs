@@ -14,7 +14,7 @@ use super::{
     context::Context,
     dir_light_shadows::DirLightShadows,
     entity::{Entity, InstanceData},
-    light_system::{LightUniformBufferObject, ShaderDirLight, ShaderPointLight},
+    light_system::{LightUniformBufferObject, ShaderPointLight},
     model::Model,
     shaders::CameraUniformBufferObject,
 };
@@ -125,10 +125,6 @@ impl Scene {
         }]
     }
 
-    pub fn dir_light_position() -> Vec3 {
-        Vec3::new(0.0, 10.0, 0.0) * 5.0
-    }
-
     fn create_light_uniform_buffer(
         context: &Context,
         point_lights: &Vec<PointLight>,
@@ -156,16 +152,11 @@ impl Scene {
             }
         }
 
-        let (dir_proj, dir_view, _dir_position, dir_direction) = DirLightShadows::light_space();
+        let matrix = DirLightShadows::light_space_matrix();
 
         let buffer_data = LightUniformBufferObject {
+            dir_light_space_matrix: matrix.to_cols_array_2d(),
             point_lights: shader_point_lights,
-            _dummy0: [0, 0, 0, 0],
-            dir_light: ShaderDirLight {
-                view: dir_view.to_cols_array_2d(),
-                proj: dir_proj.to_cols_array_2d(),
-                direction: dir_direction.to_array(),
-            },
             point_lights_count: point_lights.len() as i32,
         };
 

@@ -19,16 +19,13 @@ use vulkano::{
     single_pass_renderpass,
 };
 
-use super::{
-    context::Context, entity::InstanceData, model::Model, scene::Scene,
-    shaders::CameraUniformBufferObject, vertex::Vertex,
-};
+use super::{context::Context, entity::InstanceData, model::Model, scene::Scene, vertex::Vertex};
 
 const DIM: f32 = 1024.0;
 
 pub struct DirLightShadows {
     pipeline: Arc<GraphicsPipeline>,
-    camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
+    camera_uniform_buffer: Arc<CpuAccessibleBuffer<ShaderLightSpace>>,
     pub target_attachment: Arc<ImageView<AttachmentImage>>,
 
     framebuffer: Arc<Framebuffer>,
@@ -61,14 +58,10 @@ impl DirLightShadows {
 
     fn create_camera_uniform_buffer(
         context: &Context,
-    ) -> Arc<CpuAccessibleBuffer<CameraUniformBufferObject>> {
+    ) -> Arc<CpuAccessibleBuffer<ShaderLightSpace>> {
         let identity = Mat4::IDENTITY.to_cols_array_2d();
 
-        let uniform_buffer_data = CameraUniformBufferObject {
-            view: identity,
-            proj: identity,
-            position: Vec3::ONE.to_array(),
-        };
+        let uniform_buffer_data = ShaderLightSpace { matrix: identity };
 
         let buffer = CpuAccessibleBuffer::from_data(
             context.device.clone(),
@@ -81,30 +74,28 @@ impl DirLightShadows {
         buffer
     }
 
-    pub fn light_space() -> (Mat4, Mat4, Vec3, Vec3) {
-        let position = Vec3::new(30.0, 42.0, -13.0);
-        let direction = -Vec3::new(30.0, 42.0, -13.0).normalize();
+    pub fn light_space_matrix() -> Mat4 {
+        let direction = -Vec3::new(30.0, 30.0, 10.0); // .normalize();
+        let position = -direction;
 
-        let mut proj = Mat4::orthographic_rh(-25.0, 25.0, 25.0, -25.0, 0.1, 250.0);
+        let mut proj = Mat4::orthographic_rh(-25.0, 25.0, 25.0, -25.0, -150.0, 150.0);
 
         proj.y_axis.y *= -1.0;
 
         let view = Mat4::look_at_rh(position, direction, Vec3::Y);
 
-        (proj, view, position, direction)
+        proj * view
     }
 
     fn update_uniform_buffers(
         &self,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
-        let (proj, view, position, _) = Self::light_space();
+        let matrix = Self::light_space_matrix();
 
         // camera buffer
-        let camera_buffer_data = Arc::new(CameraUniformBufferObject {
-            view: view.to_cols_array_2d(),
-            proj: proj.to_cols_array_2d(),
-            position: position.to_array(),
+        let camera_buffer_data = Arc::new(ShaderLightSpace {
+            matrix: matrix.to_cols_array_2d(),
         });
 
         builder
@@ -114,7 +105,7 @@ impl DirLightShadows {
 
     fn create_camera_descriptor_set(
         graphics_pipeline: &Arc<GraphicsPipeline>,
-        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
+        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<ShaderLightSpace>>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
@@ -340,11 +331,9 @@ pub mod vs {
                                                                     src: "
 			#version 450
 
-            layout(binding = 0) uniform CameraUniformBufferObject {
-                mat4 view;
-                mat4 proj;
-                vec3 position;
-            } camera;
+            layout(binding = 0) uniform LightSpace {
+                mat4 matrix;
+            } lightSpace;
 
 			// per vertex
 			layout(location = 1) in vec3 position;
@@ -353,11 +342,13 @@ pub mod vs {
 			layout(location = 4) in mat4 model; 
 
 			void main() {
-				gl_Position = camera.proj * camera.view * model * vec4(position, 1.0);
+				gl_Position = lightSpace.matrix * model * vec4(position, 1.0);
 			}									
 "
     }
 }
+
+type ShaderLightSpace = vs::ty::LightSpace;
 
 pub mod fs {
     vulkano_shaders::shader! {

@@ -11,6 +11,7 @@ use vulkano::{
     },
     descriptor_set::PersistentDescriptorSet,
     format::Format,
+    half::f16,
     image::{
         view::{ImageView, ImageViewType},
         ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, ImmutableImage,

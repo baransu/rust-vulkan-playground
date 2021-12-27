@@ -23,6 +23,7 @@ use super::{
 };
 
 const DIM: f32 = 1024.0;
+const FORMAT: Format = Format::R16G16B16A16_SFLOAT;
 
 pub struct GenHdrCubemap {
     pipeline: Arc<GraphicsPipeline>,
@@ -37,16 +38,14 @@ pub struct GenHdrCubemap {
 }
 
 impl GenHdrCubemap {
-    pub fn initialize<T>(context: &Context, hdr: &Arc<T>) -> GenHdrCubemap
-    where
-        T: ImageViewAbstract + 'static,
-    {
+    pub fn initialize(context: &Context, path: &str) -> GenHdrCubemap {
         let render_pass = Self::create_render_pass(context);
         let pipeline = Self::create_graphics_pipeline(context, &render_pass);
 
         let vertex_buffer = SkyboxPass::create_vertex_buffer(context);
         let uniform_buffer = Self::create_uniform_buffer(context);
 
+        let hdr = SkyboxPass::load_skybox_texture(&context, path);
         let descriptor_set = Self::create_descriptor_set(context, &pipeline, &uniform_buffer, &hdr);
 
         let cube_attachment = Self::create_cube_attachment(context);
@@ -126,7 +125,7 @@ impl GenHdrCubemap {
                     color: {
                         load: Clear,
                         store: Store,
-                        format: Format::R32G32B32A32_SFLOAT,
+                        format: FORMAT,
                         samples: 1,
                     }
                 },
@@ -141,52 +140,59 @@ impl GenHdrCubemap {
     pub fn add_to_builder(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) {
         let mats = matrices();
 
-        for f in 0..6 {
-            let viewport = Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [DIM, DIM],
-                depth_range: 0.0..1.0,
-            };
+        let num_mips = (DIM.log2().floor() + 1.0) as u32;
 
-            self.update_uniform_buffers(builder, mats[f]);
+        for m in 0..num_mips {
+            for f in 0..6 {
+                let width = DIM * 0.5_f32.powf(m as f32);
+                let height = DIM * 0.5_f32.powf(m as f32);
 
-            builder
-                .begin_render_pass(
-                    self.framebuffer.clone(),
-                    SubpassContents::Inline,
-                    vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
-                )
-                .unwrap();
+                let viewport = Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [width, height],
+                    depth_range: 0.0..1.0,
+                };
 
-            builder
-                .bind_pipeline_graphics(self.pipeline.clone())
-                .set_viewport(0, [viewport.clone()])
-                .bind_descriptor_sets(
-                    PipelineBindPoint::Graphics,
-                    self.pipeline.layout().clone(),
-                    0,
-                    self.descriptor_set.clone(),
-                )
-                .bind_vertex_buffers(0, self.vertex_buffer.clone())
-                .draw(36, 1, 0, 0)
-                .unwrap();
+                self.update_uniform_buffers(builder, mats[f]);
 
-            builder.end_render_pass().unwrap();
+                builder
+                    .begin_render_pass(
+                        self.framebuffer.clone(),
+                        SubpassContents::Inline,
+                        vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
+                    )
+                    .unwrap();
 
-            builder
-                .copy_image(
-                    self.color_attachment.clone(),
-                    [0, 0, 0],
-                    0,
-                    0,
-                    self.cube_attachment.clone(),
-                    [0, 0, 0],
-                    f as u32,
-                    0,
-                    [DIM as u32, DIM as u32, 1],
-                    1,
-                )
-                .unwrap();
+                builder
+                    .bind_pipeline_graphics(self.pipeline.clone())
+                    .set_viewport(0, [viewport.clone()])
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::Graphics,
+                        self.pipeline.layout().clone(),
+                        0,
+                        self.descriptor_set.clone(),
+                    )
+                    .bind_vertex_buffers(0, self.vertex_buffer.clone())
+                    .draw(36, 1, 0, 0)
+                    .unwrap();
+
+                builder.end_render_pass().unwrap();
+
+                builder
+                    .copy_image(
+                        self.color_attachment.clone(),
+                        [0, 0, 0],
+                        0,
+                        0,
+                        self.cube_attachment.clone(),
+                        [0, 0, 0],
+                        f as u32,
+                        m,
+                        [width as u32, height as u32, 1],
+                        1,
+                    )
+                    .unwrap();
+            }
         }
     }
 
@@ -247,7 +253,7 @@ impl GenHdrCubemap {
         AttachmentImage::with_usage(
             context.device.clone(),
             [DIM as u32, DIM as u32],
-            Format::R32G32B32A32_SFLOAT,
+            FORMAT,
             ImageUsage {
                 color_attachment: true,
                 transfer_source: true,
@@ -258,6 +264,8 @@ impl GenHdrCubemap {
     }
 
     fn create_cube_attachment(context: &Context) -> Arc<StorageImage> {
+        let num_mips = (DIM.log2().floor() + 1.0) as u32;
+
         StorageImage::with_mipmaps_usage(
             context.device.clone(),
             ImageDimensions::Dim2d {
@@ -265,8 +273,8 @@ impl GenHdrCubemap {
                 height: DIM as u32,
                 array_layers: 6,
             },
-            Format::R32G32B32A32_SFLOAT,
-            MipmapsCount::One,
+            FORMAT,
+            MipmapsCount::Specific(num_mips),
             ImageUsage {
                 transfer_destination: true,
                 transfer_source: true,

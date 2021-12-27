@@ -58,18 +58,18 @@ const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
 
 const PLANE: &str = "res/models/plane/plane.gltf";
 
-const MODEL_PATHS: [&str; 3] = [
-    DAMAGED_HELMET,
-    BOTTLE,
+const MODEL_PATHS: [&str; 1] = [
+    // DAMAGED_HELMET,
+    // BOTTLE,
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
-    PLANE,
-    // SPONZA,
+    // PLANE,
+    SPONZA,
     // "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
 ];
 
 // const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
-const SKYBOX_PATH: &str = "res/hdr/je_gray_park_8k.pic";
+const SKYBOX_PATH: &str = "res/hdr/je_gray_park_4k.pic";
 // const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
 const RENDER_SKYBOX: bool = true;
@@ -192,8 +192,7 @@ impl Application {
         let gbuffer_target = Self::create_gbuffer_target(&context);
         let gbuffer = GBuffer::initialize(&context, &layout, &gbuffer_target);
 
-        let skybox_texture = SkyboxPass::load_skybox_texture(&context, SKYBOX_PATH);
-        let gen_hdr_cubemap = GenHdrCubemap::initialize(&context, &skybox_texture);
+        let gen_hdr_cubemap = GenHdrCubemap::initialize(&context, SKYBOX_PATH);
 
         let local_probe =
             LocalProbe::initialize(&context, &layout, &gen_hdr_cubemap.cube_attachment_view);
@@ -231,7 +230,7 @@ impl Application {
         let skybox = SkyboxPass::initialize(
             &context,
             &gbuffer.render_pass,
-            &irradiance_convolution.cube_attachment_view,
+            &gen_hdr_cubemap.cube_attachment_view,
             fs_gbuffer::load(context.device.clone())
                 .unwrap()
                 .entry_point("main")
