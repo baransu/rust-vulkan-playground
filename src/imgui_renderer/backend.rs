@@ -1,10 +1,19 @@
-use imgui::{DrawData, Ui};
+use std::sync::Arc;
+
+use imgui::TextureId;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
+use vulkano::{
+    command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
+    image::{view::ImageView, AttachmentImage, ImageViewAbstract},
+};
 
 use crate::renderer::context::Context;
 
+use super::{shaders::TextureUsage, ImguiRenderer};
+
 pub struct ImguiBackend {
     platform: WinitPlatform,
+    renderer: ImguiRenderer,
 }
 
 impl ImguiBackend {
@@ -31,7 +40,9 @@ impl ImguiBackend {
                 }),
             }]);
 
-        ImguiBackend { platform }
+        let renderer = ImguiRenderer::init(&context, imgui).unwrap();
+
+        ImguiBackend { platform, renderer }
     }
 
     pub fn handle_event(
@@ -44,19 +55,41 @@ impl ImguiBackend {
             .handle_event(imgui.io_mut(), context.surface.window(), event);
     }
 
-    pub fn prepare_frame<'a>(
+    pub fn frame<'a>(
         &mut self,
         context: &Context,
         imgui: &'a mut imgui::Context,
-    ) -> imgui::Ui<'a> {
+        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        callback: impl FnOnce(&imgui::Ui<'_>),
+    ) {
         self.platform
             .prepare_frame(imgui.io_mut(), context.surface.window())
             .unwrap();
 
-        imgui.frame()
+        let ui = imgui.frame();
+
+        callback(&ui);
+
+        self.platform.prepare_render(&ui, context.surface.window());
+
+        let draw_data = ui.render();
+
+        self.renderer.draw_commands(builder, draw_data).unwrap();
     }
 
-    pub fn prepare_render(&mut self, context: &Context, ui: &imgui::Ui) {
-        self.platform.prepare_render(ui, context.surface.window());
+    pub fn register_texture<T>(
+        &mut self,
+        context: &Context,
+        image: &Arc<T>,
+        usage: TextureUsage,
+    ) -> Result<TextureId, Box<dyn std::error::Error>>
+    where
+        T: ImageViewAbstract + 'static,
+    {
+        self.renderer.register_texture(context, image, usage)
+    }
+
+    pub fn ui_frame(&self) -> Arc<ImageView<AttachmentImage>> {
+        self.renderer.target.clone()
     }
 }

@@ -1,23 +1,21 @@
-use std::{fs::File, io::BufReader, path::Path, sync::Arc};
+use std::{fs::File, io::BufReader, sync::Arc};
 
 use glam::{Mat4, Vec3};
-use image::{hdr::HdrDecoder, GenericImageView, Rgb};
-use ktx::{Decoder, KtxInfo};
+use image::hdr::HdrDecoder;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
-    command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer,
-        SecondaryAutoCommandBuffer,
-    },
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     format::Format,
-    half::f16,
-    image::{
-        view::{ImageView, ImageViewType},
-        ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract, ImmutableImage,
-        MipmapsCount, StorageImage,
+    image::{view::ImageView, ImageDimensions, ImageViewAbstract, ImmutableImage, MipmapsCount},
+    pipeline::{
+        graphics::{
+            rasterization::{CullMode, FrontFace, RasterizationState},
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
-    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
     render_pass::{RenderPass, Subpass},
     shader::EntryPoint,
     sync::GpuFuture,
@@ -41,9 +39,9 @@ impl SkyboxVertex {
 vulkano::impl_vertex!(SkyboxVertex, position);
 
 pub struct SkyboxPass {
-    graphics_pipeline: Arc<GraphicsPipeline>,
-    vertex_buffer: Arc<ImmutableBuffer<[SkyboxVertex]>>,
-    descriptor_set: Arc<PersistentDescriptorSet>,
+    // graphics_pipeline: Arc<GraphicsPipeline>,
+    // vertex_buffer: Arc<ImmutableBuffer<[SkyboxVertex]>>,
+    // descriptor_set: Arc<PersistentDescriptorSet>,
     pub uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     pub command_buffer: Arc<SecondaryAutoCommandBuffer>,
 }
@@ -79,10 +77,10 @@ impl SkyboxPass {
 
         SkyboxPass {
             uniform_buffer,
-            graphics_pipeline,
-            vertex_buffer,
-            descriptor_set,
             command_buffer,
+            // graphics_pipeline,
+            // vertex_buffer,
+            // descriptor_set,
         }
     }
 
@@ -150,27 +148,20 @@ impl SkyboxPass {
     fn create_graphics_pipeline(
         context: &Context,
         render_pass: &Arc<RenderPass>,
-        fragment_shader_entry_point: EntryPoint,
+        fs: EntryPoint,
     ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module = vs::load(context.device.clone()).unwrap();
-
-        // TODO: add that to context as util or something
-        let dimensions_u32 = context.swap_chain.dimensions();
-        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions,
-            depth_range: 0.0..1.0,
-        };
+        let vs = vs::load(context.device.clone()).unwrap();
 
         GraphicsPipeline::start()
-            .vertex_input_single_buffer::<SkyboxVertex>()
-            .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
-            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-            .fragment_shader(fragment_shader_entry_point, ())
-            .depth_clamp(false)
-            .front_face_clockwise()
-            .viewports_dynamic_scissors_irrelevant(1)
+            .vertex_input_state(BuffersDefinition::new().vertex::<SkyboxVertex>())
+            .vertex_shader(vs.entry_point("main").unwrap(), ())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .fragment_shader(fs, ())
+            .rasterization_state(
+                RasterizationState::new()
+                    .cull_mode(CullMode::Back)
+                    .front_face(FrontFace::Clockwise),
+            )
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())
             .unwrap()

@@ -12,7 +12,14 @@ use vulkano::{
         AttachmentImage, ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract,
         MipmapsCount, StorageImage,
     },
-    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
+    pipeline::{
+        graphics::{
+            rasterization::{FrontFace, RasterizationState},
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
+    },
     render_pass::{Framebuffer, RenderPass, Subpass},
     single_pass_renderpass,
 };
@@ -203,21 +210,12 @@ impl GenHdrCubemap {
         let vs = vs::load(context.device.clone()).unwrap();
         let fs = fs::load(context.device.clone()).unwrap();
 
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [DIM, DIM],
-            depth_range: 0.0..1.0,
-        };
-
         GraphicsPipeline::start()
-            .vertex_input_single_buffer::<SkyboxVertex>()
+            .vertex_input_state(BuffersDefinition::new().vertex::<SkyboxVertex>())
             .vertex_shader(vs.entry_point("main").unwrap(), ())
-            .triangle_list()
-            .primitive_restart(false)
-            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
             .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .front_face_counter_clockwise()
-            .viewports_dynamic_scissors_irrelevant(1)
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .rasterization_state(RasterizationState::new().front_face(FrontFace::CounterClockwise))
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())
             .unwrap()

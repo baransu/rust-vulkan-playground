@@ -15,7 +15,11 @@ use vulkano::{
         AttachmentImage, ImageCreateFlags, ImageDimensions, ImageUsage, MipmapsCount, StorageImage,
     },
     pipeline::{
-        graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
+        graphics::{
+            depth_stencil::DepthStencilState,
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
@@ -190,12 +194,6 @@ impl PointLightShadows {
     ) {
         let instance_data_buffers = scene.get_instance_data_buffers(&context);
 
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [DIM as f32, DIM as f32],
-            depth_range: 0.0..1.0,
-        };
-
         let mut secondary_builder = AutoCommandBufferBuilder::secondary_graphics(
             context.device.clone(),
             context.graphics_queue.family(),
@@ -204,9 +202,7 @@ impl PointLightShadows {
         )
         .unwrap();
 
-        secondary_builder
-            .bind_pipeline_graphics(self.pipeline.clone())
-            .set_viewport(0, [viewport.clone()]);
+        secondary_builder.bind_pipeline_graphics(self.pipeline.clone());
 
         for model in scene.models.iter() {
             // if there is no instance_data_buffer it means we have 0 instances for this mesh
@@ -261,12 +257,6 @@ impl PointLightShadows {
         let vs = vs::load(context.device.clone()).unwrap();
         let fs = fs::load(context.device.clone()).unwrap();
 
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [DIM, DIM],
-            depth_range: 0.0..1.0,
-        };
-
         GraphicsPipeline::start()
             .vertex_input_state(
                 BuffersDefinition::new()
@@ -274,13 +264,15 @@ impl PointLightShadows {
                     .instance::<InstanceData>(),
             )
             .vertex_shader(vs.entry_point("main").unwrap(), ())
-            .triangle_list()
-            .primitive_restart(false)
-            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
             .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .depth_stencil_simple_depth()
-            // .cull_mode_back()
-            .viewports_dynamic_scissors_irrelevant(1)
+            .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
+                Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [DIM, DIM],
+                    depth_range: 0.0..1.0,
+                },
+            ]))
+            .depth_stencil_state(DepthStencilState::simple_depth_test())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())
             .unwrap()

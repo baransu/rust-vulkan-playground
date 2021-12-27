@@ -5,8 +5,7 @@ use std::{collections::HashMap, sync::Arc, time::Instant, vec};
 
 use glam::{EulerRot, Quat, Vec3};
 use imgui::*;
-use imgui_renderer::{shaders::TextureUsage, ImguiRenderer};
-use imgui_winit_support::{HiDpiMode, WinitPlatform};
+use imgui_renderer::shaders::TextureUsage;
 use puffin_imgui::ProfilerUi;
 use renderer::{
     camera::Camera,
@@ -38,7 +37,6 @@ use vulkano::{
     device::Device,
     format::{ClearValue, Format},
     image::{view::ImageView, AttachmentImage, ImageUsage, MipmapsCount},
-    pipeline::graphics::viewport::Viewport,
     shader::ShaderStages,
     swapchain::{acquire_next_image, AcquireError},
     sync::{self, GpuFuture},
@@ -122,7 +120,6 @@ struct Application {
     last_time: Instant,
 
     imgui: imgui::Context,
-    imgui_renderer: ImguiRenderer,
     imgui_backend: ImguiBackend,
 
     /**
@@ -383,14 +380,12 @@ impl Application {
             context.swap_chain.dimensions()[1] as f32,
         ];
 
-        let imgui_backend = ImguiBackend::new(&context, &mut imgui);
-
-        let mut imgui_renderer = ImguiRenderer::init(&context, &mut imgui).unwrap();
+        let mut imgui_backend = ImguiBackend::new(&context, &mut imgui);
 
         let screen_frame =
-            ScreenFrame::initialize(&context, &gbuffer_target, &imgui_renderer.target);
+            ScreenFrame::initialize(&context, &gbuffer_target, &imgui_backend.ui_frame());
 
-        let gbuffer_position_texture_id = imgui_renderer
+        let gbuffer_position_texture_id = imgui_backend
             .register_texture(
                 &context,
                 &gbuffer.position_buffer,
@@ -405,7 +400,7 @@ impl Application {
             )
             .unwrap();
 
-        let gbuffer_normals_texture_id = imgui_renderer
+        let gbuffer_normals_texture_id = imgui_backend
             .register_texture(
                 &context,
                 &gbuffer.normals_buffer,
@@ -418,7 +413,7 @@ impl Application {
             )
             .unwrap();
 
-        let gbuffer_albedo_texture_id = imgui_renderer
+        let gbuffer_albedo_texture_id = imgui_backend
             .register_texture(
                 &context,
                 &gbuffer.albedo_buffer,
@@ -431,7 +426,7 @@ impl Application {
             )
             .unwrap();
 
-        let gbuffer_metalic_texture_id = imgui_renderer
+        let gbuffer_metalic_texture_id = imgui_backend
             .register_texture(
                 &context,
                 &gbuffer.metalic_roughness_buffer,
@@ -444,7 +439,7 @@ impl Application {
             )
             .unwrap();
 
-        let ssao_texture_id = imgui_renderer
+        let ssao_texture_id = imgui_backend
             .register_texture(
                 &context,
                 &ssao_blur.target,
@@ -457,7 +452,7 @@ impl Application {
             )
             .unwrap();
 
-        // let shadow_texture_id = imgui_renderer
+        // let shadow_texture_id = imgui_backend
         //     .register_texture(
         //         &context,
         //         &gbuffer.shadow_buffer,
@@ -470,7 +465,7 @@ impl Application {
         //     )
         //     .unwrap();
 
-        let dir_shadow_texture_id = imgui_renderer
+        let dir_shadow_texture_id = imgui_backend
             .register_texture(
                 &context,
                 &dir_light_shadows.target_attachment,
@@ -513,7 +508,6 @@ impl Application {
             },
 
             imgui,
-            imgui_renderer,
             imgui_backend,
 
             previous_frame_end,
@@ -557,15 +551,6 @@ impl Application {
     }
 
     fn create_scene_command_buffers(&mut self) {
-        let dimensions_u32 = self.rc.context.swap_chain.dimensions();
-        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions,
-            depth_range: 0.0..1.0,
-        };
-
         let instance_data_buffers = self.rc.scene.get_instance_data_buffers(&self.rc.context);
 
         let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
@@ -578,8 +563,6 @@ impl Application {
                 self.rc.gbuffer.pipeline.subpass().clone(),
             )
             .unwrap();
-
-            builder.set_viewport(0, [viewport.clone()]);
 
             builder.bind_pipeline_graphics(self.rc.gbuffer.pipeline.clone());
 
@@ -613,62 +596,56 @@ impl Application {
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         delta_time: &f64,
     ) {
-        let puffin_ui = frame_context.puffin_ui;
-        let imgui = frame_context.imgui;
-        let ui = frame_context
-            .imgui_backend
-            .prepare_frame(&rc.context, imgui);
+        let FrameContext {
+            puffin_ui, imgui, ..
+        } = frame_context;
 
-        let gbuffer_position_texture_id = rc.gbuffer_position_texture_id;
-        let gbuffer_albedo_texture_id = rc.gbuffer_albedo_texture_id;
-        let gbuffer_normals_texture_id = rc.gbuffer_normals_texture_id;
-        let gbuffer_metalic_texture_id = rc.gbuffer_metalic_texture_id;
-        let ssao_texture_id = rc.ssao_texture_id;
-        let dir_shadow_texture_id = rc.dir_shadow_texture_id;
-
-        let camera_pos = rc.camera.position;
-
-        puffin_ui.window(&ui);
-
-        // Here we create a window with a specific size, and force it to always have a vertical scrollbar visible
-        Window::new("Debug")
-            .position([0.0, 0.0], Condition::Always)
-            .size([350.0, 1080.0], Condition::Always)
-            .build(&ui, || {
-                let fps = 1.0 / delta_time;
-                ui.text(format!("FPS: {:.2}", fps));
-                ui.text(format!(
-                    "Camera: ({:.2}, {:.2}, {:.2})",
-                    camera_pos.x, camera_pos.y, camera_pos.z
-                ));
-                ui.separator();
-
-                Image::new(dir_shadow_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("Dir shadow map");
-
-                Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("SSAO with Blur");
-
-                Image::new(gbuffer_metalic_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("GBuffer metalic");
-
-                Image::new(gbuffer_position_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("GBuffer position");
-
-                Image::new(gbuffer_normals_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("GBuffer normals");
-
-                Image::new(gbuffer_albedo_texture_id, [300.0, 300.0]).build(&ui);
-                ui.text("GBuffer albedo");
-            });
-
-        frame_context.imgui_backend.prepare_render(&rc.context, &ui);
-
-        let draw_data = ui.render();
         frame_context
-            .imgui_renderer
-            .draw_commands(builder, draw_data)
-            .unwrap();
+            .imgui_backend
+            .frame(&rc.context, imgui, builder, |ui| {
+                let gbuffer_position_texture_id = rc.gbuffer_position_texture_id;
+                let gbuffer_albedo_texture_id = rc.gbuffer_albedo_texture_id;
+                let gbuffer_normals_texture_id = rc.gbuffer_normals_texture_id;
+                let gbuffer_metalic_texture_id = rc.gbuffer_metalic_texture_id;
+                let ssao_texture_id = rc.ssao_texture_id;
+                let dir_shadow_texture_id = rc.dir_shadow_texture_id;
+
+                let camera_pos = rc.camera.position;
+
+                puffin_ui.window(&ui);
+
+                // Here we create a window with a specific size, and force it to always have a vertical scrollbar visible
+                Window::new("Debug")
+                    .position([0.0, 0.0], Condition::Always)
+                    .size([350.0, 1080.0], Condition::Always)
+                    .build(&ui, || {
+                        let fps = 1.0 / delta_time;
+                        ui.text(format!("FPS: {:.2}", fps));
+                        ui.text(format!(
+                            "Camera: ({:.2}, {:.2}, {:.2})",
+                            camera_pos.x, camera_pos.y, camera_pos.z
+                        ));
+                        ui.separator();
+
+                        Image::new(dir_shadow_texture_id, [300.0, 300.0]).build(&ui);
+                        ui.text("Dir shadow map");
+
+                        Image::new(ssao_texture_id, [300.0, 300.0]).build(&ui);
+                        ui.text("SSAO with Blur");
+
+                        Image::new(gbuffer_metalic_texture_id, [300.0, 300.0]).build(&ui);
+                        ui.text("GBuffer metalic");
+
+                        Image::new(gbuffer_position_texture_id, [300.0, 300.0]).build(&ui);
+                        ui.text("GBuffer position");
+
+                        Image::new(gbuffer_normals_texture_id, [300.0, 300.0]).build(&ui);
+                        ui.text("GBuffer normals");
+
+                        Image::new(gbuffer_albedo_texture_id, [300.0, 300.0]).build(&ui);
+                        ui.text("GBuffer albedo");
+                    });
+            });
     }
 
     fn prebuild(
@@ -690,7 +667,6 @@ impl Application {
             previous_frame_end,
             prebuild,
             recreate_swap_chain,
-            imgui_renderer,
             imgui,
             imgui_backend,
             puffin_ui,
@@ -827,7 +803,6 @@ impl Application {
                 previous_frame_end,
                 recreate_swap_chain,
                 imgui_backend,
-                imgui_renderer,
                 imgui,
                 puffin_ui,
             },
@@ -918,7 +893,6 @@ impl Application {
         let Application {
             mut event_loop,
             mut imgui_backend,
-            mut imgui_renderer,
             mut imgui,
             mut rc,
             mut recreate_swap_chain,
@@ -1045,7 +1019,6 @@ impl Application {
                         previous_frame_end: &mut previous_frame_end,
                         recreate_swap_chain: &mut recreate_swap_chain,
                         imgui_backend: &mut imgui_backend,
-                        imgui_renderer: &mut imgui_renderer,
                         imgui: &mut imgui,
                         puffin_ui: &mut puffin_ui,
                     },
@@ -1061,7 +1034,6 @@ struct FrameContext<'a> {
     recreate_swap_chain: &'a mut bool,
     prebuild: &'a mut bool,
     imgui_backend: &'a mut ImguiBackend,
-    imgui_renderer: &'a mut ImguiRenderer,
     imgui: &'a mut imgui::Context,
     puffin_ui: &'a mut ProfilerUi,
 }

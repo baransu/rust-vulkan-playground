@@ -12,7 +12,12 @@ use vulkano::{
     format::ClearValue,
     image::{view::ImageView, AttachmentImage, ImageUsage},
     pipeline::{
-        graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
+        graphics::{
+            depth_stencil::DepthStencilState,
+            rasterization::{CullMode, FrontFace, RasterizationState},
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
@@ -159,11 +164,11 @@ impl DirLightShadows {
     ) {
         let instance_data_buffers = scene.get_instance_data_buffers(&context);
 
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [DIM as f32, DIM as f32],
-            depth_range: 0.0..1.0,
-        };
+        // let viewport = Viewport {
+        //     origin: [0.0, 0.0],
+        //     dimensions: [DIM as f32, DIM as f32],
+        //     depth_range: 0.0..1.0,
+        // };
 
         let mut secondary_builder = AutoCommandBufferBuilder::secondary_graphics(
             context.device.clone(),
@@ -173,9 +178,8 @@ impl DirLightShadows {
         )
         .unwrap();
 
-        secondary_builder
-            .bind_pipeline_graphics(self.pipeline.clone())
-            .set_viewport(0, [viewport.clone()]);
+        secondary_builder.bind_pipeline_graphics(self.pipeline.clone());
+        // .set_viewport(0, [viewport.clone()]);
 
         for model in scene.models.iter() {
             // if there is no instance_data_buffer it means we have 0 instances for this mesh
@@ -192,10 +196,7 @@ impl DirLightShadows {
             .begin_render_pass(
                 self.framebuffer.clone(),
                 SubpassContents::SecondaryCommandBuffers,
-                vec![
-                    // ClearValue::Float([1.0, 1.0, 1.0, 1.0]),
-                    ClearValue::Depth(1.0),
-                ],
+                vec![ClearValue::Depth(1.0)],
             )
             .unwrap();
 
@@ -213,12 +214,6 @@ impl DirLightShadows {
         let vs = vs::load(context.device.clone()).unwrap();
         let fs = fs::load(context.device.clone()).unwrap();
 
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [DIM, DIM],
-            depth_range: 0.0..1.0,
-        };
-
         GraphicsPipeline::start()
             .vertex_input_state(
                 BuffersDefinition::new()
@@ -226,16 +221,20 @@ impl DirLightShadows {
                     .instance::<InstanceData>(),
             )
             .vertex_shader(vs.entry_point("main").unwrap(), ())
-            .triangle_list()
-            .primitive_restart(false)
-            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
             .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .depth_stencil_simple_depth()
-            .depth_clamp(false)
-            .cull_mode_front()
-            .front_face_clockwise()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .blend_pass_through()
+            .depth_stencil_state(DepthStencilState::simple_depth_test())
+            .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
+                Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [DIM, DIM],
+                    depth_range: 0.0..1.0,
+                },
+            ]))
+            .rasterization_state(
+                RasterizationState::new()
+                    .cull_mode(CullMode::Front)
+                    .front_face(FrontFace::Clockwise),
+            )
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())
             .unwrap()

@@ -12,7 +12,14 @@ use vulkano::{
         AttachmentImage, ImageCreateFlags, ImageDimensions, ImageUsage, ImageViewAbstract,
         MipmapsCount, StorageImage,
     },
-    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
+    pipeline::{
+        graphics::{
+            rasterization::{FrontFace, RasterizationState},
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
+    },
     render_pass::{Framebuffer, RenderPass, Subpass},
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     shader::EntryPoint,
@@ -55,7 +62,7 @@ impl CubemapGenPass {
     {
         let render_pass = Self::create_render_pass(context, format);
         let pipeline =
-            Self::create_graphics_pipeline(context, &render_pass, fragment_shader_entry_point, dim);
+            Self::create_graphics_pipeline(context, &render_pass, fragment_shader_entry_point);
 
         let vertex_buffer = SkyboxPass::create_vertex_buffer(context);
         let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
@@ -262,25 +269,19 @@ impl CubemapGenPass {
         context: &Context,
         render_pass: &Arc<RenderPass>,
         fragment_shader_entry_point: EntryPoint,
-        dim: f32,
     ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module = vs::load(context.device.clone()).unwrap();
-
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [dim, dim],
-            depth_range: 0.0..1.0,
-        };
+        let vs = vs::load(context.device.clone()).unwrap();
 
         GraphicsPipeline::start()
-            .vertex_input_single_buffer::<SkyboxVertex>()
-            .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
-            .triangle_list()
-            .primitive_restart(false)
-            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .vertex_input_state(BuffersDefinition::new().vertex::<SkyboxVertex>())
+            .vertex_shader(vs.entry_point("main").unwrap(), ())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .fragment_shader(fragment_shader_entry_point, ())
-            .front_face_counter_clockwise()
-            .viewports_dynamic_scissors_irrelevant(1)
+            .rasterization_state(
+                RasterizationState::new()
+                    // .cull_mode(CullMode::Back)
+                    .front_face(FrontFace::CounterClockwise),
+            )
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())
             .unwrap()

@@ -5,7 +5,13 @@ use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     image::{view::ImageView, AttachmentImage},
-    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
+    pipeline::{
+        graphics::{
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
+    },
     render_pass::{Framebuffer, RenderPass, Subpass},
     single_pass_renderpass,
     sync::GpuFuture,
@@ -41,7 +47,6 @@ impl ScreenFrameQuadBuffers {
         let (vertex_buffer, future) = ImmutableBuffer::from_iter(
             quad_vertices.clone(),
             BufferUsage::vertex_buffer(),
-            // TODO: idealy it should be transfer queue?
             context.graphics_queue.clone(),
         )
         .unwrap();
@@ -51,7 +56,6 @@ impl ScreenFrameQuadBuffers {
         let (index_buffer, future) = ImmutableBuffer::from_iter(
             quad_indices.clone(),
             BufferUsage::index_buffer(),
-            // TODO: idealy it should be transfer queue?
             context.graphics_queue.clone(),
         )
         .unwrap();
@@ -228,37 +232,15 @@ impl ScreenFrame {
         context: &Context,
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
-        let vert_shader_module =
-            super::shaders::screen_vertex_shader::load(context.device.clone()).unwrap();
-        let frag_shader_module =
-            super::shaders::screen_fragment_shader::load(context.device.clone()).unwrap();
-
-        let dimensions_u32 = context.swap_chain.dimensions();
-        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions,
-            depth_range: 0.0..1.0,
-        };
+        let vs = super::shaders::screen_vertex_shader::load(context.device.clone()).unwrap();
+        let fs = super::shaders::screen_fragment_shader::load(context.device.clone()).unwrap();
 
         GraphicsPipeline::start()
-            .vertex_input_single_buffer::<ScreenQuadVertex>()
-            .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
-            .triangle_list()
-            .primitive_restart(false)
-            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
-            .fragment_shader(frag_shader_module.entry_point("main").unwrap(), ())
-            .depth_clamp(false)
-            // NOTE: there's an outcommented .rasterizer_discard() in Vulkano...
-            .polygon_mode_fill() // = default
-            .line_width(1.0) // = default
-            .cull_mode_back()
-            .front_face_clockwise()
-            // NOTE: no depth_bias here, but on pipeline::raster::Rasterization
-            .blend_pass_through()
-            .viewports_dynamic_scissors_irrelevant(1)
+            .vertex_input_state(BuffersDefinition::new().vertex::<ScreenQuadVertex>())
+            .vertex_shader(vs.entry_point("main").unwrap(), ())
+            .fragment_shader(fs.entry_point("main").unwrap(), ())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            // .build(context.device.clone())
             .with_auto_layout(context.device.clone(), |set_descs| {
                 // Modify the auto-generated layout by setting an immutable sampler to
                 // set 0 binding 0.

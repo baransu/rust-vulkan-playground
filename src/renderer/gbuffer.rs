@@ -14,12 +14,10 @@ use vulkano::{
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage},
     pipeline::{
         graphics::{
-            color_blend::ColorBlendState,
             depth_stencil::DepthStencilState,
-            input_assembly::InputAssemblyState,
             rasterization::{CullMode, RasterizationState},
             vertex_input::BuffersDefinition,
-            viewport::ViewportState,
+            viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
@@ -168,6 +166,9 @@ impl GBuffer {
 
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
+        let width = context.swap_chain.dimensions()[0] as f32;
+        let height = context.swap_chain.dimensions()[1] as f32;
+
         GraphicsPipeline::start()
             .vertex_input_state(
                 BuffersDefinition::new()
@@ -177,8 +178,13 @@ impl GBuffer {
             .vertex_shader(vs.entry_point("main").unwrap(), ())
             .fragment_shader(fs.entry_point("main").unwrap(), ())
             .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
-            .input_assembly_state(InputAssemblyState::new())
-            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
+                Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [width, height],
+                    depth_range: 0.0..1.0,
+                },
+            ]))
             .depth_stencil_state(DepthStencilState::simple_depth_test())
             .render_pass(subpass)
             .with_pipeline_layout(context.device.clone(), pipeline_layout)

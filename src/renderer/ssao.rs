@@ -12,7 +12,9 @@ use vulkano::{
     },
     pipeline::{
         graphics::{
-            input_assembly::InputAssemblyState, vertex_input::BuffersDefinition, viewport::Viewport,
+            input_assembly::InputAssemblyState,
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
@@ -87,24 +89,12 @@ impl Ssao {
         let vs = vs::load(context.graphics_queue.device().clone()).unwrap();
         let fs = fs::load(context.device.clone()).unwrap();
 
-        let dimensions = context.swap_chain.dimensions();
-
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-            depth_range: 0.0..1.0,
-        };
-
         GraphicsPipeline::start()
             .vertex_input_state(BuffersDefinition::new().vertex::<ScreenQuadVertex>())
             .vertex_shader(vs.entry_point("main").unwrap(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .input_assembly_state(InputAssemblyState::new())
             .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .cull_mode_back()
-            .front_face_clockwise()
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())
             .unwrap()

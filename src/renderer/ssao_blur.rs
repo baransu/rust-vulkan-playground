@@ -5,7 +5,13 @@ use vulkano::{
     descriptor_set::PersistentDescriptorSet,
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageUsage},
-    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline, PipelineBindPoint},
+    pipeline::{
+        graphics::{
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
+    },
     render_pass::{Framebuffer, RenderPass, Subpass},
 };
 
@@ -60,23 +66,11 @@ impl SsaoBlur {
         let vs = screen_vertex_shader::load(context.graphics_queue.device().clone()).unwrap();
         let fs = fs::load(context.device.clone()).unwrap();
 
-        let dimensions = context.swap_chain.dimensions();
-
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-            depth_range: 0.0..1.0,
-        };
-
         GraphicsPipeline::start()
-            .vertex_input_single_buffer::<ScreenQuadVertex>()
+            .vertex_input_state(BuffersDefinition::new().vertex::<ScreenQuadVertex>())
             .vertex_shader(vs.entry_point("main").unwrap(), ())
-            .triangle_list()
-            .primitive_restart(false)
-            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
             .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .blend_pass_through()
-            .viewports_dynamic_scissors_irrelevant(1)
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())
             .unwrap()

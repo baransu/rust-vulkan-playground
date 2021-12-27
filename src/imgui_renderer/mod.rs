@@ -4,6 +4,7 @@ pub mod shaders;
 use vulkano::buffer::ImmutableBuffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::pipeline::graphics::color_blend::ColorBlendState;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
@@ -16,7 +17,7 @@ use vulkano::{
 
 use vulkano::format::Format;
 use vulkano::image::{AttachmentImage, ImageUsage, ImmutableImage};
-use vulkano::pipeline::graphics::viewport::{Scissor, Viewport};
+use vulkano::pipeline::graphics::viewport::{Scissor, Viewport, ViewportState};
 use vulkano::render_pass::Framebuffer;
 use vulkano::render_pass::Subpass;
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
@@ -121,23 +122,16 @@ impl ImguiRenderer {
         )
         .unwrap();
 
-        let dimensions_u32 = context.swap_chain.dimensions();
-        let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions,
-            depth_range: 0.0..1.0,
-        };
+        // let dimensions_u32 = context.swap_chain.dimensions();
+        // let [width, height] = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         let pipeline = GraphicsPipeline::start()
             .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
             .vertex_shader(vs.entry_point("main").unwrap(), ())
-            .triangle_list()
-            .viewports(vec![viewport])
-            .viewports_scissors_dynamic(1)
+            .viewport_state(ViewportState::viewport_dynamic_scissor_dynamic(1))
             .input_assembly_state(InputAssemblyState::new())
             .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .blend_alpha_blending()
+            .color_blend_state(ColorBlendState::new(1).blend_alpha())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())?;
 

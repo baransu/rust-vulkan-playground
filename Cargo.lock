@@ -704,15 +704,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ktx"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0112c5d660975a0c6e068c0901b9178d9aeeb62106eac227cbab2502955ea9f8"
-dependencies = [
- "byteorder",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1310,7 +1301,6 @@ dependencies = [
  "image",
  "imgui",
  "imgui-winit-support",
- "ktx",
  "puffin",
  "puffin-imgui",
  "rand",

@@ -16,7 +16,12 @@ use vulkano::{
         MipmapsCount, StorageImage,
     },
     pipeline::{
-        graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
+        graphics::{
+            depth_stencil::DepthStencilState,
+            rasterization::{CullMode, RasterizationState},
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
@@ -250,12 +255,6 @@ impl LocalProbe {
         let instance_data_buffers = scene.get_instance_data_buffers(&context);
 
         for f in 0..6 {
-            let viewport = Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [DIM as f32, DIM as f32],
-                depth_range: 0.0..1.0,
-            };
-
             let mut secondary_builder = AutoCommandBufferBuilder::secondary_graphics(
                 context.device.clone(),
                 context.graphics_queue.family(),
@@ -264,9 +263,7 @@ impl LocalProbe {
             )
             .unwrap();
 
-            secondary_builder
-                .bind_pipeline_graphics(self.pipeline.clone())
-                .set_viewport(0, [viewport.clone()]);
+            secondary_builder.bind_pipeline_graphics(self.pipeline.clone());
 
             for model in scene.models.iter() {
                 // if there is no instance_data_buffer it means we have 0 instances for this mesh
@@ -332,12 +329,6 @@ impl LocalProbe {
         let vs = vs::load(context.device.clone()).unwrap();
         let fs = fs::load(context.device.clone()).unwrap();
 
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [DIM, DIM],
-            depth_range: 0.0..1.0,
-        };
-
         let pipeline_layout = GBuffer::create_pipeline_layout(
             &context,
             vec![
@@ -354,13 +345,16 @@ impl LocalProbe {
                     .instance::<InstanceData>(),
             )
             .vertex_shader(vs.entry_point("main").unwrap(), ())
-            .triangle_list()
-            .primitive_restart(false)
-            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
+            .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
+                Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [DIM, DIM],
+                    depth_range: 0.0..1.0,
+                },
+            ]))
             .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .depth_stencil_simple_depth()
-            .cull_mode_back()
-            .viewports_dynamic_scissors_irrelevant(1)
+            .depth_stencil_state(DepthStencilState::simple_depth_test())
+            .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .with_pipeline_layout(context.device.clone(), pipeline_layout)
             .unwrap()
