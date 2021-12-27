@@ -31,6 +31,7 @@ layout(location = 0) out vec4 out_position;
 layout(location = 1) out vec3 out_normal;
 layout(location = 2) out vec4 out_albedo;
 layout(location = 3) out vec4 out_metalic_roughness;
+
 void main() {
 	out_position = f_position;
 

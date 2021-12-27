@@ -20,6 +20,7 @@ impl Texture {
         image: &gltf::Texture,
         images: &Vec<gltf::image::Data>,
         format: Format,
+        mipmaps: MipmapsCount,
     ) -> Texture {
         let image = match image.source().source() {
             Source::View { view, mime_type } => {
@@ -99,14 +100,15 @@ impl Texture {
         }
         .unwrap();
 
-        let image = Self::create_image_view(queue, &image, format);
+        let image = Self::create_image_view(queue, &image, format, mipmaps);
 
         Texture { image }
     }
 
     pub fn empty(queue: &Arc<Queue>) -> Texture {
         let image = DynamicImage::new_rgb8(1, 1);
-        let view = Self::create_image_view(queue, &image, Format::R8G8B8A8_UNORM);
+        let view =
+            Self::create_image_view(queue, &image, Format::R8G8B8A8_UNORM, MipmapsCount::One);
 
         Texture { image: view }
     }
@@ -115,6 +117,7 @@ impl Texture {
         queue: &Arc<Queue>,
         image: &DynamicImage,
         format: Format,
+        mipmaps: MipmapsCount,
     ) -> Arc<ImageView<ImmutableImage>> {
         let width = image.width();
         let height = image.height();
@@ -129,8 +132,7 @@ impl Texture {
             ImmutableImage::from_iter(
                 image.to_rgba16().into_raw().iter().cloned(),
                 dimensions,
-                // vulkano already supports mipmap generation so we don't need to do this by hand
-                MipmapsCount::Log2,
+                mipmaps,
                 format,
                 queue.clone(),
             )
@@ -139,8 +141,7 @@ impl Texture {
             ImmutableImage::from_iter(
                 image.to_rgba8().into_raw().iter().cloned(),
                 dimensions,
-                // vulkano already supports mipmap generation so we don't need to do this by hand
-                MipmapsCount::Log2,
+                mipmaps,
                 format,
                 queue.clone(),
             )

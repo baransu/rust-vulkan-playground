@@ -5,6 +5,7 @@ use vulkano::{
     descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
     device::Queue,
     format::Format,
+    image::MipmapsCount,
     sync::GpuFuture,
 };
 
@@ -214,6 +215,7 @@ impl Model {
                         &info.texture(),
                         &images,
                         Format::R8G8B8A8_UNORM,
+                        MipmapsCount::Log2,
                     )
                 });
 
@@ -224,6 +226,7 @@ impl Model {
                         &info.texture(),
                         &images,
                         Format::R8G8B8A8_UNORM,
+                        MipmapsCount::One,
                     )
                 });
 
@@ -234,6 +237,7 @@ impl Model {
                         &info.texture(),
                         &images,
                         Format::R8G8B8A8_UNORM,
+                        MipmapsCount::One,
                     )
                 });
 

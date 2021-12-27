@@ -166,16 +166,10 @@ impl SkyboxPass {
         GraphicsPipeline::start()
             .vertex_input_single_buffer::<SkyboxVertex>()
             .vertex_shader(vert_shader_module.entry_point("main").unwrap(), ())
-            .triangle_list()
-            .primitive_restart(false)
             .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
             .fragment_shader(fragment_shader_entry_point, ())
             .depth_clamp(false)
-            .polygon_mode_fill() // = default
-            .line_width(1.0) // = default
-            // .cull_mode_back()
             .front_face_clockwise()
-            // .blend_pass_through()
             .viewports_dynamic_scissors_irrelevant(1)
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(context.device.clone())
@@ -212,7 +206,6 @@ impl SkyboxPass {
         let (vertex_buffer, future) = ImmutableBuffer::from_iter(
             skybox_vertices().clone(),
             BufferUsage::vertex_buffer(),
-            // TODO: idealy it should be transfer queue?
             context.graphics_queue.clone(),
         )
         .unwrap();

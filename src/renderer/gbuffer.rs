@@ -13,7 +13,14 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage},
     pipeline::{
-        graphics::{vertex_input::BuffersDefinition, viewport::Viewport},
+        graphics::{
+            color_blend::ColorBlendState,
+            depth_stencil::DepthStencilState,
+            input_assembly::InputAssemblyState,
+            rasterization::{CullMode, RasterizationState},
+            vertex_input::BuffersDefinition,
+            viewport::ViewportState,
+        },
         GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
@@ -62,7 +69,7 @@ impl GBuffer {
             &depth_buffer,
         );
 
-        let pipeline = Self::create_pipeline(context, &layout, &render_pass, &target);
+        let pipeline = Self::create_pipeline(context, &layout, &render_pass);
 
         GBuffer {
             position_buffer,
@@ -146,18 +153,9 @@ impl GBuffer {
         context: &Context,
         layout: &Arc<DescriptorSetLayout>,
         render_pass: &Arc<RenderPass>,
-        target: &GBufferTarget,
     ) -> Arc<GraphicsPipeline> {
         let vs = super::shaders::model_vertex_shader::load(context.device.clone()).unwrap();
         let fs = super::shaders::model_fragment_shader::load(context.device.clone()).unwrap();
-
-        let dimensions = target.image().dimensions().width_height();
-
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-            depth_range: 0.0..1.0,
-        };
 
         let pipeline_layout = Self::create_pipeline_layout(
             context,
@@ -168,6 +166,8 @@ impl GBuffer {
             &layout,
         );
 
+        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+
         GraphicsPipeline::start()
             .vertex_input_state(
                 BuffersDefinition::new()
@@ -175,14 +175,12 @@ impl GBuffer {
                     .instance::<InstanceData>(),
             )
             .vertex_shader(vs.entry_point("main").unwrap(), ())
-            .triangle_list()
-            .primitive_restart(false)
-            .viewports(vec![viewport]) // NOTE: also sets scissor to cover whole viewport
             .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .depth_stencil_simple_depth()
-            .cull_mode_back()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
+            .input_assembly_state(InputAssemblyState::new())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .depth_stencil_state(DepthStencilState::simple_depth_test())
+            .render_pass(subpass)
             .with_pipeline_layout(context.device.clone(), pipeline_layout)
             .unwrap()
     }
@@ -218,7 +216,7 @@ impl GBuffer {
                 dimensions,
                 context.depth_format,
                 ImageUsage {
-                    // depth_stencil_attachment: true,
+                    depth_stencil_attachment: true,
                     ..usage
                 },
             )

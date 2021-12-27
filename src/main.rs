@@ -37,7 +37,7 @@ use vulkano::{
     },
     device::Device,
     format::{ClearValue, Format},
-    image::{view::ImageView, AttachmentImage, ImageUsage},
+    image::{view::ImageView, AttachmentImage, ImageUsage, MipmapsCount},
     pipeline::graphics::viewport::Viewport,
     shader::ShaderStages,
     swapchain::{acquire_next_image, AcquireError},
@@ -146,8 +146,12 @@ impl Application {
             .unwrap();
 
         // TODO: generate brdf texture instead of loading it - why I have black spots???
-        let brdf_texture =
-            Texture::create_image_view(&context.graphics_queue, &img, Format::R8G8B8A8_UNORM);
+        let brdf_texture = Texture::create_image_view(
+            &context.graphics_queue,
+            &img,
+            Format::R8G8B8A8_UNORM,
+            MipmapsCount::One,
+        );
 
         let layout = DescriptorSetLayout::new(
             context.device.clone(),

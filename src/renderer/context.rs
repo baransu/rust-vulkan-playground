@@ -348,7 +348,6 @@ impl Context {
             SamplerAddressMode::Repeat,
             0.0,
             1.0,
-            // what's the minimul mip map lod we want to use - 0 means we start with highest mipmap which is original texture
             0.0,
             // if something will be super small we set 1_000 so it adjustes automatically
             1_000.0,
