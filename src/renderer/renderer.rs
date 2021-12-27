@@ -396,6 +396,7 @@ impl Renderer {
 
     fn recreate_swap_chain(rc: &mut RenderContext) {
         rc.context.recreate_swap_chain();
+        rc.screen_frame.recreate_swap_chain(&rc.context);
 
         println!("Recreating swap chain");
     }
@@ -506,8 +507,6 @@ impl Renderer {
         if suboptimal {
             *recreate_swap_chain = true;
         }
-
-        let command_buffer = rc.screen_frame.command_buffers[image_index].clone();
 
         let light_command_buffer = rc.light_system.command_buffers[image_index].clone();
 
@@ -630,7 +629,7 @@ impl Renderer {
                 vec![ClearValue::Float([0.0, 0.0, 0.0, 1.0])],
             )
             .unwrap()
-            .execute_commands(command_buffer)
+            .execute_commands(rc.screen_frame.create_command_buffer(&rc.context))
             .unwrap()
             .end_render_pass()
             .unwrap();

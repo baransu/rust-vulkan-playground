@@ -76,9 +76,9 @@ impl ScreenFrameQuadBuffers {
 pub struct ScreenFrame {
     graphics_pipeline: Arc<GraphicsPipeline>,
     pub framebuffers: Vec<Arc<Framebuffer>>,
-    pub command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
-    descriptor_sets: Vec<Arc<PersistentDescriptorSet>>,
-    pub screen_quad_buffers: ScreenFrameQuadBuffers,
+    descriptor_set: Arc<PersistentDescriptorSet>,
+    screen_quad_buffers: ScreenFrameQuadBuffers,
+    render_pass: Arc<RenderPass>,
 }
 
 impl ScreenFrame {
@@ -94,45 +94,24 @@ impl ScreenFrame {
 
         let framebuffers = Self::create_framebuffers_from_swap_chain_images(context, &render_pass);
 
-        let descriptor_sets =
-            Self::create_descriptor_sets(context, &graphics_pipeline, &scene_frame, ui_frame);
-
-        let command_buffers = Self::create_command_buffers(
-            context,
-            &graphics_pipeline,
-            &descriptor_sets,
-            &screen_quad_buffers,
-        );
+        let descriptor_set =
+            Self::create_descriptor_set(&graphics_pipeline, &scene_frame, ui_frame);
 
         ScreenFrame {
             graphics_pipeline,
             framebuffers,
-            command_buffers,
-            descriptor_sets,
+            descriptor_set,
             screen_quad_buffers,
+            render_pass,
         }
     }
 
     pub fn recreate_swap_chain(&mut self, context: &Context) {
-        let render_pass = Self::create_render_pass(context);
-
-        self.graphics_pipeline = Self::create_graphics_pipeline(context, &render_pass);
-        self.framebuffers = Self::create_framebuffers_from_swap_chain_images(context, &render_pass);
-
-        self.command_buffers = Self::create_command_buffers(
-            context,
-            &self.graphics_pipeline,
-            &self.descriptor_sets,
-            &self.screen_quad_buffers,
-        );
+        self.framebuffers =
+            Self::create_framebuffers_from_swap_chain_images(context, &self.render_pass);
     }
 
-    fn create_command_buffers(
-        context: &Context,
-        graphics_pipeline: &Arc<GraphicsPipeline>,
-        descriptor_sets: &Vec<Arc<PersistentDescriptorSet>>,
-        screen_quad_buffers: &ScreenFrameQuadBuffers,
-    ) -> Vec<Arc<SecondaryAutoCommandBuffer>> {
+    pub fn create_command_buffer(&self, context: &Context) -> Arc<SecondaryAutoCommandBuffer> {
         let dimensions_u32 = context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
@@ -142,64 +121,48 @@ impl ScreenFrame {
             depth_range: 0.0..1.0,
         };
 
-        let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
+        let mut builder = AutoCommandBufferBuilder::secondary_graphics(
+            context.device.clone(),
+            context.graphics_queue.family(),
+            CommandBufferUsage::SimultaneousUse,
+            self.graphics_pipeline.subpass().clone(),
+        )
+        .unwrap();
 
-        for i in 0..context.swap_chain.num_images() as usize {
-            let mut builder = AutoCommandBufferBuilder::secondary_graphics(
-                context.device.clone(),
-                context.graphics_queue.family(),
-                CommandBufferUsage::SimultaneousUse,
-                graphics_pipeline.subpass().clone(),
+        builder
+            .set_viewport(0, [viewport.clone()])
+            .bind_pipeline_graphics(self.graphics_pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.graphics_pipeline.layout().clone(),
+                0,
+                self.descriptor_set.clone(),
             )
+            .bind_vertex_buffers(0, self.screen_quad_buffers.vertex_buffer.clone())
+            .bind_index_buffer(self.screen_quad_buffers.index_buffer.clone())
+            .draw_indexed(self.screen_quad_buffers.indices_length as u32, 1, 0, 0, 0)
             .unwrap();
 
-            builder
-                .set_viewport(0, [viewport.clone()])
-                .bind_pipeline_graphics(graphics_pipeline.clone())
-                .bind_descriptor_sets(
-                    PipelineBindPoint::Graphics,
-                    graphics_pipeline.layout().clone(),
-                    0,
-                    descriptor_sets[i].clone(),
-                )
-                .bind_vertex_buffers(0, screen_quad_buffers.vertex_buffer.clone())
-                .bind_index_buffer(screen_quad_buffers.index_buffer.clone())
-                .draw_indexed(screen_quad_buffers.indices_length as u32, 1, 0, 0, 0)
-                .unwrap();
-
-            let command_buffer = Arc::new(builder.build().unwrap());
-
-            command_buffers.push(command_buffer);
-        }
-
-        command_buffers
+        Arc::new(builder.build().unwrap())
     }
 
-    fn create_descriptor_sets(
-        context: &Context,
+    fn create_descriptor_set(
         graphics_pipeline: &Arc<GraphicsPipeline>,
         scene_frame: &Arc<ImageView<AttachmentImage>>,
         ui_frame: &Arc<ImageView<AttachmentImage>>,
-    ) -> Vec<Arc<PersistentDescriptorSet>> {
-        let mut descriptor_sets = Vec::new();
-
+    ) -> Arc<PersistentDescriptorSet> {
         let layout = graphics_pipeline
             .layout()
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
 
-        for _i in 0..context.swap_chain.num_images() as usize {
-            let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-            // NOTE: this works because we're setting immutable sampler when creating GraphicsPipeline
-            set_builder.add_image(scene_frame.clone()).unwrap();
-            set_builder.add_image(ui_frame.clone()).unwrap();
+        set_builder.add_image(scene_frame.clone()).unwrap();
+        set_builder.add_image(ui_frame.clone()).unwrap();
 
-            descriptor_sets.push(set_builder.build().unwrap());
-        }
-
-        descriptor_sets
+        set_builder.build().unwrap()
     }
 
     /**
