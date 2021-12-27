@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc, time::Instant, vec};
 
 use glam::{EulerRot, Quat, Vec3};
 use imgui::*;
-use imgui_renderer::{shaders::TextureUsage, Renderer};
+use imgui_renderer::{shaders::TextureUsage, ImguiRenderer};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use puffin_imgui::ProfilerUi;
 use renderer::{
@@ -48,9 +48,10 @@ use winit::{
         DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
     },
     event_loop::{ControlFlow, EventLoop},
+    platform::run_return::EventLoopExtRunReturn,
 };
 
-use crate::renderer::skybox_pass::fs_gbuffer;
+use crate::{imgui_renderer::backend::ImguiBackend, renderer::skybox_pass::fs_gbuffer};
 
 const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
 const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
@@ -76,9 +77,8 @@ const RENDER_SKYBOX: bool = true;
 
 const BRDF_PATH: &str = "res/ibl_brdf_lut.png";
 
-struct Application {
+struct RenderContext {
     context: Context,
-
     gbuffer: GBuffer,
     scene_command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
     light_system: LightSystem,
@@ -87,18 +87,9 @@ struct Application {
 
     skybox: SkyboxPass,
 
-    previous_frame_end: Option<Box<dyn GpuFuture>>,
-    recreate_swap_chain: bool,
-
-    last_time: Instant,
-
     scene: Scene,
 
     camera: Camera,
-
-    imgui: imgui::Context,
-    imgui_renderer: Renderer,
-    platform: WinitPlatform,
 
     gbuffer_position_texture_id: TextureId,
     gbuffer_normals_texture_id: TextureId,
@@ -120,6 +111,19 @@ struct Application {
 
     point_light_shadows: PointLightShadows,
     dir_light_shadows: DirLightShadows,
+}
+
+struct Application {
+    rc: RenderContext,
+
+    previous_frame_end: Option<Box<dyn GpuFuture>>,
+    recreate_swap_chain: bool,
+
+    last_time: Instant,
+
+    imgui: imgui::Context,
+    imgui_renderer: ImguiRenderer,
+    imgui_backend: ImguiBackend,
 
     /**
      * This is why we need to wrap event_loop into Option
@@ -128,10 +132,9 @@ struct Application {
      *
      * I don't really understand how it works and why exactly it's needed.
      */
-    event_loop: Option<EventLoop<()>>,
+    event_loop: EventLoop<()>,
 
     prebuild: bool,
-
     puffin_ui: ProfilerUi,
 }
 
@@ -380,28 +383,9 @@ impl Application {
             context.swap_chain.dimensions()[1] as f32,
         ];
 
-        let mut platform = WinitPlatform::init(&mut imgui);
-        platform.attach_window(
-            imgui.io_mut(),
-            &context.surface.window(),
-            HiDpiMode::Rounded,
-        );
+        let imgui_backend = ImguiBackend::new(&context, &mut imgui);
 
-        let hidpi_factor = platform.hidpi_factor();
-        let font_size = (13.0 * hidpi_factor) as f32;
-
-        imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
-
-        imgui
-            .fonts()
-            .add_font(&[imgui::FontSource::DefaultFontData {
-                config: Some(imgui::FontConfig {
-                    size_pixels: font_size,
-                    ..imgui::FontConfig::default()
-                }),
-            }]);
-
-        let mut imgui_renderer = Renderer::init(&context, &mut imgui).unwrap();
+        let mut imgui_renderer = ImguiRenderer::init(&context, &mut imgui).unwrap();
 
         let screen_frame =
             ScreenFrame::initialize(&context, &gbuffer_target, &imgui_renderer.target);
@@ -502,52 +486,42 @@ impl Application {
         let puffin_ui = puffin_imgui::ProfilerUi::default();
 
         let mut app = Self {
-            context,
+            rc: RenderContext {
+                context,
+                gbuffer,
+                scene_command_buffers: vec![],
+                light_system,
+                screen_frame,
+                skybox,
+                scene,
+                camera,
+                gbuffer_position_texture_id,
+                gbuffer_normals_texture_id,
+                gbuffer_albedo_texture_id,
+                gbuffer_metalic_texture_id,
 
-            screen_frame,
-
-            skybox,
+                ssao_texture_id,
+                dir_shadow_texture_id,
+                ssao,
+                ssao_blur,
+                gen_hdr_cubemap,
+                irradiance_convolution,
+                prefilterenvmap,
+                local_probe,
+                point_light_shadows,
+                dir_light_shadows,
+            },
 
             imgui,
             imgui_renderer,
-            platform,
-
-            gbuffer,
-
-            scene_command_buffers: vec![],
-            light_system,
+            imgui_backend,
 
             previous_frame_end,
             recreate_swap_chain: false,
 
             last_time: Instant::now(),
 
-            scene,
-
-            camera,
-
-            gbuffer_albedo_texture_id,
-            gbuffer_position_texture_id,
-            gbuffer_normals_texture_id,
-            gbuffer_metalic_texture_id,
-            ssao_texture_id,
-            // shadow_texture_id,
-            dir_shadow_texture_id,
-
-            ssao,
-            ssao_blur,
-
-            gen_hdr_cubemap,
-
-            irradiance_convolution,
-            prefilterenvmap,
-
-            local_probe,
-
-            point_light_shadows,
-            dir_light_shadows,
-
-            event_loop: Some(event_loop),
+            event_loop,
 
             prebuild: true,
             puffin_ui,
@@ -574,16 +548,16 @@ impl Application {
         ImageView::new(image).unwrap()
     }
 
-    fn recreate_swap_chain(&mut self) {
-        self.context.recreate_swap_chain();
+    fn recreate_swap_chain(rc: &mut RenderContext) {
+        rc.context.recreate_swap_chain();
 
         // TODO: recreate shadow framebuffer and graphics pipeline???
 
-        self.screen_frame.recreate_swap_chain(&self.context);
+        rc.screen_frame.recreate_swap_chain(&rc.context);
     }
 
     fn create_scene_command_buffers(&mut self) {
-        let dimensions_u32 = self.context.swap_chain.dimensions();
+        let dimensions_u32 = self.rc.context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         let viewport = Viewport {
@@ -592,30 +566,30 @@ impl Application {
             depth_range: 0.0..1.0,
         };
 
-        let instance_data_buffers = self.scene.get_instance_data_buffers(&self.context);
+        let instance_data_buffers = self.rc.scene.get_instance_data_buffers(&self.rc.context);
 
         let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
 
-        for _i in 0..self.context.swap_chain.num_images() {
+        for _i in 0..self.rc.context.swap_chain.num_images() {
             let mut builder = AutoCommandBufferBuilder::secondary_graphics(
-                self.context.device.clone(),
-                self.context.graphics_queue.family(),
+                self.rc.context.device.clone(),
+                self.rc.context.graphics_queue.family(),
                 CommandBufferUsage::SimultaneousUse,
-                self.gbuffer.pipeline.subpass().clone(),
+                self.rc.gbuffer.pipeline.subpass().clone(),
             )
             .unwrap();
 
             builder.set_viewport(0, [viewport.clone()]);
 
-            builder.bind_pipeline_graphics(self.gbuffer.pipeline.clone());
+            builder.bind_pipeline_graphics(self.rc.gbuffer.pipeline.clone());
 
-            for model in self.scene.models.iter() {
+            for model in self.rc.scene.models.iter() {
                 // if there is no instance_data_buffer it means we have 0 instances for this mesh
                 if let Some(instance_data_buffer) = instance_data_buffers.get(&model.id) {
-                    self.gbuffer.draw_model(
+                    self.rc.gbuffer.draw_model(
                         model,
                         &mut builder,
-                        &self.scene.camera_descriptor_set,
+                        &self.rc.scene.camera_descriptor_set,
                         instance_data_buffer,
                     )
                 }
@@ -626,7 +600,7 @@ impl Application {
             command_buffers.push(command_buffer);
         }
 
-        self.scene_command_buffers = command_buffers;
+        self.rc.scene_command_buffers = command_buffers;
     }
 
     fn create_sync_objects(device: &Arc<Device>) -> Box<dyn GpuFuture> {
@@ -634,25 +608,27 @@ impl Application {
     }
 
     fn draw_ui(
-        &mut self,
+        rc: &RenderContext,
+        frame_context: FrameContext,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         delta_time: &f64,
     ) {
-        self.platform
-            .prepare_frame(self.imgui.io_mut(), self.context.surface.window())
-            .unwrap();
+        let puffin_ui = frame_context.puffin_ui;
+        let imgui = frame_context.imgui;
+        let ui = frame_context
+            .imgui_backend
+            .prepare_frame(&rc.context, imgui);
 
-        let ui = self.imgui.frame();
-        let gbuffer_position_texture_id = self.gbuffer_position_texture_id;
-        let gbuffer_albedo_texture_id = self.gbuffer_albedo_texture_id;
-        let gbuffer_normals_texture_id = self.gbuffer_normals_texture_id;
-        let gbuffer_metalic_texture_id = self.gbuffer_metalic_texture_id;
-        let ssao_texture_id = self.ssao_texture_id;
-        let dir_shadow_texture_id = self.dir_shadow_texture_id;
+        let gbuffer_position_texture_id = rc.gbuffer_position_texture_id;
+        let gbuffer_albedo_texture_id = rc.gbuffer_albedo_texture_id;
+        let gbuffer_normals_texture_id = rc.gbuffer_normals_texture_id;
+        let gbuffer_metalic_texture_id = rc.gbuffer_metalic_texture_id;
+        let ssao_texture_id = rc.ssao_texture_id;
+        let dir_shadow_texture_id = rc.dir_shadow_texture_id;
 
-        let camera_pos = self.camera.position;
+        let camera_pos = rc.camera.position;
 
-        self.puffin_ui.window(&ui);
+        puffin_ui.window(&ui);
 
         // Here we create a window with a specific size, and force it to always have a vertical scrollbar visible
         Window::new("Debug")
@@ -686,82 +662,96 @@ impl Application {
                 ui.text("GBuffer albedo");
             });
 
-        self.platform
-            .prepare_render(&ui, self.context.surface.window());
+        frame_context.imgui_backend.prepare_render(&rc.context, &ui);
 
         let draw_data = ui.render();
-        self.imgui_renderer
+        frame_context
+            .imgui_renderer
             .draw_commands(builder, draw_data)
             .unwrap();
     }
 
-    fn prebuild(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) {
-        self.gen_hdr_cubemap.add_to_builder(builder);
+    fn prebuild(
+        rc: &RenderContext,
+        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+    ) {
+        rc.gen_hdr_cubemap.add_to_builder(builder);
 
-        self.local_probe
-            .add_to_builder(&self.context, builder, &self.scene);
+        rc.local_probe
+            .add_to_builder(&rc.context, builder, &rc.scene);
 
-        self.irradiance_convolution.add_to_builder(builder);
+        rc.irradiance_convolution.add_to_builder(builder);
 
-        self.prefilterenvmap.add_to_builder(builder);
+        rc.prefilterenvmap.add_to_builder(builder);
     }
 
-    fn draw_frame(&mut self, delta_time: &f64) {
-        self.previous_frame_end.as_mut().unwrap().cleanup_finished();
+    fn draw_frame(rc: &mut RenderContext, frame_context: FrameContext, delta_time: &f64) {
+        let FrameContext {
+            previous_frame_end,
+            prebuild,
+            recreate_swap_chain,
+            imgui_renderer,
+            imgui,
+            imgui_backend,
+            puffin_ui,
+            ..
+        } = frame_context;
 
-        if self.recreate_swap_chain {
-            self.recreate_swap_chain();
-            self.recreate_swap_chain = false;
+        previous_frame_end.as_mut().unwrap().cleanup_finished();
+
+        if *recreate_swap_chain {
+            Self::recreate_swap_chain(rc);
+            *recreate_swap_chain = false;
         }
 
         let (image_index, suboptimal, acquire_future) =
-            match acquire_next_image(self.context.swap_chain.clone(), None) {
+            match acquire_next_image(rc.context.swap_chain.clone(), None) {
                 Ok(r) => r,
                 Err(AcquireError::OutOfDate) => {
-                    self.recreate_swap_chain = true;
+                    *recreate_swap_chain = true;
                     return;
                 }
                 Err(err) => panic!("{:?}", err),
             };
 
         if suboptimal {
-            self.recreate_swap_chain = true;
+            *recreate_swap_chain = true;
         }
 
-        let offscreen_command_buffer = self.scene_command_buffers[image_index].clone();
+        let offscreen_command_buffer = rc.scene_command_buffers[image_index].clone();
 
-        let command_buffer = self.screen_frame.command_buffers[image_index].clone();
+        let command_buffer = rc.screen_frame.command_buffers[image_index].clone();
 
-        let light_command_buffer = self.light_system.command_buffers[image_index].clone();
+        let light_command_buffer = rc.light_system.command_buffers[image_index].clone();
 
-        let offscreen_framebuffer = self.gbuffer.framebuffer.clone();
-        let framebuffer = self.screen_frame.framebuffers[image_index].clone();
+        let offscreen_framebuffer = rc.gbuffer.framebuffer.clone();
+        let framebuffer = rc.screen_frame.framebuffers[image_index].clone();
 
-        let dimensions_u32 = self.context.swap_chain.dimensions();
+        let dimensions_u32 = rc.context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         let mut builder = AutoCommandBufferBuilder::primary(
-            self.context.device.clone(),
-            self.context.graphics_queue.family(),
+            rc.context.device.clone(),
+            rc.context.graphics_queue.family(),
             CommandBufferUsage::SimultaneousUse,
         )
         .unwrap();
 
-        self.point_light_shadows
-            .add_to_builder(&self.context, &mut builder, &self.scene);
+        rc.point_light_shadows
+            .add_to_builder(&rc.context, &mut builder, &rc.scene);
 
-        self.dir_light_shadows
-            .add_to_builder(&self.context, &mut builder, &self.scene);
+        rc.dir_light_shadows
+            .add_to_builder(&rc.context, &mut builder, &rc.scene);
 
         builder
             .update_buffer(
-                self.skybox.uniform_buffer.clone(),
-                Arc::new(self.camera.get_skybox_uniform_data(dimensions)),
+                rc.skybox.uniform_buffer.clone(),
+                Arc::new(rc.camera.get_skybox_uniform_data(dimensions)),
             )
             .unwrap();
 
-        self.scene
-            .update_uniform_buffers(&mut builder, &self.camera, dimensions);
+        rc.scene
+            .update_uniform_buffers(&mut builder, &rc.camera, dimensions);
 
         builder
             .begin_render_pass(
@@ -784,7 +774,7 @@ impl Application {
 
         if RENDER_SKYBOX {
             builder
-                .execute_commands(self.skybox.command_buffer.clone())
+                .execute_commands(rc.skybox.command_buffer.clone())
                 .unwrap();
         }
 
@@ -796,31 +786,31 @@ impl Application {
 
         builder
             .begin_render_pass(
-                self.ssao.framebuffer.clone(),
+                rc.ssao.framebuffer.clone(),
                 SubpassContents::SecondaryCommandBuffers,
                 vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
             )
             .unwrap()
-            .execute_commands(self.ssao.command_buffers[image_index].clone())
+            .execute_commands(rc.ssao.command_buffers[image_index].clone())
             .unwrap()
             .end_render_pass()
             .unwrap();
 
         builder
             .begin_render_pass(
-                self.ssao_blur.framebuffer.clone(),
+                rc.ssao_blur.framebuffer.clone(),
                 SubpassContents::SecondaryCommandBuffers,
                 vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
             )
             .unwrap()
-            .execute_commands(self.ssao_blur.command_buffers[image_index].clone())
+            .execute_commands(rc.ssao_blur.command_buffers[image_index].clone())
             .unwrap()
             .end_render_pass()
             .unwrap();
 
         builder
             .begin_render_pass(
-                self.light_system.framebuffer.clone(),
+                rc.light_system.framebuffer.clone(),
                 SubpassContents::SecondaryCommandBuffers,
                 vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
             )
@@ -830,7 +820,20 @@ impl Application {
             .end_render_pass()
             .unwrap();
 
-        self.draw_ui(&mut builder, delta_time);
+        Self::draw_ui(
+            rc,
+            FrameContext {
+                prebuild,
+                previous_frame_end,
+                recreate_swap_chain,
+                imgui_backend,
+                imgui_renderer,
+                imgui,
+                puffin_ui,
+            },
+            &mut builder,
+            delta_time,
+        );
 
         builder
             .begin_render_pass(
@@ -844,75 +847,87 @@ impl Application {
             .end_render_pass()
             .unwrap();
 
-        if self.prebuild {
-            self.prebuild(&mut builder);
+        if *prebuild {
+            Self::prebuild(rc, &mut builder);
             println!("Prebuild done");
-            self.prebuild = false;
+            *prebuild = false;
         }
 
         let command_buffer = builder.build().unwrap();
 
-        let future = self
-            .previous_frame_end
+        let future = previous_frame_end
             .take()
             .unwrap()
             .join(acquire_future)
-            .then_execute(self.context.graphics_queue.clone(), command_buffer)
+            .then_execute(rc.context.graphics_queue.clone(), command_buffer)
             .unwrap()
             .then_swapchain_present(
                 // TODO: swap to present queue???
-                self.context.graphics_queue.clone(),
-                self.context.swap_chain.clone(),
+                rc.context.graphics_queue.clone(),
+                rc.context.swap_chain.clone(),
                 image_index,
             )
             .then_signal_fence_and_flush();
 
         match future {
             Ok(future) => {
-                self.previous_frame_end = Some(Box::new(future) as Box<_>);
+                *previous_frame_end = Some(Box::new(future) as Box<_>);
             }
             Err(vulkano::sync::FlushError::OutOfDate) => {
-                self.recreate_swap_chain = true;
-                self.previous_frame_end =
-                    Some(Box::new(vulkano::sync::now(self.context.device.clone())) as Box<_>);
+                *recreate_swap_chain = true;
+                *previous_frame_end =
+                    Some(Box::new(vulkano::sync::now(rc.context.device.clone())) as Box<_>);
             }
             Err(e) => {
                 println!("{:?}", e);
-                self.previous_frame_end =
-                    Some(Box::new(vulkano::sync::now(self.context.device.clone())) as Box<_>);
+                *previous_frame_end =
+                    Some(Box::new(vulkano::sync::now(rc.context.device.clone())) as Box<_>);
             }
         }
     }
 
-    fn update(&mut self, keys: &HashMap<VirtualKeyCode, ElementState>, dt: f64) {
+    fn update(camera: &mut Camera, keys: &HashMap<VirtualKeyCode, ElementState>, dt: f64) {
         let camera_speed = (10.0 * dt) as f32;
 
         if is_pressed(keys, VirtualKeyCode::Q) {
-            self.camera.position += Vec3::Y * camera_speed;
+            camera.position += Vec3::Y * camera_speed;
         }
 
         if is_pressed(keys, VirtualKeyCode::E) {
-            self.camera.position -= Vec3::Y * camera_speed;
+            camera.position -= Vec3::Y * camera_speed;
         }
 
         if is_pressed(keys, VirtualKeyCode::A) {
-            self.camera.position -= self.camera.right() * camera_speed
+            camera.position -= camera.right() * camera_speed
         }
 
         if is_pressed(keys, VirtualKeyCode::D) {
-            self.camera.position += self.camera.right() * camera_speed
+            camera.position += camera.right() * camera_speed
         }
 
         if is_pressed(keys, VirtualKeyCode::W) {
-            self.camera.position += self.camera.forward() * camera_speed;
+            camera.position += camera.forward() * camera_speed;
         }
 
         if is_pressed(keys, VirtualKeyCode::S) {
-            self.camera.position -= self.camera.forward() * camera_speed;
+            camera.position -= camera.forward() * camera_speed;
         }
     }
 
     fn main_loop(mut self) {
+        let Application {
+            mut event_loop,
+            mut imgui_backend,
+            mut imgui_renderer,
+            mut imgui,
+            mut rc,
+            mut recreate_swap_chain,
+            mut previous_frame_end,
+            mut puffin_ui,
+            mut prebuild,
+            ..
+        } = self;
+
         let mut mouse_buttons: HashMap<MouseButton, ElementState> = HashMap::new();
         let mut keyboard_buttons: HashMap<VirtualKeyCode, ElementState> = HashMap::new();
 
@@ -922,23 +937,26 @@ impl Application {
         let mut rotation_x = 0.0;
         let mut rotation_y = 0.0;
 
-        let original_rotation = self.camera.rotation;
+        let original_rotation = rc.camera.rotation;
 
-        self.event_loop
-            .take()
-            .unwrap()
-            .run(move |event, _, control_flow| {
+        let mut running = true;
+        while running {
+            let want_capture_mouse = imgui.io_mut().want_capture_mouse;
+            let want_capture_keyboard = imgui.io_mut().want_capture_keyboard;
+
+            event_loop.run_return(|event, _, control_flow| {
+                puffin::profile_scope!("event_loop");
+
                 *control_flow = ControlFlow::Poll;
 
-                let imgui_io = self.imgui.io_mut();
-                self.platform
-                    .handle_event(imgui_io, self.context.surface.window(), &event);
+                imgui_backend.handle_event(&rc.context, &mut imgui, &event);
 
                 match event {
                     Event::WindowEvent {
                         event: WindowEvent::CloseRequested,
                         ..
                     } => {
+                        running = false;
                         *control_flow = ControlFlow::Exit;
                     }
 
@@ -946,13 +964,13 @@ impl Application {
                         event: WindowEvent::Resized(_),
                         ..
                     } => {
-                        self.recreate_swap_chain = true;
+                        recreate_swap_chain = true;
                     }
 
                     Event::WindowEvent {
                         event: WindowEvent::MouseInput { state, button, .. },
                         ..
-                    } if !imgui_io.want_capture_mouse => {
+                    } if !want_capture_mouse => {
                         mouse_buttons.insert(button, state);
                     }
 
@@ -968,14 +986,14 @@ impl Application {
                                 ..
                             },
                         ..
-                    } if !imgui_io.want_capture_keyboard => {
+                    } if !want_capture_keyboard => {
                         keyboard_buttons.insert(virtual_keycode, state);
                     }
 
                     Event::DeviceEvent {
                         event: DeviceEvent::MouseMotion { delta, .. },
                         ..
-                    } if !imgui_io.want_capture_mouse => {
+                    } if !want_capture_mouse => {
                         match mouse_buttons.get(&MouseButton::Left) {
                             Some(&ElementState::Pressed) => {
                                 let sensitivity = 0.5 * delta_time;
@@ -987,7 +1005,7 @@ impl Application {
                                 let y_quat = Quat::from_axis_angle(Vec3::X, -rotation_y);
                                 let x_quat = Quat::from_axis_angle(Vec3::Y, -rotation_x);
 
-                                self.camera.rotation = original_rotation * x_quat * y_quat;
+                                rc.camera.rotation = original_rotation * x_quat * y_quat;
                             }
 
                             _ => {}
@@ -996,40 +1014,56 @@ impl Application {
 
                     Event::NewEvents(_) => {
                         let now = Instant::now();
-                        self.imgui.io_mut().update_delta_time(now - last_frame);
+                        imgui.io_mut().update_delta_time(now - last_frame);
                         last_frame = now;
                     }
 
-                    Event::MainEventsCleared => {
-                        self.platform
-                            .prepare_frame(self.imgui.io_mut(), &self.context.surface.window())
-                            .expect("Failed to prepare frame");
-
-                        self.context.surface.window().request_redraw();
-                    }
-
-                    Event::RedrawRequested { .. } => {
-                        puffin::GlobalProfiler::lock().new_frame();
-                        let now = Instant::now();
-                        delta_time = now.duration_since(self.last_time).as_secs_f64();
-
-                        self.last_time = now;
-
-                        {
-                            puffin::profile_scope!("update");
-                            self.update(&keyboard_buttons, delta_time);
-                        }
-
-                        {
-                            puffin::profile_scope!("draw");
-                            self.draw_frame(&delta_time);
-                        }
-                    }
+                    Event::MainEventsCleared => *control_flow = ControlFlow::Exit,
 
                     _ => (),
                 }
-            })
+            });
+
+            puffin::GlobalProfiler::lock().new_frame();
+
+            let now = Instant::now();
+            delta_time = now.duration_since(self.last_time).as_secs_f64();
+
+            self.last_time = now;
+
+            {
+                puffin::profile_scope!("update");
+                Self::update(&mut rc.camera, &keyboard_buttons, delta_time);
+            }
+
+            {
+                puffin::profile_scope!("draw");
+                Self::draw_frame(
+                    &mut rc,
+                    FrameContext {
+                        prebuild: &mut prebuild,
+                        previous_frame_end: &mut previous_frame_end,
+                        recreate_swap_chain: &mut recreate_swap_chain,
+                        imgui_backend: &mut imgui_backend,
+                        imgui_renderer: &mut imgui_renderer,
+                        imgui: &mut imgui,
+                        puffin_ui: &mut puffin_ui,
+                    },
+                    &delta_time,
+                );
+            }
+        }
     }
+}
+
+struct FrameContext<'a> {
+    previous_frame_end: &'a mut Option<Box<dyn GpuFuture>>,
+    recreate_swap_chain: &'a mut bool,
+    prebuild: &'a mut bool,
+    imgui_backend: &'a mut ImguiBackend,
+    imgui_renderer: &'a mut ImguiRenderer,
+    imgui: &'a mut imgui::Context,
+    puffin_ui: &'a mut ProfilerUi,
 }
 
 fn main() {

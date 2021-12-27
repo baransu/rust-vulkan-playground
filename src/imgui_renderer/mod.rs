@@ -1,3 +1,4 @@
+pub mod backend;
 pub mod shaders;
 
 use vulkano::buffer::ImmutableBuffer;
@@ -72,7 +73,7 @@ pub type Texture = (
     Arc<ImmutableBuffer<TextureUsage>>,
 );
 
-pub struct Renderer {
+pub struct ImguiRenderer {
     pipeline: Arc<GraphicsPipeline>,
     font_texture: Texture,
     textures: Textures<Texture>,
@@ -82,7 +83,7 @@ pub struct Renderer {
     framebuffer: Arc<Framebuffer>,
 }
 
-impl Renderer {
+impl ImguiRenderer {
     /// Initialize the renderer object, including vertex buffers, ImGui font textures,
     /// and the Vulkan graphics pipeline.
     ///
@@ -98,7 +99,7 @@ impl Renderer {
     pub fn init(
         context: &Context,
         imgui: &mut imgui::Context,
-    ) -> Result<Renderer, Box<dyn std::error::Error>> {
+    ) -> Result<ImguiRenderer, Box<dyn std::error::Error>> {
         let vs = shaders::vs::load(context.device.clone()).unwrap();
         let fs = shaders::fs::load(context.device.clone()).unwrap();
 
@@ -173,7 +174,7 @@ impl Renderer {
             .build()
             .unwrap();
 
-        Ok(Renderer {
+        Ok(ImguiRenderer {
             pipeline,
             font_texture,
             textures,
