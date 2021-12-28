@@ -95,7 +95,7 @@ impl ScreenFrame {
         let framebuffers = Self::create_framebuffers_from_swap_chain_images(context, &render_pass);
 
         let descriptor_set =
-            Self::create_descriptor_set(&graphics_pipeline, &scene_frame, ui_frame);
+            Self::create_descriptor_set(&graphics_pipeline, &scene_frame, &ui_frame);
 
         ScreenFrame {
             graphics_pipeline,
@@ -106,9 +106,17 @@ impl ScreenFrame {
         }
     }
 
-    pub fn recreate_swap_chain(&mut self, context: &Context) {
+    pub fn recreate_swap_chain(
+        &mut self,
+        context: &Context,
+        scene_frame: &Arc<ImageView<AttachmentImage>>,
+        ui_frame: &Arc<ImageView<AttachmentImage>>,
+    ) {
         self.framebuffers =
             Self::create_framebuffers_from_swap_chain_images(context, &self.render_pass);
+
+        self.descriptor_set =
+            Self::create_descriptor_set(&self.graphics_pipeline, &scene_frame, &ui_frame);
     }
 
     pub fn create_command_buffer(&self, context: &Context) -> Arc<SecondaryAutoCommandBuffer> {

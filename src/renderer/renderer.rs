@@ -12,7 +12,7 @@ use vulkano::{
     },
     device::Device,
     format::{ClearValue, Format},
-    image::{view::ImageView, AttachmentImage, ImageUsage, MipmapsCount},
+    image::{view::ImageView, ImmutableImage, MipmapsCount},
     shader::ShaderStages,
     swapchain::{acquire_next_image, AcquireError},
     sync::{self, GpuFuture},
@@ -82,6 +82,8 @@ pub struct RenderContext {
 
     point_light_shadows: PointLightShadows,
     dir_light_shadows: DirLightShadows,
+
+    brdf_texture: Arc<ImageView<ImmutableImage>>,
 }
 
 pub struct Renderer {
@@ -176,8 +178,7 @@ impl Renderer {
         )
         .unwrap();
 
-        let gbuffer_target = Self::create_gbuffer_target(&context);
-        let gbuffer = GBuffer::initialize(&context, &materials_layout, &gbuffer_target);
+        let gbuffer = GBuffer::initialize(&context, &materials_layout);
 
         let gen_hdr_cubemap = GenHdrCubemap::initialize(&context, skybox_path);
 
@@ -224,7 +225,6 @@ impl Renderer {
 
         let light_system = LightSystem::initialize(
             &context,
-            &gbuffer_target,
             &scene.camera_uniform_buffer,
             &scene.light_uniform_buffer,
             &gbuffer,
@@ -251,7 +251,7 @@ impl Renderer {
         let mut imgui_backend = ImguiBackend::new(&context, &mut imgui);
 
         let screen_frame =
-            ScreenFrame::initialize(&context, &gbuffer_target, &imgui_backend.ui_frame());
+            ScreenFrame::initialize(&context, &light_system.target, &imgui_backend.ui_frame());
 
         let gbuffer_position_texture_id = imgui_backend
             .register_texture(
@@ -358,6 +358,8 @@ impl Renderer {
                 prefilterenvmap,
                 point_light_shadows,
                 dir_light_shadows,
+
+                brdf_texture,
             },
 
             imgui,
@@ -379,24 +381,34 @@ impl Renderer {
         self.rc.scene.add_entity(entity);
     }
 
-    fn create_gbuffer_target(context: &Context) -> Arc<ImageView<AttachmentImage>> {
-        let image = AttachmentImage::with_usage(
-            context.device.clone(),
-            context.swap_chain.dimensions(),
-            Format::R16G16B16A16_SFLOAT, // context.swap_chain.format(),
-            ImageUsage {
-                sampled: true,
-                ..ImageUsage::none()
-            },
-        )
-        .unwrap();
+    fn recreate_swap_chain(rc: &mut RenderContext, imgui_backend: &ImguiBackend) {
+        puffin::profile_scope!("recreate_swap_chain");
 
-        ImageView::new(image).unwrap()
-    }
-
-    fn recreate_swap_chain(rc: &mut RenderContext) {
         rc.context.recreate_swap_chain();
-        rc.screen_frame.recreate_swap_chain(&rc.context);
+
+        rc.gbuffer.recreate_swap_chain(&rc.context);
+
+        rc.ssao = Ssao::initialize(&rc.context, &rc.scene.camera_uniform_buffer, &rc.gbuffer);
+        rc.ssao_blur = SsaoBlur::initialize(&rc.context, &rc.ssao.target);
+
+        rc.light_system = LightSystem::initialize(
+            &rc.context,
+            &rc.scene.camera_uniform_buffer,
+            &rc.scene.light_uniform_buffer,
+            &rc.gbuffer,
+            &rc.ssao_blur.target,
+            &rc.irradiance_convolution.cube_attachment_view,
+            &rc.prefilterenvmap.cube_attachment_view,
+            &rc.brdf_texture,
+            &rc.point_light_shadows.cube_attachment_view,
+            &rc.dir_light_shadows.target_attachment,
+        );
+
+        rc.screen_frame.recreate_swap_chain(
+            &rc.context,
+            &rc.light_system.target,
+            &imgui_backend.ui_frame(),
+        );
 
         println!("Recreating swap chain");
     }
@@ -490,7 +502,7 @@ impl Renderer {
         previous_frame_end.as_mut().unwrap().cleanup_finished();
 
         if *recreate_swap_chain {
-            Self::recreate_swap_chain(rc);
+            Self::recreate_swap_chain(rc, &imgui_backend);
             *recreate_swap_chain = false;
         }
 
@@ -508,8 +520,6 @@ impl Renderer {
             *recreate_swap_chain = true;
         }
 
-        let light_command_buffer = rc.light_system.command_buffers[image_index].clone();
-
         let offscreen_framebuffer = rc.gbuffer.framebuffer.clone();
         let framebuffer = rc.screen_frame.framebuffers[image_index].clone();
 
@@ -522,6 +532,12 @@ impl Renderer {
             CommandBufferUsage::SimultaneousUse,
         )
         .unwrap();
+
+        if *prebuild {
+            Self::prebuild(rc, &mut builder);
+            println!("Prebuild done");
+            *prebuild = false;
+        }
 
         rc.point_light_shadows
             .add_to_builder(&rc.context, &mut builder, &rc.scene);
@@ -564,10 +580,8 @@ impl Renderer {
                 .unwrap();
         }
 
-        let scene_command_buffer = rc.gbuffer.create_command_buffer(&rc.context, &rc.scene);
-
         builder
-            .execute_commands(scene_command_buffer)
+            .execute_commands(rc.gbuffer.create_command_buffer(&rc.context, &rc.scene))
             .unwrap()
             .end_render_pass()
             .unwrap();
@@ -603,7 +617,7 @@ impl Renderer {
                 vec![ClearValue::Float([0.0, 0.0, 0.0, 0.0])],
             )
             .unwrap()
-            .execute_commands(light_command_buffer.clone())
+            .execute_commands(rc.light_system.create_command_buffers(&rc.context).clone())
             .unwrap()
             .end_render_pass()
             .unwrap();
@@ -633,12 +647,6 @@ impl Renderer {
             .unwrap()
             .end_render_pass()
             .unwrap();
-
-        if *prebuild {
-            Self::prebuild(rc, &mut builder);
-            println!("Prebuild done");
-            *prebuild = false;
-        }
 
         let command_buffer = builder.build().unwrap();
 

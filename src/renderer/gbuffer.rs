@@ -7,7 +7,7 @@ use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout, DescriptorSetLayoutError},
     format::Format,
-    image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage},
+    image::{view::ImageView, AttachmentImage, ImageUsage},
     pipeline::{
         graphics::{
             depth_stencil::DepthStencilState,
@@ -35,23 +35,18 @@ pub struct GBuffer {
     pub render_pass: Arc<RenderPass>,
     pub framebuffer: Arc<Framebuffer>,
     pub pipeline: Arc<GraphicsPipeline>,
+
+    layout: Arc<DescriptorSetLayout>,
 }
 
 impl GBuffer {
-    pub fn initialize(
-        context: &Context,
-        layout: &Arc<DescriptorSetLayout>,
-        target: &GBufferTarget,
-    ) -> GBuffer {
-        let position_buffer =
-            Self::create_attachment_image(context, &target, Format::R16G16B16A16_SFLOAT);
-        let normals_buffer =
-            Self::create_attachment_image(context, &target, Format::R16G16B16A16_SFLOAT);
-        let albedo_buffer =
-            Self::create_attachment_image(context, &target, Format::R16G16B16A16_SFLOAT);
+    pub fn initialize(context: &Context, layout: &Arc<DescriptorSetLayout>) -> GBuffer {
+        let position_buffer = Self::create_attachment_image(context, Format::R16G16B16A16_SFLOAT);
+        let normals_buffer = Self::create_attachment_image(context, Format::R16G16B16A16_SFLOAT);
+        let albedo_buffer = Self::create_attachment_image(context, Format::R16G16B16A16_SFLOAT);
         let metalic_roughness_buffer =
-            Self::create_attachment_image(context, &target, Format::R8G8B8A8_UNORM);
-        let depth_buffer = Self::create_depth_attachment(context, &target);
+            Self::create_attachment_image(context, Format::R8G8B8A8_UNORM);
+        let depth_buffer = Self::create_depth_attachment(context);
 
         let render_pass = Self::create_render_pass(context);
         let framebuffer = Self::create_framebuffer(
@@ -75,7 +70,29 @@ impl GBuffer {
             render_pass,
             framebuffer,
             pipeline,
+
+            layout: layout.clone(),
         }
+    }
+
+    pub fn recreate_swap_chain(&mut self, context: &Context) {
+        self.pipeline = Self::create_pipeline(context, &self.layout, &self.render_pass);
+
+        self.position_buffer = Self::create_attachment_image(context, Format::R16G16B16A16_SFLOAT);
+        self.normals_buffer = Self::create_attachment_image(context, Format::R16G16B16A16_SFLOAT);
+        self.albedo_buffer = Self::create_attachment_image(context, Format::R16G16B16A16_SFLOAT);
+        self.metalic_roughness_buffer =
+            Self::create_attachment_image(context, Format::R8G8B8A8_UNORM);
+        self.depth_buffer = Self::create_depth_attachment(context);
+
+        self.framebuffer = Self::create_framebuffer(
+            &self.render_pass,
+            &self.position_buffer,
+            &self.normals_buffer,
+            &self.albedo_buffer,
+            &self.metalic_roughness_buffer,
+            &self.depth_buffer,
+        );
     }
 
     fn create_framebuffer(
@@ -189,10 +206,9 @@ impl GBuffer {
 
     fn create_attachment_image(
         context: &Context,
-        target: &GBufferTarget,
         format: Format,
     ) -> Arc<ImageView<AttachmentImage>> {
-        let (usage, dimensions) = Self::usage_dimensions(target);
+        let (usage, dimensions) = Self::usage_dimensions(context);
 
         ImageView::new(
             AttachmentImage::with_usage(
@@ -206,11 +222,8 @@ impl GBuffer {
         .unwrap()
     }
 
-    fn create_depth_attachment(
-        context: &Context,
-        target: &GBufferTarget,
-    ) -> Arc<ImageView<AttachmentImage>> {
-        let (usage, dimensions) = Self::usage_dimensions(target);
+    fn create_depth_attachment(context: &Context) -> Arc<ImageView<AttachmentImage>> {
+        let (usage, dimensions) = Self::usage_dimensions(context);
 
         ImageView::new(
             AttachmentImage::with_usage(
@@ -227,8 +240,8 @@ impl GBuffer {
         .unwrap()
     }
 
-    fn usage_dimensions(target: &GBufferTarget) -> (ImageUsage, [u32; 2]) {
-        let dimensions = target.image().dimensions().width_height();
+    fn usage_dimensions(context: &Context) -> (ImageUsage, [u32; 2]) {
+        let dimensions = context.swap_chain.dimensions();
 
         let usage = ImageUsage {
             sampled: true,

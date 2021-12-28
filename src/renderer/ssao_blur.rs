@@ -126,21 +126,18 @@ impl SsaoBlur {
 
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
         vulkano::single_pass_renderpass!(context.device.clone(),
-                attachments: {
-                                        color: {
-                                                load: Clear,
-                                                store: Store,
-                                                format: Format::R16G16B16A16_SFLOAT,
-                                                samples: 1,
-                                        }
-
-                                },
-                pass: {
-                                                        color: [color],
-                                                        depth_stencil: {}
-                        }
-
-
+            attachments: {
+                color: {
+                        load: Clear,
+                        store: Store,
+                        format: Format::R16G16B16A16_SFLOAT,
+                        samples: 1,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
         )
         .unwrap()
     }

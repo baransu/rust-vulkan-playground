@@ -5,7 +5,7 @@ use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
     descriptor_set::PersistentDescriptorSet,
     format::Format,
-    image::{view::ImageView, AttachmentImage, ImmutableImage, StorageImage},
+    image::{view::ImageView, AttachmentImage, ImageUsage, ImmutableImage, StorageImage},
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -31,13 +31,15 @@ pub struct LightSystem {
     pub framebuffer: Arc<Framebuffer>,
     pub render_pass: Arc<RenderPass>,
 
-    pub command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
+    pub target: Arc<ImageView<AttachmentImage>>,
+
+    descriptor_set: Arc<PersistentDescriptorSet>,
+    screen_quad_buffers: ScreenFrameQuadBuffers,
 }
 
 impl LightSystem {
     pub fn initialize(
         context: &Context,
-        target: &GBufferTarget,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
         gbuffer: &GBuffer,
@@ -50,8 +52,10 @@ impl LightSystem {
     ) -> LightSystem {
         let screen_quad_buffers = ScreenFrameQuadBuffers::initialize(context);
 
+        let target = Self::create_target(context);
+
         let render_pass = Self::create_render_pass(context);
-        let framebuffer = Self::create_framebuffer(&render_pass, target);
+        let framebuffer = Self::create_framebuffer(&render_pass, &target);
         let pipeline = Self::create_pipeline(context, &render_pass);
 
         let descriptor_set = Self::create_descriptor_set(
@@ -68,21 +72,41 @@ impl LightSystem {
             &dir_shadow_map,
         );
 
-        let command_buffers =
-            Self::create_command_buffers(context, &pipeline, &descriptor_set, &screen_quad_buffers);
-
         LightSystem {
             pipeline,
             render_pass,
             framebuffer,
 
-            command_buffers,
+            descriptor_set,
+            target,
+            screen_quad_buffers,
         }
+    }
+
+    pub fn recreate_swap_chain(&mut self, context: &Context) {
+        self.target = Self::create_target(context);
+
+        self.framebuffer = Self::create_framebuffer(&self.render_pass, &self.target);
+    }
+
+    fn create_target(context: &Context) -> Arc<ImageView<AttachmentImage>> {
+        let image = AttachmentImage::with_usage(
+            context.device.clone(),
+            context.swap_chain.dimensions(),
+            Format::R16G16B16A16_SFLOAT,
+            ImageUsage {
+                sampled: true,
+                ..ImageUsage::none()
+            },
+        )
+        .unwrap();
+
+        ImageView::new(image).unwrap()
     }
 
     fn create_descriptor_set(
         context: &Context,
-        light_graphics_pipeline: &Arc<GraphicsPipeline>,
+        pipeline: &Arc<GraphicsPipeline>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         gbuffer: &GBuffer,
         light_uniform_buffer: &Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
@@ -93,11 +117,7 @@ impl LightSystem {
         point_shadow_map: &Arc<ImageView<StorageImage>>,
         dir_shadow_map: &Arc<ImageView<AttachmentImage>>,
     ) -> Arc<PersistentDescriptorSet> {
-        let layout = light_graphics_pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(0)
-            .unwrap();
+        let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
 
         let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
@@ -229,12 +249,7 @@ impl LightSystem {
         .unwrap()
     }
 
-    fn create_command_buffers(
-        context: &Context,
-        graphics_pipeline: &Arc<GraphicsPipeline>,
-        descriptor_set: &Arc<PersistentDescriptorSet>,
-        screen_quad_buffers: &ScreenFrameQuadBuffers,
-    ) -> Vec<Arc<SecondaryAutoCommandBuffer>> {
+    pub fn create_command_buffers(&self, context: &Context) -> Arc<SecondaryAutoCommandBuffer> {
         let dimensions_u32 = context.swap_chain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
@@ -244,37 +259,29 @@ impl LightSystem {
             depth_range: 0.0..1.0,
         };
 
-        let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
+        let mut builder = AutoCommandBufferBuilder::secondary_graphics(
+            context.device.clone(),
+            context.graphics_queue.family(),
+            CommandBufferUsage::SimultaneousUse,
+            self.pipeline.subpass().clone(),
+        )
+        .unwrap();
 
-        for _i in 0..context.swap_chain.num_images() as usize {
-            let mut builder = AutoCommandBufferBuilder::secondary_graphics(
-                context.device.clone(),
-                context.graphics_queue.family(),
-                CommandBufferUsage::SimultaneousUse,
-                graphics_pipeline.subpass().clone(),
+        builder
+            .set_viewport(0, [viewport.clone()])
+            .bind_pipeline_graphics(self.pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.pipeline.layout().clone(),
+                0,
+                self.descriptor_set.clone(),
             )
+            .bind_vertex_buffers(0, self.screen_quad_buffers.vertex_buffer.clone())
+            .bind_index_buffer(self.screen_quad_buffers.index_buffer.clone())
+            .draw_indexed(self.screen_quad_buffers.indices_length as u32, 1, 0, 0, 0)
             .unwrap();
 
-            builder
-                .set_viewport(0, [viewport.clone()])
-                .bind_pipeline_graphics(graphics_pipeline.clone())
-                .bind_descriptor_sets(
-                    PipelineBindPoint::Graphics,
-                    graphics_pipeline.layout().clone(),
-                    0,
-                    descriptor_set.clone(),
-                )
-                .bind_vertex_buffers(0, screen_quad_buffers.vertex_buffer.clone())
-                .bind_index_buffer(screen_quad_buffers.index_buffer.clone())
-                .draw_indexed(screen_quad_buffers.indices_length as u32, 1, 0, 0, 0)
-                .unwrap();
-
-            let command_buffer = Arc::new(builder.build().unwrap());
-
-            command_buffers.push(command_buffer);
-        }
-
-        command_buffers
+        Arc::new(builder.build().unwrap())
     }
 }
 
