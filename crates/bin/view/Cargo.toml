@@ -1,0 +1,24 @@
+[package]
+edition = "2018"
+name = "view"
+version = "0.1.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+base64 = "0.13.0"
+glam = "0.20.1"
+image = "0.23.14"
+imgui = "0.8.0"
+imgui-winit-support = "0.8.0"
+puffin = "0.12.1"
+puffin-imgui = "0.15.0"
+rand = "0.8.4"
+vulkano = {git = "https://github.com/baransu/vulkano", rev = "092b1940"}
+vulkano-shaders = {git = "https://github.com/baransu/vulkano", rev = "092b1940"}
+vulkano-win = {git = "https://github.com/baransu/vulkano", rev = "092b1940"}
+winit = "0.25.0"
+
+[dependencies.gltf]
+features = ["extras", "names"]
+version = "0.16"
