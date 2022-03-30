@@ -92,7 +92,7 @@ impl ScreenFrame {
         let render_pass = Self::create_render_pass(context);
         let graphics_pipeline = Self::create_graphics_pipeline(context, &render_pass);
 
-        let framebuffers = Self::create_framebuffers_from_swap_chain_images(context, &render_pass);
+        let framebuffers = Self::create_framebuffers_from_swapchain_images(context, &render_pass);
 
         let descriptor_set =
             Self::create_descriptor_set(&graphics_pipeline, &scene_frame, &ui_frame);
@@ -106,21 +106,21 @@ impl ScreenFrame {
         }
     }
 
-    pub fn recreate_swap_chain(
+    pub fn recreate_swapchain(
         &mut self,
         context: &Context,
         scene_frame: &Arc<ImageView<AttachmentImage>>,
         ui_frame: &Arc<ImageView<AttachmentImage>>,
     ) {
         self.framebuffers =
-            Self::create_framebuffers_from_swap_chain_images(context, &self.render_pass);
+            Self::create_framebuffers_from_swapchain_images(context, &self.render_pass);
 
         self.descriptor_set =
             Self::create_descriptor_set(&self.graphics_pipeline, &scene_frame, &ui_frame);
     }
 
     pub fn create_command_buffer(&self, context: &Context) -> Arc<SecondaryAutoCommandBuffer> {
-        let dimensions_u32 = context.swap_chain.dimensions();
+        let dimensions_u32 = context.swapchain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         let viewport = Viewport {
@@ -177,12 +177,12 @@ impl ScreenFrame {
      * This function created frame buffer for each swap chain image.
      * It contains 1 attachment which is our offscreen framebuffer containing rendered scene.
      */
-    fn create_framebuffers_from_swap_chain_images(
+    fn create_framebuffers_from_swapchain_images(
         context: &Context,
         render_pass: &Arc<RenderPass>,
     ) -> Vec<Arc<Framebuffer>> {
         context
-            .swap_chain_images
+            .swapchain_images
             .iter()
             .map(|swapchain_image| {
                 let image = ImageView::new(swapchain_image.clone()).unwrap();
@@ -223,7 +223,7 @@ impl ScreenFrame {
     }
 
     fn create_render_pass(context: &Context) -> Arc<RenderPass> {
-        let color_format = context.swap_chain.format();
+        let color_format = context.swapchain.format();
 
         single_pass_renderpass!(context.device.clone(),
                 attachments: {

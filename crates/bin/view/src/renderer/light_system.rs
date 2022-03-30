@@ -83,7 +83,7 @@ impl LightSystem {
         }
     }
 
-    pub fn recreate_swap_chain(&mut self, context: &Context) {
+    pub fn recreate_swapchain(&mut self, context: &Context) {
         self.target = Self::create_target(context);
 
         self.framebuffer = Self::create_framebuffer(&self.render_pass, &self.target);
@@ -92,7 +92,7 @@ impl LightSystem {
     fn create_target(context: &Context) -> Arc<ImageView<AttachmentImage>> {
         let image = AttachmentImage::with_usage(
             context.device.clone(),
-            context.swap_chain.dimensions(),
+            context.swapchain.dimensions(),
             Format::R16G16B16A16_SFLOAT,
             ImageUsage {
                 sampled: true,
@@ -250,7 +250,7 @@ impl LightSystem {
     }
 
     pub fn create_command_buffers(&self, context: &Context) -> Arc<SecondaryAutoCommandBuffer> {
-        let dimensions_u32 = context.swap_chain.dimensions();
+        let dimensions_u32 = context.swapchain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         let viewport = Viewport {

@@ -106,7 +106,7 @@ impl Ssao {
         descriptor_set: &Arc<PersistentDescriptorSet>,
         screen_quad_buffers: &ScreenFrameQuadBuffers,
     ) -> Vec<Arc<SecondaryAutoCommandBuffer>> {
-        let dimensions_u32 = context.swap_chain.dimensions();
+        let dimensions_u32 = context.swapchain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         let viewport = Viewport {
@@ -117,7 +117,7 @@ impl Ssao {
 
         let mut command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>> = Vec::new();
 
-        for _i in 0..context.swap_chain.num_images() as usize {
+        for _i in 0..context.swapchain.num_images() as usize {
             let mut builder = AutoCommandBufferBuilder::secondary_graphics(
                 context.device.clone(),
                 context.graphics_queue.family(),
@@ -181,7 +181,7 @@ impl Ssao {
     }
 
     fn create_attachment(context: &Context) -> Arc<ImageView<AttachmentImage>> {
-        let dimensions = context.swap_chain.dimensions();
+        let dimensions = context.swapchain.dimensions();
 
         let usage = ImageUsage {
             sampled: true,

@@ -12,9 +12,7 @@ use vulkano::{
         layers_list, ApplicationInfo, Instance, InstanceExtensions,
     },
     sampler::{BorderColor, Filter, MipmapMode, Sampler, SamplerAddressMode},
-    swapchain::{
-        ColorSpace, CompositeAlpha, PresentMode, SupportedPresentModes, Surface, Swapchain,
-    },
+    swapchain::{ColorSpace, CompositeAlpha, PresentMode, Surface, Swapchain},
     sync::SharingMode,
     Version,
 };
@@ -26,7 +24,6 @@ use winit::{
 
 #[cfg(not(target_os = "macos"))]
 const VALIDATION_LAYERS: &[&str] = &["VK_LAYER_LUNARG_standard_validation"];
-
 #[cfg(target_os = "macos")]
 const VALIDATION_LAYERS: &[&str] = &["VK_LAYER_KHRONOS_validation"];
 
@@ -50,8 +47,8 @@ pub struct Context {
     #[allow(dead_code)]
     pub device: Arc<Device>,
     pub graphics_queue: Arc<Queue>,
-    pub swap_chain: Arc<Swapchain<Window>>,
-    pub swap_chain_images: Vec<Arc<SwapchainImage<Window>>>,
+    pub swapchain: Arc<Swapchain<Window>>,
+    pub swapchain_images: Vec<Arc<SwapchainImage<Window>>>,
 
     pub depth_format: Format,
     pub sample_count: SampleCount,
@@ -69,8 +66,8 @@ impl Context {
 
         let (device, graphics_queue) = Self::create_device_and_queue(&surface, &instance);
 
-        let (swap_chain, swap_chain_images) =
-            Self::create_swap_chain(&surface, &device, &graphics_queue);
+        let (swapchain, swapchain_images) =
+            Self::create_swapchain(&surface, &device, &graphics_queue);
 
         let image_sampler = Self::create_image_sampler(&device);
         let depth_sampler = Self::create_depth_sampler(&device);
@@ -84,8 +81,8 @@ impl Context {
 
                 device,
                 graphics_queue,
-                swap_chain,
-                swap_chain_images,
+                swapchain,
+                swapchain_images,
 
                 depth_format: Self::find_depth_format(),
                 sample_count: Self::find_sample_count(),
@@ -189,13 +186,13 @@ impl Context {
 
         DebugCallback::new(&instance, severity, message_type, |msg| {
             if msg.severity.error {
-                log::error!("[{:?}] {:?}", msg.ty, msg.description);
+                log::error!("{:?}", msg.description);
             } else if msg.severity.warning {
-                log::warn!("[{:?}] {:?}", msg.ty, msg.description);
+                log::warn!("{:?}", msg.description);
             } else if msg.severity.information {
-                log::info!("[{:?}] {:?}", msg.ty, msg.description);
+                log::info!("{:?}", msg.description);
             } else if msg.severity.information {
-                log::debug!("[{:?}] {:?}", msg.ty, msg.description);
+                log::debug!("{:?}", msg.description);
             }
         })
         .ok()
@@ -248,7 +245,7 @@ impl Context {
         (device, queue)
     }
 
-    fn create_swap_chain(
+    fn create_swapchain(
         surface: &Arc<Surface<Window>>,
         device: &Arc<Device>,
         graphics_queue: &Arc<Queue>,
@@ -261,7 +258,6 @@ impl Context {
 
         let (surface_format, surface_color_space) =
             Self::choose_swap_surface_format(&capabilities.supported_formats);
-        let present_mode = Self::choose_swap_present_mode(capabilities.present_modes);
 
         let mut image_count = capabilities.min_image_count + 1;
         if capabilities.max_image_count.is_some()
@@ -280,7 +276,7 @@ impl Context {
 
         let dimensions: [u32; 2] = surface.window().inner_size().into();
 
-        let (swap_chain, images) = Swapchain::start(device.clone(), surface.clone())
+        let (swapchain, images) = Swapchain::start(device.clone(), surface.clone())
             .num_images(image_count)
             .format(surface_format)
             .color_space(surface_color_space)
@@ -291,23 +287,23 @@ impl Context {
             .transform(capabilities.current_transform)
             .layers(1)
             .clipped(true)
-            .present_mode(present_mode)
+            .present_mode(PresentMode::Fifo)
             .build()
             .unwrap();
 
-        (swap_chain, images)
+        (swapchain, images)
     }
 
-    pub fn recreate_swap_chain(&mut self) {
+    pub fn recreate_swapchain(&mut self) {
         let dimensions: [u32; 2] = self.surface.window().inner_size().into();
 
-        let (swap_chain, images) = Swapchain::recreate(&self.swap_chain)
+        let (swapchain, images) = Swapchain::recreate(&self.swapchain)
             .dimensions(dimensions)
             .build()
             .unwrap();
 
-        self.swap_chain = swap_chain;
-        self.swap_chain_images = images;
+        self.swapchain = swapchain;
+        self.swapchain_images = images;
     }
 
     fn choose_swap_surface_format(
@@ -321,16 +317,6 @@ impl Context {
         log::debug!("Using swap surface format: {:?}", format);
 
         format
-    }
-
-    fn choose_swap_present_mode(available_present_modes: SupportedPresentModes) -> PresentMode {
-        if available_present_modes.mailbox {
-            PresentMode::Mailbox
-        } else if available_present_modes.immediate {
-            PresentMode::Immediate
-        } else {
-            PresentMode::Fifo
-        }
     }
 
     fn find_depth_format() -> Format {

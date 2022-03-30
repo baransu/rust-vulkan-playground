@@ -11,8 +11,8 @@ const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
 
 const PLANE: &str = "res/models/plane/plane.gltf";
 
-const MODEL_PATHS: [&str; 3] = [
-    DAMAGED_HELMET,
+const MODEL_PATHS: [&str; 2] = [
+    // DAMAGED_HELMET,
     BOTTLE,
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",

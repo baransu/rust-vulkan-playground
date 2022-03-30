@@ -90,7 +90,7 @@ pub struct Renderer {
     rc: RenderContext,
 
     previous_frame_end: Option<Box<dyn GpuFuture>>,
-    recreate_swap_chain: bool,
+    recreate_swapchain: bool,
 
     last_time: Instant,
 
@@ -218,8 +218,8 @@ impl Renderer {
                 .entry_point("main")
                 .unwrap(),
             [
-                context.swap_chain.dimensions()[0] as f32,
-                context.swap_chain.dimensions()[1] as f32,
+                context.swapchain.dimensions()[0] as f32,
+                context.swapchain.dimensions()[1] as f32,
             ],
         );
 
@@ -244,8 +244,8 @@ impl Renderer {
         imgui.set_ini_filename(None);
 
         imgui.io_mut().display_size = [
-            context.swap_chain.dimensions()[0] as f32,
-            context.swap_chain.dimensions()[1] as f32,
+            context.swapchain.dimensions()[0] as f32,
+            context.swapchain.dimensions()[1] as f32,
         ];
 
         let mut imgui_backend = ImguiBackend::new(&context, &mut imgui);
@@ -366,7 +366,7 @@ impl Renderer {
             imgui_backend,
 
             previous_frame_end,
-            recreate_swap_chain: false,
+            recreate_swapchain: false,
 
             last_time: Instant::now(),
 
@@ -381,12 +381,12 @@ impl Renderer {
         self.rc.scene.add_entity(entity);
     }
 
-    fn recreate_swap_chain(rc: &mut RenderContext, imgui_backend: &ImguiBackend) {
-        puffin::profile_scope!("recreate_swap_chain");
+    fn recreate_swapchain(rc: &mut RenderContext, imgui_backend: &ImguiBackend) {
+        puffin::profile_scope!("recreate_swapchain");
 
-        rc.context.recreate_swap_chain();
+        rc.context.recreate_swapchain();
 
-        rc.gbuffer.recreate_swap_chain(&rc.context);
+        rc.gbuffer.recreate_swapchain(&rc.context);
 
         rc.ssao = Ssao::initialize(&rc.context, &rc.scene.camera_uniform_buffer, &rc.gbuffer);
         rc.ssao_blur = SsaoBlur::initialize(&rc.context, &rc.ssao.target);
@@ -404,7 +404,21 @@ impl Renderer {
             &rc.dir_light_shadows.target_attachment,
         );
 
-        rc.screen_frame.recreate_swap_chain(
+        rc.skybox = SkyboxPass::initialize(
+            &rc.context,
+            &rc.gbuffer.render_pass,
+            &rc.gen_hdr_cubemap.cube_attachment_view,
+            fs_gbuffer::load(rc.context.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap(),
+            [
+                rc.context.swapchain.dimensions()[0] as f32,
+                rc.context.swapchain.dimensions()[1] as f32,
+            ],
+        );
+
+        rc.screen_frame.recreate_swapchain(
             &rc.context,
             &rc.light_system.target,
             &imgui_backend.ui_frame(),
@@ -423,9 +437,7 @@ impl Renderer {
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         delta_time: &f64,
     ) {
-        let FrameContext {
-            puffin_ui, imgui, ..
-        } = frame_context;
+        let FrameContext { imgui, .. } = frame_context;
 
         frame_context
             .imgui_backend
@@ -438,8 +450,6 @@ impl Renderer {
                 let dir_shadow_texture_id = rc.dir_shadow_texture_id;
 
                 let camera_pos = rc.camera.position;
-
-                puffin_ui.window(&ui);
 
                 // Here we create a window with a specific size, and force it to always have a vertical scrollbar visible
                 Window::new("Debug")
@@ -492,7 +502,7 @@ impl Renderer {
         let FrameContext {
             previous_frame_end,
             prebuild,
-            recreate_swap_chain,
+            recreate_swapchain,
             imgui,
             imgui_backend,
             puffin_ui,
@@ -501,29 +511,24 @@ impl Renderer {
 
         previous_frame_end.as_mut().unwrap().cleanup_finished();
 
-        if *recreate_swap_chain {
-            Self::recreate_swap_chain(rc, &imgui_backend);
-            *recreate_swap_chain = false;
-        }
-
         let (image_index, suboptimal, acquire_future) =
-            match acquire_next_image(rc.context.swap_chain.clone(), None) {
+            match acquire_next_image(rc.context.swapchain.clone(), None) {
                 Ok(r) => r,
                 Err(AcquireError::OutOfDate) => {
-                    *recreate_swap_chain = true;
+                    *recreate_swapchain = true;
                     return;
                 }
                 Err(err) => panic!("{:?}", err),
             };
 
         if suboptimal {
-            *recreate_swap_chain = true;
+            *recreate_swapchain = true;
         }
 
         let offscreen_framebuffer = rc.gbuffer.framebuffer.clone();
         let framebuffer = rc.screen_frame.framebuffers[image_index].clone();
 
-        let dimensions_u32 = rc.context.swap_chain.dimensions();
+        let dimensions_u32 = rc.context.swapchain.dimensions();
         let dimensions = [dimensions_u32[0] as f32, dimensions_u32[1] as f32];
 
         let mut builder = AutoCommandBufferBuilder::primary(
@@ -627,7 +632,7 @@ impl Renderer {
             FrameContext {
                 prebuild,
                 previous_frame_end,
-                recreate_swap_chain,
+                recreate_swapchain,
                 imgui_backend,
                 imgui,
                 puffin_ui,
@@ -658,7 +663,7 @@ impl Renderer {
             .unwrap()
             .then_swapchain_present(
                 rc.context.graphics_queue.clone(),
-                rc.context.swap_chain.clone(),
+                rc.context.swapchain.clone(),
                 image_index,
             )
             .then_signal_fence_and_flush();
@@ -668,7 +673,7 @@ impl Renderer {
                 *previous_frame_end = Some(Box::new(future) as Box<_>);
             }
             Err(vulkano::sync::FlushError::OutOfDate) => {
-                *recreate_swap_chain = true;
+                *recreate_swapchain = true;
                 *previous_frame_end =
                     Some(Box::new(vulkano::sync::now(rc.context.device.clone())) as Box<_>);
             }
@@ -677,6 +682,12 @@ impl Renderer {
                 *previous_frame_end =
                     Some(Box::new(vulkano::sync::now(rc.context.device.clone())) as Box<_>);
             }
+        }
+
+        if *recreate_swapchain {
+            Self::recreate_swapchain(rc, &imgui_backend);
+            // *prebuild = true;
+            *recreate_swapchain = false;
         }
     }
 
@@ -714,7 +725,7 @@ impl Renderer {
             mut imgui_backend,
             mut imgui,
             mut rc,
-            mut recreate_swap_chain,
+            mut recreate_swapchain,
             mut previous_frame_end,
             mut puffin_ui,
             mut prebuild,
@@ -757,7 +768,7 @@ impl Renderer {
                         event: WindowEvent::Resized(_),
                         ..
                     } => {
-                        recreate_swap_chain = true;
+                        recreate_swapchain = true;
                     }
 
                     Event::WindowEvent {
@@ -836,7 +847,7 @@ impl Renderer {
                     FrameContext {
                         prebuild: &mut prebuild,
                         previous_frame_end: &mut previous_frame_end,
-                        recreate_swap_chain: &mut recreate_swap_chain,
+                        recreate_swapchain: &mut recreate_swapchain,
                         imgui_backend: &mut imgui_backend,
                         imgui: &mut imgui,
                         puffin_ui: &mut puffin_ui,
@@ -850,7 +861,7 @@ impl Renderer {
 
 struct FrameContext<'a> {
     previous_frame_end: &'a mut Option<Box<dyn GpuFuture>>,
-    recreate_swap_chain: &'a mut bool,
+    recreate_swapchain: &'a mut bool,
     prebuild: &'a mut bool,
     imgui_backend: &'a mut ImguiBackend,
     imgui: &'a mut imgui::Context,

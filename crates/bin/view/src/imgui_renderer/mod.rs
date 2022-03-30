@@ -103,7 +103,7 @@ impl ImguiRenderer {
         let vs = shaders::vs::load(context.device.clone()).unwrap();
         let fs = shaders::fs::load(context.device.clone()).unwrap();
 
-        let format = context.swap_chain.format();
+        let format = context.swapchain.format();
         let render_pass = vulkano::single_pass_renderpass!(
             context.device.clone(),
             attachments: {
@@ -147,8 +147,8 @@ impl ImguiRenderer {
         let target = ImageView::new(
             AttachmentImage::with_usage(
                 context.device.clone(),
-                context.swap_chain.dimensions(),
-                context.swap_chain.format(),
+                context.swapchain.dimensions(),
+                context.swapchain.format(),
                 ImageUsage {
                     sampled: true,
                     ..ImageUsage::none()

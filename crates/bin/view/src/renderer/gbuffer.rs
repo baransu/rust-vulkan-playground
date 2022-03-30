@@ -75,7 +75,7 @@ impl GBuffer {
         }
     }
 
-    pub fn recreate_swap_chain(&mut self, context: &Context) {
+    pub fn recreate_swapchain(&mut self, context: &Context) {
         self.pipeline = Self::create_pipeline(context, &self.layout, &self.render_pass);
 
         self.position_buffer = Self::create_attachment_image(context, Format::R16G16B16A16_SFLOAT);
@@ -179,8 +179,8 @@ impl GBuffer {
 
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
-        let width = context.swap_chain.dimensions()[0] as f32;
-        let height = context.swap_chain.dimensions()[1] as f32;
+        let width = context.swapchain.dimensions()[0] as f32;
+        let height = context.swapchain.dimensions()[1] as f32;
 
         GraphicsPipeline::start()
             .vertex_input_state(
@@ -241,7 +241,7 @@ impl GBuffer {
     }
 
     fn usage_dimensions(context: &Context) -> (ImageUsage, [u32; 2]) {
-        let dimensions = context.swap_chain.dimensions();
+        let dimensions = context.swapchain.dimensions();
 
         let usage = ImageUsage {
             sampled: true,
