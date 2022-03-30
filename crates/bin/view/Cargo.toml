@@ -1,5 +1,5 @@
 [package]
-edition = "2018"
+edition = "2021"
 name = "view"
 version = "0.1.0"
 
@@ -7,10 +7,12 @@ version = "0.1.0"
 
 [dependencies]
 base64 = "0.13.0"
+env_logger = "0.9.0"
 glam = "0.20.1"
 image = "0.23.14"
 imgui = "0.8.0"
 imgui-winit-support = "0.8.0"
+log = "0.4.14"
 puffin = "0.12.1"
 puffin-imgui = "0.15.0"
 rand = "0.8.4"

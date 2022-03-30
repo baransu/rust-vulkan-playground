@@ -410,7 +410,7 @@ impl Renderer {
             &imgui_backend.ui_frame(),
         );
 
-        println!("Recreating swap chain");
+        log::debug!("Recreating swapchain");
     }
 
     fn create_sync_objects(device: &Arc<Device>) -> Box<dyn GpuFuture> {
@@ -535,7 +535,7 @@ impl Renderer {
 
         if *prebuild {
             Self::prebuild(rc, &mut builder);
-            println!("Prebuild done");
+            log::debug!("Prebuild done");
             *prebuild = false;
         }
 
@@ -673,7 +673,7 @@ impl Renderer {
                     Some(Box::new(vulkano::sync::now(rc.context.device.clone())) as Box<_>);
             }
             Err(e) => {
-                println!("{:?}", e);
+                log::error!("{:?}", e);
                 *previous_frame_end =
                     Some(Box::new(vulkano::sync::now(rc.context.device.clone())) as Box<_>);
             }

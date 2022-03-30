@@ -1,3 +1,4 @@
+use env_logger::Env;
 use glam::{EulerRot, Quat, Vec3};
 use renderer::{entity::Entity, renderer::Renderer, transform::Transform};
 
@@ -25,6 +26,8 @@ const SKYBOX_PATH: &str = "res/hdr/je_gray_park_4k.pic";
 // const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
 fn main() {
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
+
     puffin::set_scopes_on(true);
 
     let mut app = Renderer::initialize(MODEL_PATHS.to_vec(), SKYBOX_PATH);

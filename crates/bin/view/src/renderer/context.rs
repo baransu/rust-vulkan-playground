@@ -111,12 +111,12 @@ impl Context {
 
     fn create_instance() -> Arc<Instance> {
         if ENABLE_VALIDATION_LAYERS && !Self::check_validation_layer_support() {
-            println!("Validation layers requested, but not available!")
+            log::warn!("Validation layers requested, but not available!")
         }
 
         let supported_extensions = InstanceExtensions::supported_by_core().unwrap();
 
-        println!("Supported extensions: {:?}", supported_extensions);
+        log::debug!("Supported extensions: {:?}", supported_extensions);
 
         let app_info = ApplicationInfo {
             application_name: Some("Application".into()),
@@ -188,7 +188,15 @@ impl Context {
         };
 
         DebugCallback::new(&instance, severity, message_type, |msg| {
-            println!("validation layer: {:?}", msg.description);
+            if msg.severity.error {
+                log::error!("[{:?}] {:?}", msg.ty, msg.description);
+            } else if msg.severity.warning {
+                log::warn!("[{:?}] {:?}", msg.ty, msg.description);
+            } else if msg.severity.information {
+                log::info!("[{:?}] {:?}", msg.ty, msg.description);
+            } else if msg.severity.information {
+                log::debug!("[{:?}] {:?}", msg.ty, msg.description);
+            }
         })
         .ok()
     }
@@ -216,7 +224,7 @@ impl Context {
             })
             .unwrap();
 
-        println!(
+        log::debug!(
             "Using device: {} (type: {:?})",
             physical_device.properties().device_name,
             physical_device.properties().device_type,
@@ -310,7 +318,7 @@ impl Context {
             .find(|(format, _color_space)| *format == Format::B8G8R8A8_UNORM)
             .unwrap_or_else(|| &available_formats[0]);
 
-        println!("Using swap surface format: {:?}", format);
+        log::debug!("Using swap surface format: {:?}", format);
 
         format
     }

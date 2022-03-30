@@ -221,9 +221,11 @@ impl SkyboxPass {
         let width = metadata.width;
         let height = metadata.height;
 
-        println!(
+        log::debug!(
             "Loading HDR texture: {}x{}, exposure: {:?}",
-            width, height, metadata.exposure
+            width,
+            height,
+            metadata.exposure
         );
 
         let format = Format::R32G32B32A32_SFLOAT;

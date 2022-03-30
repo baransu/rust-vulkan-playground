@@ -26,7 +26,7 @@ impl Texture {
             Source::View { view, mime_type } => {
                 let data = &images[view.buffer().index()].pixels;
 
-                println!("Loading Source::View texture");
+                log::debug!("Loading Source::View texture");
 
                 match mime_type {
                     "image/jpeg" => image::load_from_memory_with_format(data, ImageFormat::Jpeg),
@@ -41,7 +41,7 @@ impl Texture {
             Source::Uri { uri, mime_type } => {
                 let base_path = Path::new(base_path);
 
-                println!("Loading Source::Uri({}, {:?}) texture", uri, mime_type);
+                log::debug!("Loading Source::Uri({}, {:?}) texture", uri, mime_type);
 
                 if uri.starts_with("data:") {
                     let encoded = uri.split(',').nth(1).unwrap();

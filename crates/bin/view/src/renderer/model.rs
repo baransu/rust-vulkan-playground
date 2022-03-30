@@ -154,7 +154,7 @@ impl Model {
         let id = path.to_string();
 
         let start_time = Instant::now();
-        println!("Loading model: {}", id);
+        log::debug!("Loading model: {}", id);
 
         let primitives: Vec<Primitive> = document
             .meshes()
@@ -276,7 +276,7 @@ impl Model {
 
         let root_nodes = scene.nodes().map(|node| node.index()).collect();
 
-        println!("Loaded model: {} in {:?}", id, start_time.elapsed());
+        log::debug!("Loaded model: {} in {:?}", id, start_time.elapsed());
 
         Model {
             id,
