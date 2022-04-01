@@ -1,5 +1,6 @@
 [workspace]
 
 members = [
-	"crates/bin/view"
+  "crates/bin/view",
+  "crates/bin/view-ash",
 ]
