@@ -141,20 +141,13 @@ pub struct Model {
 
 impl Model {
     pub fn load_gltf(queue: &Arc<Queue>, path: &str, layout: &Arc<DescriptorSetLayout>) -> Model {
+        let start_time = Instant::now();
+        let id = path.to_string();
+        log::debug!("Loading model: {}", id);
+
         let (document, buffers, images) = gltf::import(path).unwrap();
 
-        assert_eq!(
-            document.scenes().len(),
-            1,
-            "Only one scene per file is supported"
-        );
-
-        let scene = document.scenes().nth(0).unwrap();
-
-        let id = path.to_string();
-
-        let start_time = Instant::now();
-        log::debug!("Loading model: {}", id);
+        let scene = document.default_scene().unwrap();
 
         let primitives: Vec<Primitive> = document
             .meshes()
@@ -162,7 +155,7 @@ impl Model {
             .map(|primitive| {
                 let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
-                let positions = &reader.read_positions().unwrap().collect::<Vec<[f32; 3]>>();
+                let positions = &reader.read_positions().unwrap().collect::<Vec<_>>();
                 let normals = &reader
                     .read_normals()
                     .map_or(vec![], |normals| normals.collect());

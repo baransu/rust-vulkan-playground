@@ -1,7 +1,7 @@
 use std::{fs, io, path::Path, sync::Arc};
 
 use gltf::image::Source;
-use image::{DynamicImage, GenericImageView, ImageFormat};
+use image::{DynamicImage, ImageFormat};
 use vulkano::{
     device::Queue,
     format::Format,
@@ -26,7 +26,7 @@ impl Texture {
             Source::View { view, mime_type } => {
                 let data = &images[view.buffer().index()].pixels;
 
-                log::debug!("Loading Source::View texture");
+                log::debug!("Loading Source::View({}) texture", mime_type);
 
                 match mime_type {
                     "image/jpeg" => image::load_from_memory_with_format(data, ImageFormat::Jpeg),

@@ -257,7 +257,7 @@ impl Context {
             .expect("failed to get surface capabilities");
 
         let (surface_format, surface_color_space) =
-            Self::choose_swap_surface_format(&capabilities.supported_formats);
+            Self::choose_surface_format(&capabilities.supported_formats);
 
         let mut image_count = capabilities.min_image_count + 1;
         if capabilities.max_image_count.is_some()
@@ -306,15 +306,13 @@ impl Context {
         self.swapchain_images = images;
     }
 
-    fn choose_swap_surface_format(
-        available_formats: &[(Format, ColorSpace)],
-    ) -> (Format, ColorSpace) {
+    fn choose_surface_format(available_formats: &[(Format, ColorSpace)]) -> (Format, ColorSpace) {
         let format = *available_formats
             .iter()
             .find(|(format, _color_space)| *format == Format::B8G8R8A8_UNORM)
             .unwrap_or_else(|| &available_formats[0]);
 
-        log::debug!("Using swap surface format: {:?}", format);
+        log::debug!("Using surface format: {:?}", format);
 
         format
     }

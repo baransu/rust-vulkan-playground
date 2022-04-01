@@ -670,7 +670,7 @@ impl Renderer {
 
         match future {
             Ok(future) => {
-                *previous_frame_end = Some(Box::new(future) as Box<_>);
+                *previous_frame_end = Some(future.boxed());
             }
             Err(vulkano::sync::FlushError::OutOfDate) => {
                 *recreate_swapchain = true;
@@ -686,7 +686,6 @@ impl Renderer {
 
         if *recreate_swapchain {
             Self::recreate_swapchain(rc, &imgui_backend);
-            // *prebuild = true;
             *recreate_swapchain = false;
         }
     }

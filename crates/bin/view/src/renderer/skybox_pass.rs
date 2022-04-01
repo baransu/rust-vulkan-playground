@@ -1,7 +1,7 @@
 use std::{fs::File, io::BufReader, sync::Arc};
 
 use glam::{Mat4, Vec3};
-use image::hdr::HdrDecoder;
+use image::codecs::hdr::HdrDecoder;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},

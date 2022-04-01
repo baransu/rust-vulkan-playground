@@ -6,19 +6,17 @@ pub mod imgui_renderer;
 pub mod renderer;
 
 const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
-const SPONZA: &str = "glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
-const BOTTLE: &str = "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf";
-
+const SPONZA: &str = "res/models/Sponza/Sponza.gltf";
+const BOTTLE: &str = "res/models/WaterBottle/WaterBottle.gltf";
 const PLANE: &str = "res/models/plane/plane.gltf";
 
-const MODEL_PATHS: [&str; 2] = [
-    // DAMAGED_HELMET,
+const MODEL_PATHS: [&str; 4] = [
+    DAMAGED_HELMET,
     BOTTLE,
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
     PLANE,
-    // SPONZA,
-    // "glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf",
+    SPONZA,
 ];
 
 // const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
@@ -77,7 +75,7 @@ fn main() {
         DAMAGED_HELMET,
         Transform {
             translation: Vec3::new(0.0, 0.0, 1.0),
-            rotation: Quat::from_euler(EulerRot::XYZ, 90.0_f32.to_radians(), 0.0, 0.0),
+            rotation: Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0),
             scale: Vec3::ONE,
         },
     ));
