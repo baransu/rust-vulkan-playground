@@ -21,7 +21,13 @@ use vulkano::{
     shader::{DescriptorRequirements, EntryPoint},
 };
 
-use super::{context::Context, entity::InstanceData, scene::Scene, vertex::Vertex};
+use super::{
+    context::Context,
+    entity::InstanceData,
+    scene::Scene,
+    shaders::{model_fragment_shader, model_vertex_shader},
+    vertex::Vertex,
+};
 
 pub type GBufferTarget = Arc<ImageView<AttachmentImage>>;
 
@@ -165,8 +171,8 @@ impl GBuffer {
         layout: &Arc<DescriptorSetLayout>,
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
-        let vs = super::shaders::model_vertex_shader::load(context.device.clone()).unwrap();
-        let fs = super::shaders::model_fragment_shader::load(context.device.clone()).unwrap();
+        let vs = model_vertex_shader::load(context.device.clone()).unwrap();
+        let fs = model_fragment_shader::load(context.device.clone()).unwrap();
 
         let pipeline_layout = Self::create_pipeline_layout(
             context,

@@ -50,7 +50,7 @@ use super::{
 
 const RENDER_SKYBOX: bool = true;
 
-const BRDF_PATH: &str = "res/ibl_brdf_lut.png";
+const BRDF_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/ibl_brdf_lut.png";
 
 pub struct RenderContext {
     context: Context,
@@ -382,8 +382,6 @@ impl Renderer {
     }
 
     fn recreate_swapchain(rc: &mut RenderContext, imgui_backend: &ImguiBackend) {
-        puffin::profile_scope!("recreate_swapchain");
-
         rc.context.recreate_swapchain();
 
         rc.gbuffer.recreate_swapchain(&rc.context);
@@ -435,7 +433,7 @@ impl Renderer {
         rc: &RenderContext,
         frame_context: FrameContext,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        delta_time: &f64,
+        fps_cpu: f64,
     ) {
         let FrameContext { imgui, .. } = frame_context;
 
@@ -456,8 +454,7 @@ impl Renderer {
                     .position([0.0, 0.0], Condition::Always)
                     .size([350.0, 1080.0], Condition::Always)
                     .build(&ui, || {
-                        let fps = 1.0 / delta_time;
-                        ui.text(format!("FPS: {:.2}", fps));
+                        ui.text(format!("cpu: {:.2}, gpu: {:.2}", fps_cpu, 0.0));
                         ui.text(format!(
                             "Camera: ({:.2}, {:.2}, {:.2})",
                             camera_pos.x, camera_pos.y, camera_pos.z
@@ -489,8 +486,6 @@ impl Renderer {
         rc: &RenderContext,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
-        puffin::profile_scope!("prebuild");
-
         rc.gen_hdr_cubemap.add_to_builder(builder);
 
         rc.irradiance_convolution.add_to_builder(builder);
@@ -498,7 +493,7 @@ impl Renderer {
         rc.prefilterenvmap.add_to_builder(builder);
     }
 
-    fn draw_frame(rc: &mut RenderContext, frame_context: FrameContext, delta_time: &f64) {
+    fn draw_frame(rc: &mut RenderContext, frame_context: FrameContext, fps_cpu: f64) {
         let FrameContext {
             previous_frame_end,
             prebuild,
@@ -627,20 +622,6 @@ impl Renderer {
             .end_render_pass()
             .unwrap();
 
-        Self::draw_ui(
-            rc,
-            FrameContext {
-                prebuild,
-                previous_frame_end,
-                recreate_swapchain,
-                imgui_backend,
-                imgui,
-                puffin_ui,
-            },
-            &mut builder,
-            delta_time,
-        );
-
         builder
             .begin_render_pass(
                 framebuffer.clone(),
@@ -652,6 +633,20 @@ impl Renderer {
             .unwrap()
             .end_render_pass()
             .unwrap();
+
+        Self::draw_ui(
+            rc,
+            FrameContext {
+                prebuild,
+                previous_frame_end,
+                recreate_swapchain,
+                imgui_backend,
+                imgui,
+                puffin_ui,
+            },
+            &mut builder,
+            fps_cpu,
+        );
 
         let command_buffer = builder.build().unwrap();
 
@@ -741,6 +736,7 @@ impl Renderer {
         let mut rotation_y = 0.0;
 
         let original_rotation = rc.camera.rotation;
+        let mut fps_cpu_avg = 0.0;
 
         let mut running = true;
         while running {
@@ -830,30 +826,27 @@ impl Renderer {
             puffin::GlobalProfiler::lock().new_frame();
 
             let now = Instant::now();
+
             delta_time = now.duration_since(self.last_time).as_secs_f64();
 
             self.last_time = now;
 
-            {
-                puffin::profile_scope!("update");
-                Self::update(&mut rc.camera, &keyboard_buttons, delta_time);
-            }
+            Self::update(&mut rc.camera, &keyboard_buttons, delta_time);
 
-            {
-                puffin::profile_scope!("draw");
-                Self::draw_frame(
-                    &mut rc,
-                    FrameContext {
-                        prebuild: &mut prebuild,
-                        previous_frame_end: &mut previous_frame_end,
-                        recreate_swapchain: &mut recreate_swapchain,
-                        imgui_backend: &mut imgui_backend,
-                        imgui: &mut imgui,
-                        puffin_ui: &mut puffin_ui,
-                    },
-                    &delta_time,
-                );
-            }
+            fps_cpu_avg = fps_cpu_avg * 0.9 + (delta_time * 1000.0) * 0.1;
+
+            Self::draw_frame(
+                &mut rc,
+                FrameContext {
+                    prebuild: &mut prebuild,
+                    previous_frame_end: &mut previous_frame_end,
+                    recreate_swapchain: &mut recreate_swapchain,
+                    imgui_backend: &mut imgui_backend,
+                    imgui: &mut imgui,
+                    puffin_ui: &mut puffin_ui,
+                },
+                fps_cpu_avg,
+            );
         }
     }
 }

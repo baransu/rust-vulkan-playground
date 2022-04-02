@@ -5,22 +5,23 @@ use renderer::{entity::Entity, renderer::Renderer, transform::Transform};
 pub mod imgui_renderer;
 pub mod renderer;
 
-const DAMAGED_HELMET: &str = "res/models/damaged_helmet/scene.gltf";
-const SPONZA: &str = "res/models/Sponza/Sponza.gltf";
-const BOTTLE: &str = "res/models/WaterBottle/WaterBottle.gltf";
-const PLANE: &str = "res/models/plane/plane.gltf";
+const DAMAGED_HELMET: &str =
+    "/Users/baransu/Projects/rust-vulkan/res/models/damaged_helmet/scene.gltf";
+const SPONZA: &str = "/Users/baransu/Projects/rust-vulkan/res/models/Sponza/Sponza.gltf";
+const BOTTLE: &str = "/Users/baransu/Projects/rust-vulkan/res/models/WaterBottle/WaterBottle.gltf";
+const PLANE: &str = "/Users/baransu/Projects/rust-vulkan/res/models/plane/plane.gltf";
 
-const MODEL_PATHS: [&str; 4] = [
-    DAMAGED_HELMET,
+const MODEL_PATHS: [&str; 2] = [
+    // DAMAGED_HELMET,
     BOTTLE,
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
     PLANE,
-    SPONZA,
+    // SPONZA,
 ];
 
 // const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
-const SKYBOX_PATH: &str = "res/hdr/je_gray_park_4k.pic";
+const SKYBOX_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/hdr/je_gray_park_4k.pic";
 // const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
 
 fn main() {
