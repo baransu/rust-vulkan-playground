@@ -39,8 +39,6 @@ pub fn execute_one_time_commands<F: FnOnce(vk::CommandBuffer)>(
         unsafe { device.allocate_command_buffers(&alloc_info).unwrap()[0] }
     };
 
-    let command_buffers = [command_buffer];
-
     // begin recording
     {
         let begin_info = vk::CommandBufferBeginInfo::builder()
@@ -62,19 +60,20 @@ pub fn execute_one_time_commands<F: FnOnce(vk::CommandBuffer)>(
     // submit and wait
     {
         let submit_info = vk::SubmitInfo::builder()
-            .command_buffers(&command_buffers)
+            .command_buffers(&[command_buffer])
             .build();
-        let submit_infos = [submit_info];
+
         unsafe {
             device
-                .queue_submit(queue, &submit_infos, vk::Fence::null())
+                .queue_submit(queue, &[submit_info], vk::Fence::null())
                 .unwrap();
+
             device.queue_wait_idle(queue).unwrap();
         }
     }
 
     // free
-    unsafe { device.free_command_buffers(command_pool, &command_buffers) };
+    unsafe { device.free_command_buffers(command_pool, &[command_buffer]) };
 }
 
 pub fn find_memory_type(

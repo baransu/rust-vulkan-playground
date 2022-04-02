@@ -2,3 +2,4 @@
 .DS_Store
 glTF-Sample-Models
 vulkan-log.txt
+*.spv

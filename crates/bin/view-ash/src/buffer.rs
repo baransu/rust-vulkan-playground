@@ -117,9 +117,8 @@ impl Buffer {
                 dst_offset: 0,
                 size,
             };
-            let regions = [region];
 
-            unsafe { device.cmd_copy_buffer(buffer, src, dst, &regions) };
+            unsafe { device.cmd_copy_buffer(buffer, src, dst, &[region]) };
         });
     }
 
