@@ -1733,7 +1733,18 @@ impl VulkanApp {
                 _ => {}
             },
             Event::MainEventsCleared => self.window.request_redraw(),
-            Event::RedrawRequested(_window_id) => self.draw_frame(),
+            Event::RedrawRequested(_window_id) => {
+                let start_time = Instant::now();
+
+                self.draw_frame();
+
+                let end_time = Instant::now();
+
+                let elapsed = end_time.duration_since(start_time).as_millis();
+
+                self.window
+                    .set_title(format!("cpu: {:?} ms;", elapsed).as_str());
+            }
             _ => {}
         })
     }
@@ -1742,6 +1753,11 @@ impl VulkanApp {
 impl Drop for VulkanApp {
     fn drop(&mut self) {
         log::debug!("Dropping application.");
+
+        unsafe {
+            self.vk_context.device().device_wait_idle().unwrap();
+        }
+
         self.cleanup_swapchain();
 
         let device = self.vk_context.device();
