@@ -1,4 +1,4 @@
-use crate::{image_view::create_image_view, swapchain_support_details::SwapchainSupportDetails};
+use crate::{swapchain_support_details::SwapchainSupportDetails, utils::create_image_view};
 use ash::{
     extensions::{
         ext::DebugUtils,
