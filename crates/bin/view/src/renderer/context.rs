@@ -6,7 +6,7 @@ use vulkano::{
         Device, DeviceExtensions, Features, Queue,
     },
     format::Format,
-    image::{ImageUsage, SampleCount, SwapchainImage},
+    image::{ImageUsage, SwapchainImage},
     instance::{
         debug::{DebugCallback, MessageSeverity, MessageType},
         layers_list, ApplicationInfo, Instance, InstanceExtensions,
@@ -37,7 +37,7 @@ const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
     ..DeviceExtensions::none()
 };
 
-// TODO: should i separate the renderer context from windowing stuff?
+// TODO: should I separate the renderer context from windowing stuff?
 pub struct Context {
     #[allow(dead_code)]
     instance: Arc<Instance>,
@@ -51,7 +51,6 @@ pub struct Context {
     pub swapchain_images: Vec<Arc<SwapchainImage<Window>>>,
 
     pub depth_format: Format,
-    pub sample_count: SampleCount,
     pub image_sampler: Arc<Sampler>,
     pub attachment_sampler: Arc<Sampler>,
     pub depth_sampler: Arc<Sampler>,
@@ -85,7 +84,6 @@ impl Context {
                 swapchain_images,
 
                 depth_format: Self::find_depth_format(),
-                sample_count: Self::find_sample_count(),
                 image_sampler,
                 depth_sampler,
                 attachment_sampler,
@@ -252,9 +250,7 @@ impl Context {
     ) -> (Arc<Swapchain<Window>>, Vec<Arc<SwapchainImage<Window>>>) {
         let physical_device = device.physical_device();
 
-        let capabilities = surface
-            .capabilities(physical_device)
-            .expect("failed to get surface capabilities");
+        let capabilities = surface.capabilities(physical_device).unwrap();
 
         let (surface_format, surface_color_space) =
             Self::choose_surface_format(&capabilities.supported_formats);
@@ -322,13 +318,6 @@ impl Context {
         Format::D16_UNORM
     }
 
-    fn find_sample_count() -> SampleCount {
-        // https://github.com/matthew-russo/vulkan-tutorial-rs/blob/29_multisampling/src/bin/29_multisampling.rs.diff#L52-L59
-
-        // macOS doesn't support MSAA8, so we'll use MSAA4 instead.
-        SampleCount::Sample4
-    }
-
     fn create_image_sampler(device: &Arc<Device>) -> Arc<Sampler> {
         Sampler::new(
             device.clone(),
@@ -341,8 +330,8 @@ impl Context {
             0.0,
             1.0,
             0.0,
-            // if something will be super small we set 1_000 so it adjustes automatically
-            1_000.0,
+            // if something will be super small we set 100 so it adjustes automatically
+            100.0,
         )
         .unwrap()
     }

@@ -50,8 +50,6 @@ use super::{
 
 const RENDER_SKYBOX: bool = true;
 
-const BRDF_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/ibl_brdf_lut.png";
-
 pub struct RenderContext {
     context: Context,
     gbuffer: GBuffer,
@@ -104,14 +102,13 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn initialize(mesh_paths: Vec<&str>, skybox_path: &str) -> Self {
-        // let mut rng = rand::thread_rng();
+    pub fn initialize(mesh_paths: Vec<&str>, skybox_path: &str, brdf_path: &str) -> Self {
         let (context, event_loop) = Context::initialize();
 
         // TODO: generate brdf texture instead of loading it - why I have black spots???
         let brdf_texture = Texture::create_image_view(
             &context.graphics_queue,
-            &image::io::Reader::open(BRDF_PATH)
+            &image::io::Reader::open(brdf_path)
                 .unwrap()
                 .decode()
                 .unwrap(),
@@ -196,8 +193,8 @@ impl Renderer {
             &context,
             &gen_hdr_cubemap.cube_attachment_view,
             irradiance_convolution_fs_mod.entry_point("main").unwrap(),
-            Format::R32G32B32A32_SFLOAT,
-            64.0,
+            Format::R16G16B16A16_SFLOAT,
+            32.0,
         );
 
         let prefilterenvmap_fs_mod = prefilterenvmap_fs::load(context.device.clone()).unwrap();

@@ -28,6 +28,8 @@ pub struct SkyboxVertex {
     position: [f32; 3],
 }
 
+vulkano::impl_vertex!(SkyboxVertex, position);
+
 impl SkyboxVertex {
     fn new(pos_x: f32, pos_y: f32, pos_z: f32) -> SkyboxVertex {
         SkyboxVertex {
@@ -36,12 +38,7 @@ impl SkyboxVertex {
     }
 }
 
-vulkano::impl_vertex!(SkyboxVertex, position);
-
 pub struct SkyboxPass {
-    // graphics_pipeline: Arc<GraphicsPipeline>,
-    // vertex_buffer: Arc<ImmutableBuffer<[SkyboxVertex]>>,
-    // descriptor_set: Arc<PersistentDescriptorSet>,
     pub uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     pub command_buffer: Arc<SecondaryAutoCommandBuffer>,
 }
@@ -78,9 +75,6 @@ impl SkyboxPass {
         SkyboxPass {
             uniform_buffer,
             command_buffer,
-            // graphics_pipeline,
-            // vertex_buffer,
-            // descriptor_set,
         }
     }
 

@@ -25,13 +25,13 @@ pub struct ScreenQuadVertex {
     uv: [f32; 2],
 }
 
+vulkano::impl_vertex!(ScreenQuadVertex, position, uv);
+
 impl ScreenQuadVertex {
     fn new(position: [f32; 2], uv: [f32; 2]) -> ScreenQuadVertex {
         ScreenQuadVertex { position, uv }
     }
 }
-
-vulkano::impl_vertex!(ScreenQuadVertex, position, uv);
 
 pub struct ScreenFrameQuadBuffers {
     pub index_buffer: Arc<ImmutableBuffer<[u16]>>,

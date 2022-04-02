@@ -31,6 +31,7 @@ use super::{
 };
 
 const DIM: f32 = 512.0;
+const FORMAT: Format = Format::R16G16B16A16_SFLOAT;
 
 pub struct PointLightShadows {
     pub pipeline: Arc<GraphicsPipeline>,
@@ -167,7 +168,7 @@ impl PointLightShadows {
                     color: {
                         load: Clear,
                         store: Store,
-                        format: Format::R16G16B16A16_SFLOAT,
+                        format: FORMAT,
                         samples: 1,
                     },
                     depth: {
@@ -279,7 +280,7 @@ impl PointLightShadows {
         AttachmentImage::with_usage(
             context.graphics_queue.device().clone(),
             [DIM as u32, DIM as u32],
-            Format::R16G16B16A16_SFLOAT,
+            FORMAT,
             ImageUsage {
                 transfer_source: true,
                 ..ImageUsage::none()
@@ -312,7 +313,7 @@ impl PointLightShadows {
                 height: DIM as u32,
                 array_layers: 6,
             },
-            Format::R16G16B16A16_SFLOAT,
+            FORMAT,
             MipmapsCount::One,
             ImageUsage {
                 transfer_destination: true,

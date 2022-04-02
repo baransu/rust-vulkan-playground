@@ -20,16 +20,18 @@ const MODEL_PATHS: [&str; 2] = [
     // SPONZA,
 ];
 
-// const SKYBOX_PATH: &str = "res/hdr/uffizi_cube.ktx";
+// const SKYBOX_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/hdr/uffizi_cube.ktx";
 const SKYBOX_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/hdr/je_gray_park_4k.pic";
-// const SKYBOX_PATH: &str = "res/hdr/pisa_cube.ktx";
+// const SKYBOX_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/hdr/pisa_cube.ktx";
+
+const BRDF_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/ibl_brdf_lut.png";
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
 
     puffin::set_scopes_on(true);
 
-    let mut app = Renderer::initialize(MODEL_PATHS.to_vec(), SKYBOX_PATH);
+    let mut app = Renderer::initialize(MODEL_PATHS.to_vec(), SKYBOX_PATH, BRDF_PATH);
 
     // let count = 10;
     // let start = -(count / 2);
