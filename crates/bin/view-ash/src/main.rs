@@ -192,27 +192,28 @@ impl VulkanApp {
             resolve_attachment_desc,
         ];
 
-        let color_attachment_ref = vk::AttachmentReference::builder()
+        let color_attachment_ref = [vk::AttachmentReference::builder()
             .attachment(0)
             .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .build();
+            .build()];
 
         let depth_attachment_ref = vk::AttachmentReference::builder()
             .attachment(1)
             .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
             .build();
 
-        let resolve_attachment_ref = vk::AttachmentReference::builder()
+        let resolve_attachment_ref = [vk::AttachmentReference::builder()
             .attachment(2)
             .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .build();
+            .build()];
 
         let subpass_desc = vk::SubpassDescription::builder()
             .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-            .color_attachments(&[color_attachment_ref])
-            .resolve_attachments(&[resolve_attachment_ref])
+            .color_attachments(&color_attachment_ref)
+            .resolve_attachments(&resolve_attachment_ref)
             .depth_stencil_attachment(&depth_attachment_ref)
             .build();
+        let subpasses = [subpass_desc];
 
         let subpass_dep = vk::SubpassDependency::builder()
             .src_subpass(vk::SUBPASS_EXTERNAL)
@@ -225,10 +226,12 @@ impl VulkanApp {
             )
             .build();
 
+        let dependencies = [subpass_dep];
+
         let render_pass_info = vk::RenderPassCreateInfo::builder()
             .attachments(&attachment_descs)
-            .subpasses(&[subpass_desc])
-            .dependencies(&[subpass_dep])
+            .subpasses(&subpasses)
+            .dependencies(&dependencies)
             .build();
 
         unsafe {
@@ -314,43 +317,43 @@ impl VulkanApp {
             .iter()
             .zip(uniform_buffers.iter())
             .for_each(|(set, ubo_buffer)| {
-                let vertex_info = vk::DescriptorBufferInfo::builder()
+                let vertex_info = [vk::DescriptorBufferInfo::builder()
                     .buffer(vertex_buffer.buffer)
                     .offset(0)
                     .range((size_of::<Vertex>() * vertex_count) as vk::DeviceSize)
-                    .build();
+                    .build()];
                 let vertex_descriptor_write = vk::WriteDescriptorSet::builder()
                     .dst_set(*set)
                     .dst_binding(0)
                     .dst_array_element(0)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(&[vertex_info])
+                    .buffer_info(&vertex_info)
                     .build();
 
-                let ubo_info = vk::DescriptorBufferInfo::builder()
+                let ubo_info = [vk::DescriptorBufferInfo::builder()
                     .buffer(ubo_buffer.buffer)
                     .offset(0)
                     .range(size_of::<UniformBufferObject>() as vk::DeviceSize)
-                    .build();
+                    .build()];
                 let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
                     .dst_set(*set)
                     .dst_binding(1)
                     .dst_array_element(0)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                    .buffer_info(&[ubo_info])
+                    .buffer_info(&ubo_info)
                     .build();
 
-                let image_info = vk::DescriptorImageInfo::builder()
+                let image_info = [vk::DescriptorImageInfo::builder()
                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                     .image_view(texture.view)
                     .sampler(texture.sampler.unwrap())
-                    .build();
+                    .build()];
                 let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
                     .dst_set(*set)
                     .dst_binding(2)
                     .dst_array_element(0)
                     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .image_info(&[image_info])
+                    .image_info(&image_info)
                     .build();
 
                 let descriptor_writes = [
@@ -401,22 +404,22 @@ impl VulkanApp {
             .primitive_restart_enable(false)
             .build();
 
-        let viewport = vk::Viewport {
+        let viewport = [vk::Viewport {
             x: 0.0,
             y: 0.0,
             width: vk_context.swapchain_properties().extent.width as _,
             height: vk_context.swapchain_properties().extent.height as _,
             min_depth: 0.0,
             max_depth: 1.0,
-        };
+        }];
 
-        let scissor = vk::Rect2D {
+        let scissor = [vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
             extent: vk_context.swapchain_properties().extent,
-        };
+        }];
         let viewport_create_info = vk::PipelineViewportStateCreateInfo::builder()
-            .viewports(&[viewport])
-            .scissors(&[scissor])
+            .viewports(&viewport)
+            .scissors(&scissor)
             .build();
 
         let rasterizer_create_info = vk::PipelineRasterizationStateCreateInfo::builder()
@@ -452,7 +455,7 @@ impl VulkanApp {
             .back(Default::default())
             .build();
 
-        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::builder()
+        let color_blend_attachment = [vk::PipelineColorBlendAttachmentState::builder()
             .color_write_mask(vk::ColorComponentFlags::RGBA)
             .blend_enable(false)
             .src_color_blend_factor(vk::BlendFactor::ONE)
@@ -461,18 +464,19 @@ impl VulkanApp {
             .src_alpha_blend_factor(vk::BlendFactor::ONE)
             .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
             .alpha_blend_op(vk::BlendOp::ADD)
-            .build();
+            .build()];
 
         let color_blending_info = vk::PipelineColorBlendStateCreateInfo::builder()
             .logic_op_enable(false)
             .logic_op(vk::LogicOp::COPY)
-            .attachments(&[color_blend_attachment])
+            .attachments(&color_blend_attachment)
             .blend_constants([0.0, 0.0, 0.0, 0.0])
             .build();
 
         let layout = {
+            let layouts = [descriptor_set_layout];
             let layout_info = vk::PipelineLayoutCreateInfo::builder()
-                .set_layouts(&[descriptor_set_layout])
+                .set_layouts(&layouts)
                 .build();
 
             unsafe { device.create_pipeline_layout(&layout_info, None).unwrap() }
@@ -492,9 +496,10 @@ impl VulkanApp {
             .subpass(0)
             .build();
 
+        let create_infos = [pipeline_info];
         let pipeline = unsafe {
             device
-                .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
+                .create_graphics_pipelines(vk::PipelineCache::null(), &create_infos, None)
                 .unwrap()[0]
         };
 
@@ -1135,7 +1140,14 @@ impl VulkanApp {
             vertices.push(vertex);
         }
 
-        (vertices, mesh.indices.clone())
+        let indices = mesh.indices.clone();
+
+        let (_vertex_count, remap) = meshopt::generate_vertex_remap(&vertices, Some(&indices));
+
+        let final_vertices = meshopt::remap_vertex_buffer(&vertices, vertices.len(), &remap);
+        let final_indices = meshopt::remap_index_buffer(Some(&indices), indices.len(), &remap);
+
+        (final_vertices, final_indices)
     }
 
     fn create_vertex_buffer(
@@ -1398,31 +1410,31 @@ impl VulkanApp {
         // submit command buffer
         {
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-            let command_buffer = self.command_buffers[image_index as usize];
+            let command_buffers = [self.command_buffers[image_index as usize]];
+
             let submit_info = vk::SubmitInfo::builder()
                 .wait_semaphores(&wait_semaphores)
                 .wait_dst_stage_mask(&wait_stages)
-                .command_buffers(&[command_buffer])
+                .command_buffers(&command_buffers)
                 .signal_semaphores(&signal_semaphores)
                 .build();
+            let submits = [submit_info];
 
             unsafe {
                 self.vk_context
                     .device()
-                    .queue_submit(
-                        self.vk_context.graphics_queue,
-                        &[submit_info],
-                        in_flight_fence,
-                    )
+                    .queue_submit(self.vk_context.graphics_queue, &submits, in_flight_fence)
                     .unwrap()
             }
         }
 
         {
+            let swapchains = [self.vk_context.swapchain_khr];
+            let image_indices = [image_index];
             let present_info = vk::PresentInfoKHR::builder()
                 .wait_semaphores(&signal_semaphores)
-                .swapchains(&[self.vk_context.swapchain_khr])
-                .image_indices(&[image_index])
+                .swapchains(&swapchains)
+                .image_indices(&image_indices)
                 .build();
 
             let result = unsafe {
@@ -1542,6 +1554,7 @@ impl VulkanApp {
             .to_cols_array_2d(),
             proj: Mat4::perspective_lh(45.0_f32.to_radians(), aspect, 0.1, 10.0).to_cols_array_2d(),
         };
+        let ubos = [ubo];
 
         let buffer_mem = self.uniform_buffers[current_image as usize].memory;
         let size = size_of::<UniformBufferObject>() as vk::DeviceSize;
@@ -1551,7 +1564,8 @@ impl VulkanApp {
                 .map_memory(buffer_mem, 0, size, vk::MemoryMapFlags::empty())
                 .unwrap();
             let mut align = ash::util::Align::new(data_ptr, align_of::<f32>() as _, size);
-            align.copy_from_slice(&[ubo]);
+
+            align.copy_from_slice(&ubos);
             device.unmap_memory(buffer_mem);
         }
     }
@@ -1707,7 +1721,7 @@ impl Iterator for InFlightFrames {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Default, Clone, Copy)]
 #[allow(dead_code)]
 #[repr(C)]
 struct Vertex {

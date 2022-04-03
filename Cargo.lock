@@ -2076,6 +2076,7 @@ dependencies = [
  "glam",
  "image 0.24.1",
  "log",
+ "meshopt",
  "tobj",
  "winit 0.26.1",
 ]

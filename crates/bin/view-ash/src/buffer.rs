@@ -112,13 +112,13 @@ impl Buffer {
         size: vk::DeviceSize,
     ) {
         execute_one_time_commands(&device, command_pool, transfer_queue, |buffer| {
-            let region = vk::BufferCopy {
+            let region = [vk::BufferCopy {
                 src_offset: 0,
                 dst_offset: 0,
                 size,
-            };
+            }];
 
-            unsafe { device.cmd_copy_buffer(buffer, src, dst, &[region]) };
+            unsafe { device.cmd_copy_buffer(buffer, src, dst, &region) };
         });
     }
 
