@@ -22,7 +22,6 @@ pub struct Primitive {
 impl Primitive {
     fn new(
         queue: &Arc<Queue>,
-
         material: usize,
         vertices: Vec<Vertex>,
         indices: Vec<u32>,
@@ -187,11 +186,21 @@ impl Model {
                     .map(|indices| indices.into_u32().collect::<Vec<_>>())
                     .unwrap();
 
+                // before meshopt ~18.4ms
+                // after meshopt ~18.1ms
+                let (_vertex_count, remap) =
+                    meshopt::generate_vertex_remap(&vertices, Some(&indices));
+
+                let final_vertices =
+                    meshopt::remap_vertex_buffer(&vertices, vertices.len(), &remap);
+                let final_indices =
+                    meshopt::remap_index_buffer(Some(&indices), indices.len(), &remap);
+
                 Primitive::new(
                     queue,
                     primitive.material().index().unwrap(),
-                    vertices,
-                    indices,
+                    final_vertices,
+                    final_indices,
                 )
             })
             .collect();

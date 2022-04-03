@@ -40,8 +40,8 @@ void main() {
 	// normal
 	vec3 tangentNormal = texture(normal_sampler, f_uv).xyz * 2.0 - 1.0;
 
-	vec3 N  = f_normal;
-	vec3 T  = f_tangent.xyz;
+	vec3 N  = normalize(f_normal);
+	vec3 T  = normalize(f_tangent.xyz);
 	vec3 B  = normalize(cross(N, T));
 	mat3 TBN = mat3(T, B, N);
 

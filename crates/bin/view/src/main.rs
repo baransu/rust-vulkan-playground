@@ -11,13 +11,13 @@ const SPONZA: &str = "/Users/baransu/Projects/rust-vulkan/res/models/Sponza/Spon
 const BOTTLE: &str = "/Users/baransu/Projects/rust-vulkan/res/models/WaterBottle/WaterBottle.gltf";
 const PLANE: &str = "/Users/baransu/Projects/rust-vulkan/res/models/plane/plane.gltf";
 
-const MODEL_PATHS: [&str; 2] = [
-    // DAMAGED_HELMET,
+const MODEL_PATHS: [&str; 4] = [
+    DAMAGED_HELMET,
     BOTTLE,
     // "res/models/cube/cube.gltf",
     // "res/models/sphere/sphere.gltf",
     PLANE,
-    // SPONZA,
+    SPONZA,
 ];
 
 // const SKYBOX_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/hdr/uffizi_cube.ktx";
