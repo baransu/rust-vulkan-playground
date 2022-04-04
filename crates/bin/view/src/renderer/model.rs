@@ -278,7 +278,7 @@ impl Model {
 
         let root_nodes = scene.nodes().map(|node| node.index()).collect();
 
-        log::debug!("Loaded model: {} in {:?}", id, start_time.elapsed());
+        log::info!("Loaded model: {} in {:?}", id, start_time.elapsed());
 
         Model {
             id,

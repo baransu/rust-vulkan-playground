@@ -219,7 +219,7 @@ impl Context {
             })
             .unwrap();
 
-        log::debug!(
+        log::info!(
             "Using device: {} (type: {:?})",
             physical_device.properties().device_name,
             physical_device.properties().device_type,
@@ -308,7 +308,7 @@ impl Context {
             .find(|(format, _color_space)| *format == Format::B8G8R8A8_UNORM)
             .unwrap_or_else(|| &available_formats[0]);
 
-        log::debug!("Using surface format: {:?}", format);
+        log::info!("Using surface format: {:?}", format);
 
         format
     }

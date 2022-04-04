@@ -5,11 +5,10 @@ use renderer::{entity::Entity, renderer::Renderer, transform::Transform};
 pub mod imgui_renderer;
 pub mod renderer;
 
-const DAMAGED_HELMET: &str =
-    "/Users/baransu/Projects/rust-vulkan/res/models/damaged_helmet/scene.gltf";
-const SPONZA: &str = "/Users/baransu/Projects/rust-vulkan/res/models/Sponza/Sponza.gltf";
-const BOTTLE: &str = "/Users/baransu/Projects/rust-vulkan/res/models/WaterBottle/WaterBottle.gltf";
-const PLANE: &str = "/Users/baransu/Projects/rust-vulkan/res/models/plane/plane.gltf";
+const DAMAGED_HELMET: &str = "/Users/baransu/Projects/rust-vulkan/res/models/damaged_helmet.glb";
+const SPONZA: &str = "/Users/baransu/Projects/rust-vulkan/res/models/Sponza.glb";
+const BOTTLE: &str = "/Users/baransu/Projects/rust-vulkan/res/models/WaterBottle.glb";
+const PLANE: &str = "/Users/baransu/Projects/rust-vulkan/res/models/plane.glb";
 
 const MODEL_PATHS: [&str; 4] = [
     DAMAGED_HELMET,
@@ -27,7 +26,7 @@ const SKYBOX_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/hdr/je_gray_p
 const BRDF_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/ibl_brdf_lut.png";
 
 fn main() {
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     puffin::set_scopes_on(true);
 

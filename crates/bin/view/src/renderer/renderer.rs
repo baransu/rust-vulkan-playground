@@ -106,7 +106,7 @@ impl Renderer {
         let (context, event_loop) = Context::initialize();
 
         // TODO: generate brdf texture instead of loading it - why I have black spots???
-        let brdf_texture = Texture::create_image_view(
+        let brdf_texture = Texture::image_view_from_dynamic_image(
             &context.graphics_queue,
             &image::io::Reader::open(brdf_path)
                 .unwrap()
