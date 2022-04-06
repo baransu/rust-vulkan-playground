@@ -12,7 +12,9 @@ use vulkano::{
         layers_list, ApplicationInfo, Instance, InstanceExtensions,
     },
     sampler::{BorderColor, Filter, MipmapMode, Sampler, SamplerAddressMode},
-    swapchain::{ColorSpace, CompositeAlpha, PresentMode, Surface, Swapchain},
+    swapchain::{
+        ColorSpace, CompositeAlpha, PresentMode, SupportedPresentModes, Surface, Swapchain,
+    },
     sync::SharingMode,
     Version,
 };
@@ -269,6 +271,10 @@ impl Context {
 
         let dimensions: [u32; 2] = surface.window().inner_size().into();
 
+        let present_mode = Self::choose_present_mode(capabilities.present_modes);
+
+        log::debug!("Using present mode: {:?}", present_mode);
+
         let (swapchain, images) = Swapchain::start(device.clone(), surface.clone())
             .num_images(image_count)
             .format(surface_format)
@@ -280,7 +286,7 @@ impl Context {
             .transform(capabilities.current_transform)
             .layers(1)
             .clipped(true)
-            .present_mode(PresentMode::Fifo)
+            .present_mode(present_mode)
             .build()
             .unwrap();
 
@@ -308,6 +314,16 @@ impl Context {
         log::info!("Using surface format: {:?}", format);
 
         format
+    }
+
+    fn choose_present_mode(available_present_modes: SupportedPresentModes) -> PresentMode {
+        if available_present_modes.mailbox {
+            PresentMode::Mailbox
+        } else if available_present_modes.immediate {
+            PresentMode::Immediate
+        } else {
+            PresentMode::Fifo
+        }
     }
 
     fn find_depth_format() -> Format {

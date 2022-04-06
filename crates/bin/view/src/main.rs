@@ -5,10 +5,11 @@ use renderer::{entity::Entity, renderer::Renderer, transform::Transform};
 pub mod imgui_renderer;
 pub mod renderer;
 
-const DAMAGED_HELMET: &str = "res/models/damaged_helmet.glb";
-const SPONZA: &str = "res/models/Sponza.glb";
-const BOTTLE: &str = "res/models/WaterBottle.glb";
-const PLANE: &str = "res/models/plane.glb";
+const DAMAGED_HELMET: &str =
+    "/home/baransu/Projects/rust-vulkan-playground/res/models/damaged_helmet.glb";
+const SPONZA: &str = "/home/baransu/Projects/rust-vulkan-playground/res/models/Sponza.glb";
+const BOTTLE: &str = "/home/baransu/Projects/rust-vulkan-playground/res/models/WaterBottle.glb";
+const PLANE: &str = "/home/baransu/Projects/rust-vulkan-playground/res/models/plane.glb";
 
 const MODEL_PATHS: [&str; 4] = [
     DAMAGED_HELMET,
@@ -20,10 +21,11 @@ const MODEL_PATHS: [&str; 4] = [
 ];
 
 // const SKYBOX_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/hdr/uffizi_cube.ktx";
-const SKYBOX_PATH: &str = "res/hdr/je_gray_park_4k.pic";
+const SKYBOX_PATH: &str =
+    "/home/baransu/Projects/rust-vulkan-playground/res/hdr/je_gray_park_4k.pic";
 // const SKYBOX_PATH: &str = "/Users/baransu/Projects/rust-vulkan/res/hdr/pisa_cube.ktx";
 
-const BRDF_PATH: &str = "res/ibl_brdf_lut.png";
+const BRDF_PATH: &str = "/home/baransu/Projects/rust-vulkan-playground/res/ibl_brdf_lut.png";
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
