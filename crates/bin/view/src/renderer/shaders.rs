@@ -1,18 +1,23 @@
-pub mod model_vertex_shader {
+pub mod gbuffer_shader {
     vulkano_shaders::shader! {
+        shaders: {
+            vertex: {
                 ty: "vertex",
-                path: "src/renderer/shaders/gbuffer.vert"
-    }
-}
-
-pub mod model_fragment_shader {
-    vulkano_shaders::shader! {
+                path: "src/renderer/shaders/gbuffer.vert",
+            },
+            fragment: {
                 ty: "fragment",
                 path: "src/renderer/shaders/gbuffer.frag"
+            },
+        },
+        types_meta: {
+            #[derive(Clone, Copy, Default)]
+        }
     }
 }
 
-pub type CameraUniformBufferObject = model_vertex_shader::ty::CameraUniformBufferObject;
+pub type Vertex = gbuffer_shader::ty::Vertex;
+pub type CameraUniformBufferObject = gbuffer_shader::ty::CameraUniformBufferObject;
 pub type LightSpaceUniformBufferObject = shadow_vertex_shader::ty::LightSpaceUniformBufferObject;
 
 pub mod shadow_vertex_shader {
@@ -52,14 +57,14 @@ pub mod shadow_fs {
 
 pub mod screen_vertex_shader {
     vulkano_shaders::shader! {
-            ty: "vertex",
-            path: "src/renderer/shaders/fullscreen.vert"
+        ty: "vertex",
+        path: "src/renderer/shaders/fullscreen.vert"
     }
 }
 
 pub mod screen_fragment_shader {
     vulkano_shaders::shader! {
-            ty: "fragment",
-            path: "src/renderer/shaders/screen.frag"
+        ty: "fragment",
+        path: "src/renderer/shaders/screen.frag"
     }
 }

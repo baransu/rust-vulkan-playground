@@ -10,15 +10,15 @@ struct PointLight {
 };
 
 // duplicated definition in model.vert
-layout(set = 0, binding = 0) uniform CameraUniformBufferObject {
+layout(set = 1, binding = 0) uniform CameraUniformBufferObject {
 	mat4 view;
 	mat4 proj;
 	vec3 position;
 } camera;
 
-layout(set = 1, binding = 0) uniform sampler2D diffuse_sampler;
-layout(set = 1, binding = 1) uniform sampler2D normal_sampler;
-layout(set = 1, binding = 2) uniform sampler2D metalic_roughness_sampler;
+layout(set = 2, binding = 0) uniform sampler2D diffuse_sampler;
+layout(set = 2, binding = 1) uniform sampler2D normal_sampler;
+layout(set = 2, binding = 2) uniform sampler2D metalic_roughness_sampler;
 
 // in
 layout(location = 0) in vec2 f_uv;

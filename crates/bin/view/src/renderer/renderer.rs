@@ -116,6 +116,21 @@ impl Renderer {
             MipmapsCount::One,
         );
 
+        let vertices_layout = DescriptorSetLayout::new(
+            context.device.clone(),
+            DescriptorSetDesc::new([
+                // vertices
+                Some(DescriptorDesc {
+                    ty: DescriptorType::StorageBuffer,
+                    descriptor_count: 1,
+                    variable_count: false,
+                    stages: ShaderStages::all_graphics(),
+                    immutable_samplers: vec![],
+                }),
+            ]),
+        )
+        .unwrap();
+
         let camera_layout = DescriptorSetLayout::new(
             context.device.clone(),
             DescriptorSetDesc::new([
@@ -124,11 +139,7 @@ impl Renderer {
                     ty: DescriptorType::UniformBuffer,
                     descriptor_count: 1,
                     variable_count: false,
-                    stages: ShaderStages {
-                        fragment: true,
-                        vertex: true,
-                        ..ShaderStages::none()
-                    },
+                    stages: ShaderStages::all_graphics(),
                     immutable_samplers: vec![],
                 }),
             ]),
@@ -175,14 +186,33 @@ impl Renderer {
         )
         .unwrap();
 
-        let gbuffer = GBuffer::initialize(&context, &materials_layout);
+        let gbuffer = GBuffer::initialize(
+            &context,
+            &vec![
+                vertices_layout.clone(),
+                camera_layout.clone(),
+                materials_layout.clone(),
+            ],
+        );
 
         let gen_hdr_cubemap = GenHdrCubemap::initialize(&context, skybox_path);
 
-        let point_light_shadows = PointLightShadows::initialize(&context);
-        let dir_light_shadows = DirLightShadows::initialize(&context);
+        let point_light_shadows = PointLightShadows::initialize(
+            &context,
+            &vec![vertices_layout.clone(), camera_layout.clone()],
+        );
+        let dir_light_shadows = DirLightShadows::initialize(
+            &context,
+            &vec![vertices_layout.clone(), camera_layout.clone()],
+        );
 
-        let scene = Scene::initialize(&context, mesh_paths, &camera_layout, &materials_layout);
+        let scene = Scene::initialize(
+            &context,
+            mesh_paths,
+            &vertices_layout,
+            &camera_layout,
+            &materials_layout,
+        );
 
         let ssao = Ssao::initialize(&context, &scene.camera_uniform_buffer, &gbuffer);
         let ssao_blur = SsaoBlur::initialize(&context, &ssao.target);

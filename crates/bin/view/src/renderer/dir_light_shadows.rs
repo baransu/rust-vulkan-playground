@@ -3,11 +3,11 @@ use std::sync::Arc;
 use glam::{Mat4, Vec3};
 
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::CpuAccessibleBuffer,
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SubpassContents,
     },
-    descriptor_set::PersistentDescriptorSet,
+    descriptor_set::layout::DescriptorSetLayout,
     format::ClearValue,
     image::{view::ImageView, AttachmentImage, ImageUsage},
     pipeline::{
@@ -17,65 +17,43 @@ use vulkano::{
             vertex_input::BuffersDefinition,
             viewport::{Viewport, ViewportState},
         },
-        GraphicsPipeline, Pipeline,
+        GraphicsPipeline,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
     single_pass_renderpass,
 };
 
-use super::{context::Context, entity::InstanceData, scene::Scene, vertex::Vertex};
+use super::{
+    context::Context, entity::InstanceData, gbuffer::GBuffer, scene::Scene,
+    shaders::CameraUniformBufferObject,
+};
 
 const DIM: f32 = 1024.0;
 
 pub struct DirLightShadows {
     pipeline: Arc<GraphicsPipeline>,
-    camera_uniform_buffer: Arc<CpuAccessibleBuffer<ShaderLightSpace>>,
     pub target_attachment: Arc<ImageView<AttachmentImage>>,
 
     framebuffer: Arc<Framebuffer>,
-
-    camera_descriptor_set: Arc<PersistentDescriptorSet>,
 }
 
 impl DirLightShadows {
-    pub fn initialize(context: &Context) -> DirLightShadows {
+    pub fn initialize(
+        context: &Context,
+        layouts: &Vec<Arc<DescriptorSetLayout>>,
+    ) -> DirLightShadows {
         let render_pass = Self::create_render_pass(context);
-        let pipeline = Self::create_graphics_pipeline(context, &render_pass);
-
-        let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
+        let pipeline = Self::create_graphics_pipeline(context, layouts, &render_pass);
 
         let target_attachment = Self::create_depth_attachment(context);
         let framebuffer = Self::create_framebuffer(&render_pass, &target_attachment);
 
-        let camera_descriptor_set =
-            Self::create_camera_descriptor_set(&pipeline, &camera_uniform_buffer);
-
         DirLightShadows {
-            camera_uniform_buffer,
             pipeline,
             target_attachment,
 
             framebuffer,
-            camera_descriptor_set,
         }
-    }
-
-    fn create_camera_uniform_buffer(
-        context: &Context,
-    ) -> Arc<CpuAccessibleBuffer<ShaderLightSpace>> {
-        let identity = Mat4::IDENTITY.to_cols_array_2d();
-
-        let uniform_buffer_data = ShaderLightSpace { matrix: identity };
-
-        let buffer = CpuAccessibleBuffer::from_data(
-            context.device.clone(),
-            BufferUsage::uniform_buffer_transfer_destination(),
-            false,
-            uniform_buffer_data,
-        )
-        .unwrap();
-
-        buffer
     }
 
     pub fn light_space_matrix() -> Mat4 {
@@ -94,36 +72,19 @@ impl DirLightShadows {
     fn update_uniform_buffers(
         &self,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     ) {
-        let matrix = Self::light_space_matrix();
+        let view = Self::light_space_matrix().to_cols_array_2d();
 
-        // camera buffer
-        let camera_buffer_data = Arc::new(ShaderLightSpace {
-            matrix: matrix.to_cols_array_2d(),
+        let camera_buffer_data = Arc::new(CameraUniformBufferObject {
+            view,
+            proj: Mat4::IDENTITY.to_cols_array_2d(),
+            position: Vec3::ZERO.to_array(),
         });
 
         builder
-            .update_buffer(self.camera_uniform_buffer.clone(), camera_buffer_data)
+            .update_buffer(uniform_buffer.clone(), camera_buffer_data)
             .unwrap();
-    }
-
-    fn create_camera_descriptor_set(
-        graphics_pipeline: &Arc<GraphicsPipeline>,
-        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<ShaderLightSpace>>,
-    ) -> Arc<PersistentDescriptorSet> {
-        let layout = graphics_pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(0)
-            .unwrap();
-
-        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-        set_builder
-            .add_buffer(camera_uniform_buffer.clone())
-            .unwrap();
-
-        set_builder.build().unwrap()
     }
 
     fn create_framebuffer(
@@ -175,12 +136,17 @@ impl DirLightShadows {
             context,
             &mut secondary_builder,
             &self.pipeline,
-            |_material| self.camera_descriptor_set.clone(),
+            |(primitive, _material)| {
+                (
+                    primitive.descriptor_set.clone(),
+                    scene.descriptor_set.clone(),
+                )
+            },
         );
 
         let model_command_buffer = Arc::new(secondary_builder.build().unwrap());
 
-        self.update_uniform_buffers(builder);
+        self.update_uniform_buffers(builder, &scene.camera_uniform_buffer);
 
         builder
             .begin_render_pass(
@@ -199,17 +165,23 @@ impl DirLightShadows {
 
     fn create_graphics_pipeline(
         context: &Context,
+        layouts: &Vec<Arc<DescriptorSetLayout>>,
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
         let vs = vs::load(context.device.clone()).unwrap();
         let fs = fs::load(context.device.clone()).unwrap();
 
+        let pipeline_layout = GBuffer::create_pipeline_layout(
+            context,
+            vec![
+                Arc::new(fs.entry_point("main").unwrap()).as_ref(),
+                Arc::new(vs.entry_point("main").unwrap()).as_ref(),
+            ],
+            &layouts,
+        );
+
         GraphicsPipeline::start()
-            .vertex_input_state(
-                BuffersDefinition::new()
-                    .vertex::<Vertex>()
-                    .instance::<InstanceData>(),
-            )
+            .vertex_input_state(BuffersDefinition::new().instance::<InstanceData>())
             .vertex_shader(vs.entry_point("main").unwrap(), ())
             .fragment_shader(fs.entry_point("main").unwrap(), ())
             .depth_stencil_state(DepthStencilState::simple_depth_test())
@@ -226,7 +198,7 @@ impl DirLightShadows {
                     .front_face(FrontFace::Clockwise),
             )
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(context.device.clone())
+            .with_pipeline_layout(context.device.clone(), pipeline_layout)
             .unwrap()
     }
 
@@ -249,28 +221,13 @@ impl DirLightShadows {
 
 pub mod vs {
     vulkano_shaders::shader! {
-                                                                    ty: "vertex",
-                                                                    src: "
-			#version 450
-
-            layout(binding = 0) uniform LightSpace {
-                mat4 matrix;
-            } lightSpace;
-
-			// per vertex
-			layout(location = 1) in vec3 position;
-
-			// per instance
-			layout(location = 4) in mat4 model; 
-
-			void main() {
-				gl_Position = lightSpace.matrix * model * vec4(position, 1.0);
-			}									
-"
+        ty: "vertex",
+        path: "src/renderer/shaders/dir_light.vert",
+        types_meta: {
+            #[derive(Clone, Copy, Default)]
+        }
     }
 }
-
-type ShaderLightSpace = vs::ty::LightSpace;
 
 pub mod fs {
     vulkano_shaders::shader! {

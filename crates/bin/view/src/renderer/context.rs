@@ -33,6 +33,7 @@ const ENABLE_VALIDATION_LAYERS: bool = false;
 
 const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
     khr_swapchain: true,
+    khr_storage_buffer_storage_class: true,
     ..DeviceExtensions::none()
 };
 

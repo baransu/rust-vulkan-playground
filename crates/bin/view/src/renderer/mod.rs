@@ -18,4 +18,3 @@ pub mod ssao;
 pub mod ssao_blur;
 pub mod texture;
 pub mod transform;
-pub mod vertex;

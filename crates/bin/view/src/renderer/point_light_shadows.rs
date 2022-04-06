@@ -7,7 +7,7 @@ use vulkano::{
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SubpassContents,
     },
-    descriptor_set::PersistentDescriptorSet,
+    descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet},
     format::{ClearValue, Format},
     image::{
         view::{ImageView, ImageViewType},
@@ -26,8 +26,8 @@ use vulkano::{
 };
 
 use super::{
-    context::Context, entity::InstanceData, scene::Scene, shaders::CameraUniformBufferObject,
-    vertex::Vertex,
+    context::Context, entity::InstanceData, gbuffer::GBuffer, scene::Scene,
+    shaders::CameraUniformBufferObject,
 };
 
 const DIM: f32 = 512.0;
@@ -35,22 +35,20 @@ const FORMAT: Format = Format::R16G16B16A16_SFLOAT;
 
 pub struct PointLightShadows {
     pub pipeline: Arc<GraphicsPipeline>,
-    camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     cube_attachment: Arc<StorageImage>,
     pub cube_attachment_view: Arc<ImageView<StorageImage>>,
     target_attachment: Arc<AttachmentImage>,
 
     framebuffer: Arc<Framebuffer>,
-
-    camera_descriptor_set: Arc<PersistentDescriptorSet>,
 }
 
 impl PointLightShadows {
-    pub fn initialize(context: &Context) -> PointLightShadows {
+    pub fn initialize(
+        context: &Context,
+        layouts: &Vec<Arc<DescriptorSetLayout>>,
+    ) -> PointLightShadows {
         let render_pass = Self::create_render_pass(context);
-        let pipeline = Self::create_graphics_pipeline(context, &render_pass);
-
-        let camera_uniform_buffer = Self::create_camera_uniform_buffer(context);
+        let pipeline = Self::create_graphics_pipeline(context, layouts, &render_pass);
 
         let cube_attachment = Self::create_cube_attachment(context);
 
@@ -63,46 +61,20 @@ impl PointLightShadows {
         let target_attachment_view = ImageView::new(target_attachment.clone()).unwrap();
         let framebuffer = Self::create_framebuffer(&context, &render_pass, &target_attachment_view);
 
-        let camera_descriptor_set =
-            Self::create_camera_descriptor_set(&pipeline, &camera_uniform_buffer);
-
         PointLightShadows {
-            camera_uniform_buffer,
             pipeline,
             cube_attachment,
             cube_attachment_view,
             target_attachment,
 
             framebuffer,
-            camera_descriptor_set,
         }
-    }
-
-    fn create_camera_uniform_buffer(
-        context: &Context,
-    ) -> Arc<CpuAccessibleBuffer<CameraUniformBufferObject>> {
-        let identity = Mat4::IDENTITY.to_cols_array_2d();
-
-        let uniform_buffer_data = CameraUniformBufferObject {
-            view: identity,
-            proj: identity,
-            position: Vec3::ONE.to_array(),
-        };
-
-        let buffer = CpuAccessibleBuffer::from_data(
-            context.device.clone(),
-            BufferUsage::uniform_buffer_transfer_destination(),
-            false,
-            uniform_buffer_data,
-        )
-        .unwrap();
-
-        buffer
     }
 
     fn update_uniform_buffers(
         &self,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
         f: usize,
     ) {
         // NOTE: this have to be the same as light position in scene.rs
@@ -123,27 +95,8 @@ impl PointLightShadows {
         });
 
         builder
-            .update_buffer(self.camera_uniform_buffer.clone(), camera_buffer_data)
+            .update_buffer(uniform_buffer.clone(), camera_buffer_data)
             .unwrap();
-    }
-
-    fn create_camera_descriptor_set(
-        graphics_pipeline: &Arc<GraphicsPipeline>,
-        camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-    ) -> Arc<PersistentDescriptorSet> {
-        let layout = graphics_pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(0)
-            .unwrap();
-
-        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-        set_builder
-            .add_buffer(camera_uniform_buffer.clone())
-            .unwrap();
-
-        set_builder.build().unwrap()
     }
 
     fn create_framebuffer(
@@ -206,13 +159,18 @@ impl PointLightShadows {
             context,
             &mut secondary_builder,
             &self.pipeline,
-            |_material| self.camera_descriptor_set.clone(),
+            |(primitive, _material)| {
+                (
+                    primitive.descriptor_set.clone(),
+                    scene.descriptor_set.clone(),
+                )
+            },
         );
 
         let model_command_buffer = Arc::new(secondary_builder.build().unwrap());
 
         for f in 0..6 {
-            self.update_uniform_buffers(builder, f);
+            self.update_uniform_buffers(builder, &scene.camera_uniform_buffer, f);
 
             builder
                 .begin_render_pass(
@@ -250,17 +208,23 @@ impl PointLightShadows {
 
     fn create_graphics_pipeline(
         context: &Context,
+        layouts: &Vec<Arc<DescriptorSetLayout>>,
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
         let vs = vs::load(context.device.clone()).unwrap();
         let fs = fs::load(context.device.clone()).unwrap();
 
+        let pipeline_layout = GBuffer::create_pipeline_layout(
+            context,
+            vec![
+                Arc::new(fs.entry_point("main").unwrap()).as_ref(),
+                Arc::new(vs.entry_point("main").unwrap()).as_ref(),
+            ],
+            &layouts,
+        );
+
         GraphicsPipeline::start()
-            .vertex_input_state(
-                BuffersDefinition::new()
-                    .vertex::<Vertex>()
-                    .instance::<InstanceData>(),
-            )
+            .vertex_input_state(BuffersDefinition::new().instance::<InstanceData>())
             .vertex_shader(vs.entry_point("main").unwrap(), ())
             .fragment_shader(fs.entry_point("main").unwrap(), ())
             .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
@@ -272,7 +236,7 @@ impl PointLightShadows {
             ]))
             .depth_stencil_state(DepthStencilState::simple_depth_test())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(context.device.clone())
+            .with_pipeline_layout(context.device.clone(), pipeline_layout)
             .unwrap()
     }
 
@@ -332,29 +296,11 @@ impl PointLightShadows {
 
 pub mod vs {
     vulkano_shaders::shader! {
-                                                                    ty: "vertex",
-                                                                    src: "
-			#version 450
-
-            layout(binding = 0) uniform CameraUniformBufferObject {
-                mat4 view;
-                mat4 proj;
-                vec3 position;
-            } camera;
-
-			// per vertex
-			layout(location = 1) in vec3 position;
-
-			// per instance
-			layout(location = 4) in mat4 model; 
-
-            layout(location = 0) out vec4 FragPos;
-
-			void main() {
-				gl_Position = camera.proj * camera.view * model * vec4(position, 1.0);
-                FragPos = model * vec4(position, 1.0);
-			}									
-"
+        ty: "vertex",
+        path: "src/renderer/shaders/point_light.vert",
+        types_meta: {
+            #[derive(Clone, Copy, Default)]
+        }
     }
 }
 
@@ -364,10 +310,9 @@ pub mod fs {
                                     src: "
 			#version 450
 
-            layout(binding = 0) uniform CameraUniformBufferObject {
+            layout(set = 1, binding = 0) uniform CameraUniformBufferObject {
                 mat4 view;
                 mat4 proj;
-                // this is point light position as well
                 vec3 position;
             } camera;
 

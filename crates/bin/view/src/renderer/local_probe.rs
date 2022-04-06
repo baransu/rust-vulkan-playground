@@ -37,7 +37,6 @@ use super::{
     scene::Scene,
     shaders::CameraUniformBufferObject,
     skybox_pass::{fs_local_probe, SkyboxPass},
-    vertex::Vertex,
 };
 
 const DIM: f32 = 1024.0;
@@ -335,15 +334,11 @@ impl LocalProbe {
                 Arc::new(vs.entry_point("main").unwrap()).as_ref(),
                 Arc::new(fs.entry_point("main").unwrap()).as_ref(),
             ],
-            layout,
+            &vec![layout.clone()],
         );
 
         GraphicsPipeline::start()
-            .vertex_input_state(
-                BuffersDefinition::new()
-                    .vertex::<Vertex>()
-                    .instance::<InstanceData>(),
-            )
+            .vertex_input_state(BuffersDefinition::new().instance::<InstanceData>())
             .vertex_shader(vs.entry_point("main").unwrap(), ())
             .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
                 Viewport {
@@ -489,13 +484,7 @@ impl LocalProbe {
                     light_descriptor_set.clone(),
                 ],
             )
-            .bind_vertex_buffers(
-                0,
-                (
-                    primitive.vertex_buffer.clone(),
-                    instance_data_buffer.clone(),
-                ),
-            )
+            .bind_vertex_buffers(0, instance_data_buffer.clone())
             .bind_index_buffer(primitive.index_buffer.clone())
             .draw_indexed(
                 primitive.index_count,
@@ -511,7 +500,10 @@ impl LocalProbe {
 pub mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
-        path: "src/renderer/shaders/local_probe.vert"
+        path: "src/renderer/shaders/gbuffer.vert",
+        types_meta: {
+            #[derive(Clone, Copy, Default)]
+        }
     }
 }
 

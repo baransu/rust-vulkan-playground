@@ -19,7 +19,7 @@ struct PointLight {
 };
 
 // duplicated definition in model.vert
-layout(set = 0, binding = 0) uniform CameraUniformBufferObject {
+layout(set = 0, binding = 1) uniform CameraUniformBufferObject {
 	mat4 view;
 	mat4 proj;
 	vec3 position;

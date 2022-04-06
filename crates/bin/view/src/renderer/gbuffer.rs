@@ -21,13 +21,7 @@ use vulkano::{
     shader::{DescriptorRequirements, EntryPoint},
 };
 
-use super::{
-    context::Context,
-    entity::InstanceData,
-    scene::Scene,
-    shaders::{model_fragment_shader, model_vertex_shader},
-    vertex::Vertex,
-};
+use super::{context::Context, entity::InstanceData, scene::Scene, shaders::gbuffer_shader};
 
 pub type GBufferTarget = Arc<ImageView<AttachmentImage>>;
 
@@ -42,11 +36,11 @@ pub struct GBuffer {
     pub framebuffer: Arc<Framebuffer>,
     pub pipeline: Arc<GraphicsPipeline>,
 
-    layout: Arc<DescriptorSetLayout>,
+    layouts: Vec<Arc<DescriptorSetLayout>>,
 }
 
 impl GBuffer {
-    pub fn initialize(context: &Context, layout: &Arc<DescriptorSetLayout>) -> GBuffer {
+    pub fn initialize(context: &Context, layouts: &Vec<Arc<DescriptorSetLayout>>) -> GBuffer {
         let position_buffer = Self::create_attachment_image(context, Format::R16G16B16A16_SFLOAT);
         let normals_buffer = Self::create_attachment_image(context, Format::R16G16B16A16_SFLOAT);
         let albedo_buffer = Self::create_attachment_image(context, Format::R16G16B16A16_SFLOAT);
@@ -64,7 +58,7 @@ impl GBuffer {
             &depth_buffer,
         );
 
-        let pipeline = Self::create_pipeline(context, &layout, &render_pass);
+        let pipeline = Self::create_pipeline(context, &layouts, &render_pass);
 
         GBuffer {
             position_buffer,
@@ -77,12 +71,12 @@ impl GBuffer {
             framebuffer,
             pipeline,
 
-            layout: layout.clone(),
+            layouts: layouts.clone(),
         }
     }
 
     pub fn recreate_swapchain(&mut self, context: &Context) {
-        self.pipeline = Self::create_pipeline(context, &self.layout, &self.render_pass);
+        self.pipeline = Self::create_pipeline(context, &self.layouts, &self.render_pass);
 
         self.position_buffer = Self::create_attachment_image(context, Format::R16G16B16A16_SFLOAT);
         self.normals_buffer = Self::create_attachment_image(context, Format::R16G16B16A16_SFLOAT);
@@ -168,11 +162,11 @@ impl GBuffer {
 
     fn create_pipeline(
         context: &Context,
-        layout: &Arc<DescriptorSetLayout>,
+        layouts: &Vec<Arc<DescriptorSetLayout>>,
         render_pass: &Arc<RenderPass>,
     ) -> Arc<GraphicsPipeline> {
-        let vs = model_vertex_shader::load(context.device.clone()).unwrap();
-        let fs = model_fragment_shader::load(context.device.clone()).unwrap();
+        let vs = gbuffer_shader::load_vertex(context.device.clone()).unwrap();
+        let fs = gbuffer_shader::load_fragment(context.device.clone()).unwrap();
 
         let pipeline_layout = Self::create_pipeline_layout(
             context,
@@ -180,7 +174,7 @@ impl GBuffer {
                 Arc::new(fs.entry_point("main").unwrap()).as_ref(),
                 Arc::new(vs.entry_point("main").unwrap()).as_ref(),
             ],
-            &layout,
+            &layouts,
         );
 
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
@@ -189,11 +183,7 @@ impl GBuffer {
         let height = context.swapchain.dimensions()[1] as f32;
 
         GraphicsPipeline::start()
-            .vertex_input_state(
-                BuffersDefinition::new()
-                    .vertex::<Vertex>()
-                    .instance::<InstanceData>(),
-            )
+            .vertex_input_state(BuffersDefinition::new().instance::<InstanceData>())
             .vertex_shader(vs.entry_point("main").unwrap(), ())
             .fragment_shader(fs.entry_point("main").unwrap(), ())
             .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
@@ -272,20 +262,28 @@ impl GBuffer {
 
         builder.bind_pipeline_graphics(self.pipeline.clone());
 
-        scene.draw(context, &mut builder, &self.pipeline, |material| {
-            (
-                scene.camera_descriptor_set.clone(),
-                material.descriptor_set.clone(),
-            )
-        });
+        scene.draw(
+            context,
+            &mut builder,
+            &self.pipeline,
+            |(primitive, material)| {
+                (
+                    // TODO: this should one per scene - uber storage buffer,
+                    primitive.descriptor_set.clone(),
+                    scene.descriptor_set.clone(),
+                    material.descriptor_set.clone(),
+                )
+            },
+        );
 
         Arc::new(builder.build().unwrap())
     }
 
+    // NOTE: this is utility and should be abstracted into something like geometry pass or something like this maybe?
     pub fn create_pipeline_layout(
         context: &Context,
         entries: Vec<&EntryPoint>,
-        layout: &Arc<DescriptorSetLayout>,
+        layouts: &Vec<Arc<DescriptorSetLayout>>,
     ) -> Arc<PipelineLayout> {
         // Produce `DescriptorRequirements` for each binding, by iterating over all shaders
         // and adding the requirements of each.
@@ -325,7 +323,7 @@ impl GBuffer {
             .into_iter()
             .enumerate()
             .map(|(index, desc)| {
-                if index == 1 {
+                if let Some(layout) = layouts.get(index) {
                     Ok(layout.clone())
                 } else {
                     Ok(DescriptorSetLayout::new(context.device.clone(), desc.clone()).unwrap())

@@ -20,4 +20,5 @@ pub struct InstanceData {
     pub model: [[f32; 4]; 4],
 }
 
+// TODO: convert to storage buffer
 vulkano::impl_vertex!(InstanceData, model);

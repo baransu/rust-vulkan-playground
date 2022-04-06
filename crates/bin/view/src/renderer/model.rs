@@ -9,29 +9,32 @@ use vulkano::{
     sync::GpuFuture,
 };
 
-use super::{texture::Texture, vertex::Vertex};
+use super::{shaders::Vertex, texture::Texture};
 
 pub struct Primitive {
-    pub vertex_buffer: Arc<ImmutableBuffer<[Vertex]>>,
+    _vertex_buffer: Arc<ImmutableBuffer<[Vertex]>>,
     pub index_buffer: Arc<ImmutableBuffer<[u32]>>,
+    pub descriptor_set: Arc<PersistentDescriptorSet>,
     pub index_count: u32,
-
     pub material: usize,
 }
 
 impl Primitive {
     fn new(
         queue: &Arc<Queue>,
+        layout: &Arc<DescriptorSetLayout>,
         material: usize,
         vertices: Vec<Vertex>,
         indices: Vec<u32>,
     ) -> Primitive {
         let vertex_buffer = Self::create_vertex_buffer(queue, &vertices);
         let index_buffer = Self::create_index_buffer(queue, &indices);
+        let descriptor_set = Self::create_descriptor_set(layout, &vertex_buffer);
 
         Primitive {
-            vertex_buffer,
+            _vertex_buffer: vertex_buffer,
             index_buffer,
+            descriptor_set,
             index_count: indices.len() as u32,
             material,
         }
@@ -43,8 +46,7 @@ impl Primitive {
     ) -> Arc<ImmutableBuffer<[Vertex]>> {
         let (buffer, future) = ImmutableBuffer::from_iter(
             vertices.iter().cloned(),
-            BufferUsage::vertex_buffer(),
-            // TODO: idealy it should be transfer queue?
+            BufferUsage::storage_buffer(),
             queue.clone(),
         )
         .unwrap();
@@ -58,7 +60,6 @@ impl Primitive {
         let (buffer, future) = ImmutableBuffer::from_iter(
             indices.iter().cloned(),
             BufferUsage::index_buffer(),
-            // TODO: idealy it should be transfer queue?
             queue.clone(),
         )
         .unwrap();
@@ -66,6 +67,17 @@ impl Primitive {
         future.flush().unwrap();
 
         buffer
+    }
+
+    fn create_descriptor_set(
+        layout: &Arc<DescriptorSetLayout>,
+        vertex_buffer: &Arc<ImmutableBuffer<[Vertex]>>,
+    ) -> Arc<PersistentDescriptorSet> {
+        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        set_builder.add_buffer(vertex_buffer.clone()).unwrap();
+
+        set_builder.build().unwrap()
     }
 }
 
@@ -139,7 +151,12 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn load_gltf(queue: &Arc<Queue>, path: &str, layout: &Arc<DescriptorSetLayout>) -> Model {
+    pub fn load_gltf(
+        queue: &Arc<Queue>,
+        path: &str,
+        vertices_layout: &Arc<DescriptorSetLayout>,
+        materials_layout: &Arc<DescriptorSetLayout>,
+    ) -> Model {
         let start_time = Instant::now();
         let id = path.to_string();
         log::debug!("Loading model: {}", id);
@@ -172,12 +189,26 @@ impl Model {
                     .iter()
                     .enumerate()
                     .map(|(index, position)| {
-                        let position = *position;
-                        let normal = *normals.get(index).unwrap_or(&[1.0, 1.0, 1.0]);
-                        let uv = *tex_coords.get(index).unwrap_or(&[0.0, 0.0]);
-                        let tangent = *tangents.get(index).unwrap_or(&[1.0, 1.0, 1.0, 1.0]);
+                        let [px, py, pz] = *position;
+                        let [nx, ny, nz] = *normals.get(index).unwrap_or(&[1.0, 1.0, 1.0]);
+                        let [ux, uy] = *tex_coords.get(index).unwrap_or(&[0.0, 0.0]);
+                        let [tx, ty, tz, tw] =
+                            *tangents.get(index).unwrap_or(&[1.0, 1.0, 1.0, 1.0]);
 
-                        Vertex::new(position, normal, uv, tangent)
+                        Vertex {
+                            px,
+                            py,
+                            pz,
+                            nx,
+                            ny,
+                            nz,
+                            ux,
+                            uy,
+                            tx,
+                            ty,
+                            tz,
+                            tw,
+                        }
                     })
                     .collect::<Vec<_>>();
 
@@ -186,8 +217,6 @@ impl Model {
                     .map(|indices| indices.into_u32().collect::<Vec<_>>())
                     .unwrap();
 
-                // before meshopt ~18.4ms
-                // after meshopt ~18.1ms
                 let (_vertex_count, remap) =
                     meshopt::generate_vertex_remap(&vertices, Some(&indices));
 
@@ -198,6 +227,7 @@ impl Model {
 
                 Primitive::new(
                     queue,
+                    vertices_layout,
                     primitive.material().index().unwrap(),
                     final_vertices,
                     final_indices,
@@ -244,7 +274,7 @@ impl Model {
                 });
 
                 Material::new(
-                    layout,
+                    materials_layout,
                     // TODO: how to correctly handle optional values?
                     diffuse.unwrap_or_else(|| Texture::empty(&queue)),
                     metalic_roughness.unwrap_or_else(|| Texture::empty(&queue)),

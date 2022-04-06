@@ -19,7 +19,7 @@ use super::{
     dir_light_shadows::DirLightShadows,
     entity::{Entity, InstanceData},
     light_system::{LightUniformBufferObject, ShaderPointLight},
-    model::{Material, Model},
+    model::{Material, Model, Primitive},
     shaders::CameraUniformBufferObject,
 };
 
@@ -33,7 +33,7 @@ pub struct PointLight {
 
 pub struct Scene {
     pub camera_uniform_buffer: Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
-    pub camera_descriptor_set: Arc<PersistentDescriptorSet>,
+    pub descriptor_set: Arc<PersistentDescriptorSet>,
     pub light_uniform_buffer: Arc<CpuAccessibleBuffer<LightUniformBufferObject>>,
 
     pub point_lights: Vec<PointLight>,
@@ -46,6 +46,7 @@ impl Scene {
     pub fn initialize(
         context: &Context,
         mesh_paths: Vec<&str>,
+        vertices_layout: &Arc<DescriptorSetLayout>,
         camera_layout: &Arc<DescriptorSetLayout>,
         materials_layout: &Arc<DescriptorSetLayout>,
     ) -> Self {
@@ -57,18 +58,18 @@ impl Scene {
         let queue = context.graphics_queue.clone();
         let models = mesh_paths
             .into_iter()
-            .map(|path| Model::load_gltf(&queue, &path, materials_layout))
-            .collect();
+            .map(|path| Model::load_gltf(&queue, &path, vertices_layout, materials_layout))
+            .collect::<Vec<_>>();
 
         let camera_descriptor_set =
-            Self::create_camera_descriptor_set(camera_layout, &camera_uniform_buffer);
+            Self::create_descriptor_set(camera_layout, &camera_uniform_buffer);
 
         Scene {
             models,
             entities: vec![],
 
             camera_uniform_buffer,
-            camera_descriptor_set,
+            descriptor_set: camera_descriptor_set,
             light_uniform_buffer,
 
             point_lights,
@@ -103,7 +104,7 @@ impl Scene {
         buffer
     }
 
-    fn create_camera_descriptor_set(
+    fn create_descriptor_set(
         layout: &Arc<DescriptorSetLayout>,
         camera_uniform_buffer: &Arc<CpuAccessibleBuffer<CameraUniformBufferObject>>,
     ) -> Arc<PersistentDescriptorSet> {
@@ -245,7 +246,7 @@ impl Scene {
         context: &Context,
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         pipeline: &Arc<GraphicsPipeline>,
-        get_descriptor_sets: impl Fn(&Material) -> S,
+        get_descriptor_sets: impl Fn((&Primitive, &Material)) -> S,
     ) where
         S: DescriptorSetsCollection,
     {
@@ -275,7 +276,7 @@ impl Scene {
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         node_index: usize,
         instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
-        get_descriptor_sets: &impl Fn(&Material) -> S,
+        get_descriptor_sets: &impl Fn((&Primitive, &Material)) -> S,
     ) where
         S: DescriptorSetsCollection,
     {
@@ -315,14 +316,14 @@ impl Scene {
         builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
         primitive_index: usize,
         instance_data_buffer: &Arc<ImmutableBuffer<[InstanceData]>>,
-        get_descriptor_sets: &impl Fn(&Material) -> S,
+        get_descriptor_sets: &impl Fn((&Primitive, &Material)) -> S,
     ) where
         S: DescriptorSetsCollection,
     {
         let primitive = model.primitives.get(primitive_index).unwrap();
         let material = model.materials.get(primitive.material).unwrap();
 
-        let descriptor_sets = get_descriptor_sets(material);
+        let descriptor_sets = get_descriptor_sets((primitive, material));
 
         builder
             .bind_descriptor_sets(
@@ -331,13 +332,7 @@ impl Scene {
                 0,
                 descriptor_sets,
             )
-            .bind_vertex_buffers(
-                0,
-                (
-                    primitive.vertex_buffer.clone(),
-                    instance_data_buffer.clone(),
-                ),
-            )
+            .bind_vertex_buffers(0, instance_data_buffer.clone())
             .bind_index_buffer(primitive.index_buffer.clone())
             .draw_indexed(
                 primitive.index_count,
