@@ -5,12 +5,22 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "(OSX) Launch",
+      "name": "view-debug",
       "type": "lldb",
       "request": "launch",
       "program": "${workspaceRoot}/target/debug/view",
       "args": [],
-      "cwd": "${workspaceRoot}"
+      "cwd": "${workspaceRoot}",
+      "preLaunchTask": "rust: cargo build --bin view"
+    },
+    {
+      "name": "view-ash-debug",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceRoot}/target/debug/view-ash",
+      "args": [],
+      "cwd": "${workspaceRoot}",
+      "preLaunchTask": "rust: cargo build --bin view-ash"
     }
   ]
 }
