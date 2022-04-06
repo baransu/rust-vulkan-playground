@@ -36,6 +36,8 @@ pub struct VkContext {
     images: Vec<vk::Image>,
     swapchain_image_views: Vec<vk::ImageView>,
     depth_format: vk::Format,
+    pub width: u32,
+    pub height: u32,
 }
 
 impl VkContext {
@@ -125,6 +127,8 @@ impl VkContext {
             depth_format,
             images,
             queue_families_indices,
+            width: WIDTH,
+            height: HEIGHT,
         }
     }
 
@@ -148,6 +152,8 @@ impl VkContext {
         self.swapchain_properties = swapchain_properties;
         self.swapchain_image_views = swapchain_image_views;
         self.images = images;
+        self.width = dimensions[0];
+        self.height = dimensions[1];
     }
 
     pub fn cleanup_swapchain(&mut self) {

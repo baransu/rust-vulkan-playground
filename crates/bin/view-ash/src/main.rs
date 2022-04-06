@@ -21,6 +21,7 @@ use winit::{
     dpi::PhysicalSize,
     event::{Event, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
+    platform::run_return::EventLoopExtRunReturn,
     window::Window,
 };
 
@@ -1448,6 +1449,7 @@ impl VulkanApp {
                     self.recreate_swapchain();
                 }
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                    log::debug!("Result out of date...");
                     self.recreate_swapchain();
                 }
                 Err(error) => panic!("Failed to present queue. Cause: {}", error),
@@ -1512,6 +1514,8 @@ impl VulkanApp {
         self.command_buffers = command_buffers;
         self.query_pool = query_pool;
         self.resize_dimensions = None;
+
+        log::debug!("Swapchain recreated.");
     }
 
     fn cleanup_swapchain(&mut self) {
@@ -1570,7 +1574,7 @@ impl VulkanApp {
         }
     }
 
-    pub fn main_loop(mut self, event_loop: EventLoop<()>) {
+    pub fn main_loop(mut self, mut event_loop: EventLoop<()>) {
         let timestamp_period = unsafe {
             self.vk_context
                 .instance()
@@ -1582,67 +1586,73 @@ impl VulkanApp {
         let mut fps_cpu_avg = 0.0;
         let mut fps_gpu_avg = 0.0;
 
-        event_loop.run(move |event, _, control_flow| match event {
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => {
-                    *control_flow = ControlFlow::Exit;
-                }
-                WindowEvent::Resized(PhysicalSize { width, height }) => {
-                    self.resize_dimensions = Some([width as u32, height as u32]);
-                }
-                WindowEvent::KeyboardInput { input, .. } => match input {
-                    winit::event::KeyboardInput {
-                        virtual_keycode,
-                        state,
-                        ..
-                    } => match (virtual_keycode, state) {
-                        (Some(VirtualKeyCode::Escape), winit::event::ElementState::Pressed) => {
-                            dbg!();
-                            *control_flow = ControlFlow::Exit
-                        }
-                        _ => {}
-                    },
-                },
-                _ => {}
-            },
-            Event::MainEventsCleared => self.window.request_redraw(),
-            Event::RedrawRequested(_window_id) => {
-                let start_time = Instant::now();
+        event_loop.run_return(move |event, _, control_flow| {
+            *control_flow = ControlFlow::Poll;
 
-                self.draw_frame();
-
-                let end_time = Instant::now();
-
-                fps_cpu_avg = fps_cpu_avg * 0.9
-                    + (end_time.duration_since(start_time).as_secs_f64() * 1000.0) * 0.1;
-
-                let results = {
-                    unsafe {
-                        let mut query_results = [0u64; 2];
-                        self.vk_context
-                            .device()
-                            .get_query_pool_results(
-                                self.query_pool,
-                                0,
-                                2,
-                                &mut query_results,
-                                vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
-                            )
-                            .unwrap();
-                        query_results
+            match event {
+                Event::WindowEvent { event, .. } => match event {
+                    WindowEvent::CloseRequested => {
+                        *control_flow = ControlFlow::Exit;
                     }
-                };
+                    WindowEvent::Resized(PhysicalSize { width, height }) => {
+                        if width != self.vk_context.width || height != self.vk_context.height {
+                            self.resize_dimensions = Some([width as u32, height as u32]);
+                        }
+                    }
+                    WindowEvent::KeyboardInput { input, .. } => match input {
+                        winit::event::KeyboardInput {
+                            virtual_keycode,
+                            state,
+                            ..
+                        } => match (virtual_keycode, state) {
+                            (Some(VirtualKeyCode::Escape), winit::event::ElementState::Pressed) => {
+                                dbg!();
+                                *control_flow = ControlFlow::Exit
+                            }
+                            _ => {}
+                        },
+                    },
+                    _ => {}
+                },
+                Event::MainEventsCleared => self.window.request_redraw(),
+                Event::RedrawRequested(_window_id) => {
+                    let start_time = Instant::now();
 
-                let gpu_start_time = results[0] as f64 * timestamp_period * 1e-6;
-                let gpu_end_time = results[1] as f64 * timestamp_period * 1e-6;
+                    self.draw_frame();
 
-                fps_gpu_avg = fps_gpu_avg * 0.9 + (gpu_end_time - gpu_start_time) * 0.1;
+                    let end_time = Instant::now();
 
-                self.window.set_title(
-                    format!("cpu: {:0.2}ms; gpu: {:0.2}ms", fps_cpu_avg, fps_gpu_avg).as_str(),
-                );
+                    fps_cpu_avg = fps_cpu_avg * 0.9
+                        + (end_time.duration_since(start_time).as_secs_f64() * 1000.0) * 0.1;
+
+                    let results = {
+                        unsafe {
+                            let mut query_results = [0u64; 2];
+                            self.vk_context
+                                .device()
+                                .get_query_pool_results(
+                                    self.query_pool,
+                                    0,
+                                    2,
+                                    &mut query_results,
+                                    vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
+                                )
+                                .unwrap();
+                            query_results
+                        }
+                    };
+
+                    let gpu_start_time = results[0] as f64 * timestamp_period * 1e-6;
+                    let gpu_end_time = results[1] as f64 * timestamp_period * 1e-6;
+
+                    fps_gpu_avg = fps_gpu_avg * 0.9 + (gpu_end_time - gpu_start_time) * 0.1;
+
+                    self.window.set_title(
+                        format!("cpu: {:0.2}ms; gpu: {:0.2}ms", fps_cpu_avg, fps_gpu_avg).as_str(),
+                    );
+                }
+                _ => {}
             }
-            _ => {}
         })
     }
 }

@@ -78,10 +78,10 @@ impl SwapchainSupportDetails {
     ) -> vk::PresentModeKHR {
         if available_present_modes.contains(&vk::PresentModeKHR::MAILBOX) {
             vk::PresentModeKHR::MAILBOX
-        } else if available_present_modes.contains(&vk::PresentModeKHR::FIFO) {
-            vk::PresentModeKHR::FIFO
-        } else {
+        } else if available_present_modes.contains(&vk::PresentModeKHR::IMMEDIATE) {
             vk::PresentModeKHR::IMMEDIATE
+        } else {
+            vk::PresentModeKHR::FIFO
         }
     }
 
