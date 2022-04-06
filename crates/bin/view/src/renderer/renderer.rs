@@ -552,6 +552,20 @@ impl Renderer {
         rc.scene
             .update_uniform_buffers(&mut builder, &rc.camera, dimensions);
 
+        Self::draw_ui(
+            rc,
+            FrameContext {
+                prebuild,
+                previous_frame_end,
+                recreate_swapchain,
+                imgui_backend,
+                imgui,
+                puffin_ui,
+            },
+            &mut builder,
+            fps_cpu,
+        );
+
         builder
             .begin_render_pass(
                 offscreen_framebuffer.clone(),
@@ -630,20 +644,6 @@ impl Renderer {
             .unwrap()
             .end_render_pass()
             .unwrap();
-
-        Self::draw_ui(
-            rc,
-            FrameContext {
-                prebuild,
-                previous_frame_end,
-                recreate_swapchain,
-                imgui_backend,
-                imgui,
-                puffin_ui,
-            },
-            &mut builder,
-            fps_cpu,
-        );
 
         let command_buffer = builder.build().unwrap();
 

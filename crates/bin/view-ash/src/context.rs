@@ -21,57 +21,23 @@ const HEIGHT: u32 = 600;
 
 pub struct VkContext {
     _entry: Entry,
-    instance: Instance,
+    pub instance: Instance,
     debug_report_callback: Option<(DebugUtils, DebugUtilsMessengerEXT)>,
-    surface: Surface,
+    pub surface: Surface,
     surface_khr: vk::SurfaceKHR,
-    physical_device: vk::PhysicalDevice,
-    device: Device,
-    queue_families_indices: QueueFamiliesIndices,
+    pub physical_device: vk::PhysicalDevice,
+    pub device: Device,
+    pub queue_families_indices: QueueFamiliesIndices,
     pub graphics_queue: vk::Queue,
     pub present_queue: vk::Queue,
     pub swapchain: Swapchain,
     pub swapchain_khr: vk::SwapchainKHR,
-    swapchain_properties: SwapchainProperties,
-    images: Vec<vk::Image>,
-    swapchain_image_views: Vec<vk::ImageView>,
-    depth_format: vk::Format,
+    pub swapchain_properties: SwapchainProperties,
+    swapchain_images: Vec<vk::Image>,
+    pub swapchain_image_views: Vec<vk::ImageView>,
+    pub depth_format: vk::Format,
     pub width: u32,
     pub height: u32,
-}
-
-impl VkContext {
-    pub fn instance(&self) -> &Instance {
-        &self.instance
-    }
-
-    pub fn physical_device(&self) -> vk::PhysicalDevice {
-        self.physical_device
-    }
-
-    pub fn device(&self) -> &Device {
-        &self.device
-    }
-
-    pub fn swapchain_properties(&self) -> &SwapchainProperties {
-        &self.swapchain_properties
-    }
-
-    pub fn swapchain_images(&self) -> &Vec<vk::Image> {
-        &self.images
-    }
-
-    pub fn swapchain_image_views(&self) -> &Vec<vk::ImageView> {
-        &self.swapchain_image_views
-    }
-
-    pub fn depth_format(&self) -> vk::Format {
-        self.depth_format
-    }
-
-    pub fn queue_families_indices(&self) -> &QueueFamiliesIndices {
-        &self.queue_families_indices
-    }
 }
 
 impl VkContext {
@@ -125,7 +91,7 @@ impl VkContext {
             swapchain_khr,
             swapchain_properties,
             depth_format,
-            images,
+            swapchain_images: images,
             queue_families_indices,
             width: WIDTH,
             height: HEIGHT,
@@ -151,7 +117,7 @@ impl VkContext {
         self.swapchain_khr = swapchain_khr;
         self.swapchain_properties = swapchain_properties;
         self.swapchain_image_views = swapchain_image_views;
-        self.images = images;
+        self.swapchain_images = images;
         self.width = dimensions[0];
         self.height = dimensions[1];
     }

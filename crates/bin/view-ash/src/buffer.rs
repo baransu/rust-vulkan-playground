@@ -20,7 +20,6 @@ impl Buffer {
         usage: vk::BufferUsageFlags,
         mem_properties: vk::MemoryPropertyFlags,
     ) -> Self {
-        let device = vk_context.device();
         let buffer = {
             let buffer_info = vk::BufferCreateInfo::builder()
                 .size(size)
@@ -28,10 +27,10 @@ impl Buffer {
                 .sharing_mode(vk::SharingMode::EXCLUSIVE)
                 .build();
 
-            unsafe { device.create_buffer(&buffer_info, None).unwrap() }
+            unsafe { vk_context.device.create_buffer(&buffer_info, None).unwrap() }
         };
 
-        let mem_requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
+        let mem_requirements = unsafe { vk_context.device.get_buffer_memory_requirements(buffer) };
         let memory = {
             let mem_type = find_memory_type(
                 mem_requirements,
@@ -43,10 +42,20 @@ impl Buffer {
                 .allocation_size(mem_requirements.size)
                 .memory_type_index(mem_type)
                 .build();
-            unsafe { device.allocate_memory(&alloc_info, None).unwrap() }
+            unsafe {
+                vk_context
+                    .device
+                    .allocate_memory(&alloc_info, None)
+                    .unwrap()
+            }
         };
 
-        unsafe { device.bind_buffer_memory(buffer, memory, 0).unwrap() }
+        unsafe {
+            vk_context
+                .device
+                .bind_buffer_memory(buffer, memory, 0)
+                .unwrap()
+        }
 
         Buffer {
             buffer,
@@ -62,7 +71,6 @@ impl Buffer {
         usage: vk::BufferUsageFlags,
         data: &[T],
     ) -> Self {
-        let device = vk_context.device();
         let size = (data.len() * size_of::<T>()) as vk::DeviceSize;
         let staging_buffer = Self::new(
             vk_context,
@@ -72,14 +80,15 @@ impl Buffer {
         );
 
         unsafe {
-            let data_ptr = device
+            let data_ptr = vk_context
+                .device
                 .map_memory(staging_buffer.memory, 0, size, vk::MemoryMapFlags::empty())
                 .unwrap();
             let mut align =
                 ash::util::Align::new(data_ptr, align_of::<A>() as _, staging_buffer.size);
 
             align.copy_from_slice(data);
-            device.unmap_memory(staging_buffer.memory);
+            vk_context.device.unmap_memory(staging_buffer.memory);
         };
 
         let buffer = Self::new(
@@ -90,7 +99,7 @@ impl Buffer {
         );
 
         Self::copy_buffer(
-            device,
+            &vk_context.device,
             command_pool,
             transfer_queue,
             staging_buffer.buffer,
@@ -124,8 +133,8 @@ impl Buffer {
 
     pub fn destroy(&self, vk_context: &VkContext) {
         unsafe {
-            vk_context.device().destroy_buffer(self.buffer, None);
-            vk_context.device().free_memory(self.memory, None);
+            vk_context.device.destroy_buffer(self.buffer, None);
+            vk_context.device.free_memory(self.memory, None);
         }
     }
 }
