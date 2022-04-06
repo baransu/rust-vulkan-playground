@@ -22,9 +22,6 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-#[cfg(not(target_os = "macos"))]
-const VALIDATION_LAYERS: &[&str] = &["VK_LAYER_LUNARG_standard_validation"];
-#[cfg(target_os = "macos")]
 const VALIDATION_LAYERS: &[&str] = &["VK_LAYER_KHRONOS_validation"];
 
 #[cfg(all(debug_assertions))]

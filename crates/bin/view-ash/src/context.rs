@@ -13,9 +13,6 @@ use std::{
 };
 use winit::window::Window;
 
-#[cfg(not(target_os = "macos"))]
-const REQUIRED_LAYERS: &[&str] = &["VK_LAYER_LUNARG_standard_validation"];
-#[cfg(target_os = "macos")]
 const REQUIRED_LAYERS: &[&str] = &["VK_LAYER_KHRONOS_validation"];
 
 const ENABLE_VALIDATION_LAYERS: bool = true;
