@@ -24,7 +24,7 @@ pub struct VkContext {
     pub instance: Instance,
     debug_report_callback: Option<(DebugUtils, DebugUtilsMessengerEXT)>,
     pub surface: Surface,
-    surface_khr: vk::SurfaceKHR,
+    pub surface_khr: vk::SurfaceKHR,
     pub physical_device: vk::PhysicalDevice,
     pub device: Device,
     pub queue_families_indices: QueueFamiliesIndices,

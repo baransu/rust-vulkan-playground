@@ -1,4 +1,5 @@
 mod buffer;
+mod camera;
 mod context;
 mod swapchain_support_details;
 mod texture;
@@ -6,10 +7,12 @@ mod utils;
 
 use ash::{vk, Device};
 use buffer::Buffer;
+use camera::Camera;
 use context::VkContext;
 use env_logger::Env;
 use glam::{Mat4, Quat, Vec3};
 use std::{
+    collections::{HashMap, VecDeque},
     ffi::CString,
     mem::{align_of, size_of},
     path::Path,
@@ -19,7 +22,7 @@ use texture::Texture;
 use utils::{create_image_view, execute_one_time_commands, find_memory_type};
 use winit::{
     dpi::PhysicalSize,
-    event::{Event, VirtualKeyCode, WindowEvent},
+    event::{DeviceEvent, ElementState, Event, MouseButton, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
     window::Window,
@@ -54,12 +57,14 @@ struct VulkanApp {
     command_buffers: Vec<vk::CommandBuffer>,
     query_pool: vk::QueryPool,
     in_flight_frames: InFlightFrames,
+    camera: Camera,
 }
 
 impl VulkanApp {
     pub fn new(event_loop: &EventLoop<()>) -> VulkanApp {
         let window = winit::window::WindowBuilder::new()
             .with_title("Vulkan")
+            .with_resizable(false)
             .with_inner_size(winit::dpi::LogicalSize::new(WIDTH, HEIGHT))
             .build(event_loop)
             .expect("Failed to create window.");
@@ -151,6 +156,7 @@ impl VulkanApp {
             command_buffers,
             query_pool,
             in_flight_frames,
+            camera: Default::default(),
         }
     }
 
@@ -1584,21 +1590,19 @@ impl VulkanApp {
         let elapsed: f32 =
             elapsed.as_secs() as f32 + (elapsed.subsec_millis() as f32) / 1_000 as f32;
 
-        let aspect = self.vk_context.swapchain_properties.extent.width as f32
-            / self.vk_context.swapchain_properties.extent.height as f32;
+        let aspect_ratio = self.vk_context.width as f32 / self.vk_context.height as f32;
 
-        let rotation =
-            Quat::from_euler(glam::EulerRot::XYZ, 0.0, 0.0, (90.0 * elapsed).to_radians());
+        let rotation = Quat::from_euler(
+            glam::EulerRot::XYZ,
+            -90.0_f32.to_radians(),
+            0.0,
+            (45.0 * elapsed).to_radians(),
+        );
 
         let ubo = UniformBufferObject {
             model: Mat4::from_rotation_translation(rotation, Vec3::ZERO).to_cols_array_2d(),
-            view: Mat4::look_at_lh(
-                Vec3::new(2.0, 2.0, 2.0),
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(0.0, 0.0, -1.0),
-            )
-            .to_cols_array_2d(),
-            proj: Mat4::perspective_lh(45.0_f32.to_radians(), aspect, 0.1, 10.0).to_cols_array_2d(),
+            view: self.camera.look_at_matrix().to_cols_array_2d(),
+            proj: self.camera.projection(aspect_ratio).to_cols_array_2d(),
         };
         let ubos = [ubo];
 
@@ -1617,6 +1621,34 @@ impl VulkanApp {
         }
     }
 
+    fn update(&mut self, keys: &HashMap<VirtualKeyCode, ElementState>, dt: f32) {
+        let camera_speed = 10.0 * dt;
+
+        if is_pressed(keys, VirtualKeyCode::Q) {
+            self.camera.position += Vec3::Y * camera_speed;
+        }
+
+        if is_pressed(keys, VirtualKeyCode::E) {
+            self.camera.position -= Vec3::Y * camera_speed;
+        }
+
+        if is_pressed(keys, VirtualKeyCode::A) {
+            self.camera.position -= self.camera.right() * camera_speed
+        }
+
+        if is_pressed(keys, VirtualKeyCode::D) {
+            self.camera.position += self.camera.right() * camera_speed
+        }
+
+        if is_pressed(keys, VirtualKeyCode::W) {
+            self.camera.position += self.camera.forward() * camera_speed;
+        }
+
+        if is_pressed(keys, VirtualKeyCode::S) {
+            self.camera.position -= self.camera.forward() * camera_speed;
+        }
+    }
+
     pub fn main_loop(mut self, mut event_loop: EventLoop<()>) {
         let timestamp_period = unsafe {
             self.vk_context
@@ -1626,10 +1658,28 @@ impl VulkanApp {
                 .timestamp_period as f64
         };
 
+        // Delta times are filtered over _this many_ frames.
+        const DT_FILTER_WIDTH: usize = 10;
+        // Past delta times used for filtering
+        let mut dt_queue: VecDeque<f32> = VecDeque::with_capacity(DT_FILTER_WIDTH);
+        let mut delta_time: f32 = 0.0;
+        let mut last_time = Instant::now();
+        // Fake the first frame's delta time. In the first frame, shaders
+        // and pipelines are be compiled, so it will most likely have a spike.
+        let mut fake_dt_countdown: i32 = 1;
+
         let mut fps_cpu_avg = 0.0;
         let mut fps_gpu_avg = 0.0;
 
-        event_loop.run_return(move |event, _, control_flow| {
+        let mut mouse_buttons: HashMap<MouseButton, ElementState> = HashMap::new();
+        let mut keyboard_buttons: HashMap<VirtualKeyCode, ElementState> = HashMap::new();
+
+        let mut rotation_x = 0.0;
+        let mut rotation_y = 0.0;
+
+        let original_rotation = self.camera.rotation;
+
+        event_loop.run_return(|event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
 
             match event {
@@ -1644,22 +1694,81 @@ impl VulkanApp {
                     }
                     WindowEvent::KeyboardInput { input, .. } => match input {
                         winit::event::KeyboardInput {
-                            virtual_keycode,
+                            virtual_keycode: Some(virtual_keycode),
                             state,
                             ..
                         } => match (virtual_keycode, state) {
-                            (Some(VirtualKeyCode::Escape), winit::event::ElementState::Pressed) => {
+                            (VirtualKeyCode::Escape, winit::event::ElementState::Pressed) => {
                                 dbg!();
-                                *control_flow = ControlFlow::Exit
+                                *control_flow = ControlFlow::Exit;
                             }
-                            _ => {}
+                            _ => {
+                                keyboard_buttons.insert(virtual_keycode, state);
+                            }
                         },
+                        _ => {}
                     },
+                    WindowEvent::MouseInput { state, button, .. } => {
+                        mouse_buttons.insert(button, state);
+                    }
                     _ => {}
                 },
+                Event::DeviceEvent {
+                    event: DeviceEvent::MouseMotion { delta, .. },
+                    ..
+                } => {
+                    match mouse_buttons.get(&MouseButton::Left) {
+                        Some(&ElementState::Pressed) => {
+                            let sensitivity = 5.0 * delta_time;
+                            let (x, y) = delta;
+
+                            rotation_x += x as f32 * sensitivity;
+                            rotation_y += y as f32 * sensitivity;
+
+                            let y_quat = Quat::from_axis_angle(Vec3::X, -rotation_y);
+                            let x_quat = Quat::from_axis_angle(Vec3::Y, -rotation_x);
+
+                            self.camera.rotation = original_rotation * x_quat * y_quat;
+                        }
+                        _ => {}
+                    };
+                }
                 Event::MainEventsCleared => self.window.request_redraw(),
                 Event::RedrawRequested(_window_id) => {
+                    // Filter the frame time before passing it to the application and renderer.
+                    // Fluctuations in frame rendering times cause stutter in animations,
+                    // and time-dependent effects (such as motion blur).
+                    //
+                    // Should applications need unfiltered delta time, they can calculate
+                    // it themselves, but it's good to pass the filtered time so users
+                    // don't need to worry about it.
+                    delta_time = {
+                        let now = Instant::now();
+                        let dt_duration = now - last_time;
+                        last_time = now;
+
+                        let dt_raw = dt_duration.as_secs_f32();
+
+                        // >= because rendering (and thus the spike) happens _after_ this.
+                        if fake_dt_countdown >= 0 {
+                            // First frame. Return the fake value.
+                            fake_dt_countdown -= 1;
+                            dt_raw.min(1.0 / 60.0)
+                        } else {
+                            // Not the first frame. Start averaging.
+
+                            if dt_queue.len() >= DT_FILTER_WIDTH {
+                                dt_queue.pop_front();
+                            }
+
+                            dt_queue.push_back(dt_raw);
+                            dt_queue.iter().copied().sum::<f32>() / dt_queue.len() as f32
+                        }
+                    };
+
                     let start_time = Instant::now();
+
+                    self.update(&keyboard_buttons, delta_time);
 
                     self.draw_frame();
 
@@ -1828,4 +1937,11 @@ fn main() {
 
     let vulkan_app = VulkanApp::new(&event_loop);
     vulkan_app.main_loop(event_loop)
+}
+
+fn is_pressed(keys: &HashMap<VirtualKeyCode, ElementState>, key: VirtualKeyCode) -> bool {
+    match keys.get(&key) {
+        Some(&ElementState::Pressed) => true,
+        _ => false,
+    }
 }
